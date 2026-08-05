@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   frontend:
     build: ./frontend
@@ -15,6 +13,8 @@ services:
       - "10130:10130"
     volumes:
       - ./data:/app/data
+      # 开发模式：挂载源码目录，修改 backend/app 下代码无需重新 build 镜像
+      - ./backend/app:/app/app:cached
     environment:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0
@@ -24,12 +24,15 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 10130
+    # 开发模式：--reload 让 API 代码改动自动热加载（仅开发用，生产部署请移除）
+    command: uvicorn app.main:app --host 0.0.0.0 --port 10130 --reload --reload-dir /app/app
 
   celery-worker:
     build: ./backend
     volumes:
       - ./data:/app/data
+      # 开发模式：挂载源码目录；celery 不支持热加载，改代码后需 docker compose restart celery-worker
+      - ./backend/app:/app/app:cached
     environment:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0
@@ -44,6 +47,8 @@ services:
     build: ./backend
     volumes:
       - ./data:/app/data
+      # 开发模式：挂载源码目录；改代码后需 docker compose restart celery-beat
+      - ./backend/app:/app/app:cached
     environment:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0

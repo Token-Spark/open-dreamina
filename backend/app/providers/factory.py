@@ -9,11 +9,12 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .base import BaseProvider, ProviderError
-from .dashscope import DashScopeProvider
-from .kling import KlingProvider
-from .mock import MockProvider
+from .dashscope_provider import DashScopeProvider
+from .kling_provider import KlingProvider
+from .mock_provider import MockProvider
 from .openai_provider import OpenAIProvider
-from .stability import StabilityProvider
+from .seedream_provider import SeedreamProvider
+from .stability_provider import StabilityProvider
 
 # 注册表：slug -> (工厂函数, 默认 base_url, 是否内置免 Key)
 # 工厂函数签名: (base_url, api_key, config) -> BaseProvider
@@ -25,6 +26,7 @@ _REGISTRY: dict[str, tuple[ProviderFactoryFn, str, bool]] = {
     "openai": (lambda b, k, c: OpenAIProvider(b or "https://api.openai.com/v1", k, c), "https://api.openai.com/v1", False),
     "dashscope": (lambda b, k, c: DashScopeProvider(b or "https://dashscope.aliyuncs.com", k, c), "https://dashscope.aliyuncs.com", False),
     "kling": (lambda b, k, c: KlingProvider(b or "https://api.klingai.com", k, c), "https://api.klingai.com", False),
+    "seedream": (lambda b, k, c: SeedreamProvider(b or "https://ark.cn-beijing.volces.com/api/v3", k, c), "https://ark.cn-beijing.volces.com/api/v3", False),
 }
 
 

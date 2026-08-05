@@ -52,9 +52,14 @@ class DashScopeProvider(BaseProvider):
             payload["input"]["negative_prompt"] = negative_prompt
 
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(url, headers=self._headers(), json=payload)
-        if resp.status_code != 200:
-            raise ProviderError(f"DashScope 返回 {resp.status_code}: {resp.text}")
+            resp = await self._request_with_retry(
+                client,
+                "POST",
+                url,
+                provider_name="DashScope",
+                headers=self._headers(),
+                json=payload,
+            )
         data = resp.json()
         # 通义万相通常是异步任务，这里简化：如有 output.results 立即返回
         results = (data.get("output") or {}).get("results") or []
@@ -64,9 +69,12 @@ class DashScopeProvider(BaseProvider):
         if not image_url:
             raise ProviderError("DashScope 响应中未找到 image url")
         async with httpx.AsyncClient(timeout=60) as client:
-            img_resp = await client.get(image_url)
-        if img_resp.status_code != 200:
-            raise ProviderError(f"下载结果图片失败: {img_resp.status_code}")
+            img_resp = await self._request_with_retry(
+                client,
+                "GET",
+                image_url,
+                provider_name="DashScope 结果图片下载",
+            )
         # 通义万相响应 usage 中含 input_tokens/output_tokens（计费维度），合并为 tokens_used
         usage = data.get("usage") or {}
         input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else 0

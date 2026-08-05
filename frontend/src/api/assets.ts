@@ -57,12 +57,23 @@ export async function batchDeleteAssets(assetIds: string[]): Promise<void> {
 /**
  * Upload a reference image (for img2img / img2video) and return the created
  * asset. The returned `id` is used as `input_asset_id` when creating a task.
+ *
+ * 文件上传 + 后端同步生成缩略图可能耗时较长，覆盖默认 30s 超时，避免大图
+ * 或慢网络下出现 "timeout of 30000ms exceeded"。
  */
 export async function uploadAsset(file: File): Promise<Asset> {
   const form = new FormData()
   form.append('file', file)
   const { data } = await apiClient.post<Asset>('/assets/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120_000,
+    // 必须清除 apiClient 实例默认的 `Content-Type: application/json`（见 client.ts）。
+    // 否则 axios 的 transformRequest 检测到 application/json 时会把 FormData
+    // 序列化成 JSON 字符串发出（`hasJSONContentType ? JSON.stringify(formDataToJSON(data)) : data`），
+    // 后端拿不到 multipart 的 file 字段 → 422。这里置为 null：axios 会跳过值为
+    // null 的 header，改由浏览器为 FormData 自动生成带 boundary 的
+    // `multipart/form-data`。注：手动设为裸 'multipart/form-data'（无 boundary）
+    // 会被原样发出去 → 后端报 "Missing boundary in multipart." → 400。
+    headers: { 'Content-Type': null },
   })
   return data
 }

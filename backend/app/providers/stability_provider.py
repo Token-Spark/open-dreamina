@@ -50,9 +50,14 @@ class StabilityProvider(BaseProvider):
         if negative_prompt:
             files["negative_prompt"] = (None, negative_prompt)
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(url, headers=self._headers(), files=files)
-        if resp.status_code != 200:
-            raise ProviderError(f"Stability 返回 {resp.status_code}: {resp.text}")
+            resp = await self._request_with_retry(
+                client,
+                "POST",
+                url,
+                provider_name="Stability",
+                headers=self._headers(),
+                files=files,
+            )
         data = resp.json()
         import base64 as _b64
         img_b64 = data.get("image")
