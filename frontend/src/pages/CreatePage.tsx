@@ -5,6 +5,7 @@ import { createTask, getTask, retryTask } from '@/api/tasks'
 import { assetFileUrl } from '@/api/assets'
 import type { Template } from '@/api/templates'
 import { listTemplates } from '@/api/templates'
+import { getSystemSettings } from '@/api/system'
 import { useProviders } from '@/hooks/useProviders'
 import { useTaskStore } from '@/stores/taskStore'
 import { useConversationStore, useCurrentTopic, type GenMessage } from '@/stores/conversationStore'
@@ -44,6 +45,14 @@ export function CreatePage() {
     queryKey: ['templates'],
     queryFn: listTemplates,
   })
+  // 并发上限来自后端 max_concurrent_tasks（/system/settings），允许在前一个任务运行时继续提交，
+  // 直到在途任务数达到上限才禁用生成按钮。
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: getSystemSettings,
+    staleTime: 60_000,
+  })
+  const maxConcurrent = systemSettings?.max_concurrent_tasks ?? 2
 
   const currentTopic = useCurrentTopic()
   const currentTopicId = useConversationStore((s) => s.currentTopicId)
@@ -82,11 +91,15 @@ export function CreatePage() {
   }, [location.state])
 
   // Seed a default provider once providers are available.
+  // 优先选择当前模式下有可用模型的 active provider，避免默认落到不匹配的 provider
+  // （例如视频 provider + 图片模式，会导致模型下拉为空且按钮被禁用）。
   useEffect(() => {
     if (providerSlug || !providers) return
-    const first = providers.find((p) => p.is_active) ?? providers[0]
+    const active = providers.filter((p) => p.is_active)
+    const first =
+      active.find((p) => modelsForCategory(p, mode).length > 0) ?? active[0] ?? providers[0]
     if (first) setProviderSlug(first.slug)
-  }, [providers, providerSlug])
+  }, [providers, providerSlug, mode])
 
   // 内容模式变化时重置参数为该模式默认（无参考图）任务类型
   // "重新编辑"时复用原任务参数，跳过默认重置
@@ -99,11 +112,20 @@ export function CreatePage() {
     setParams(defaultParamsForType(deriveTaskType(mode, false)))
   }, [mode])
 
-  // 需求2：按内容模式筛选模型；参考图变化时校验当前模型是否仍支持派生类型
+  // 需求2：按内容模式筛选模型；参考图变化时校验当前模型是否仍支持派生类型。
+  // 当前 provider 在该模式下无模型时，自动切换到首个有模型的 active provider
+  // （例如从图片切到视频，而当前 provider 仅支持图片）。
   useEffect(() => {
     const provider = providers?.find((p) => p.slug === providerSlug && p.is_active)
     const available = modelsForCategory(provider, mode)
     if (available.length === 0) {
+      const fallback = (providers ?? [])
+        .filter((p) => p.is_active)
+        .find((p) => modelsForCategory(p, mode).length > 0)
+      if (fallback && fallback.slug !== providerSlug) {
+        setProviderSlug(fallback.slug)
+        return // provider 切换后会重新触发本 effect
+      }
       setModelId('')
       return
     }
@@ -123,11 +145,15 @@ export function CreatePage() {
     }
   }, [messages.length, activeTasks])
 
-  const busy = useMemo(() => {
-    return messages.some(
-      (m) => m.status === 'pending' || m.status === 'queued' || m.status === 'running',
-    )
-  }, [messages])
+  // 统计在途（非终态）任务数，与后端并发上限对比决定是否允许新提交。
+  const activeCount = useMemo(
+    () =>
+      messages.filter(
+        (m) => m.status === 'pending' || m.status === 'queued' || m.status === 'running',
+      ).length,
+    [messages],
+  )
+  const atConcurrencyLimit = activeCount >= maxConcurrent
 
   function handleModeChange(next: ContentMode) {
     setMode(next)
@@ -288,7 +314,7 @@ export function CreatePage() {
 
       <div className="flex flex-1 flex-col">
         {/* Header */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
+        <header className="flex h-14 shrink-0 items-center justify-between px-6">
           <div>
             <h1 className="text-sm font-medium text-fg-primary">{currentTopic.title}</h1>
             <p className="text-xs text-fg-muted">
@@ -321,8 +347,8 @@ export function CreatePage() {
         </header>
 
         {/* Conversation feed */}
-        <div ref={feedRef} className="flex-1 overflow-auto p-6 scrollbar-thin">
-          <div className="mx-auto max-w-3xl space-y-6">
+        <div ref={feedRef} className="flex-1 overflow-auto p-4 scrollbar-thin">
+          <div className="mx-auto max-w-4xl space-y-6">
             {messages.length === 0 && <EmptyFeed onStart={startNewTopic} />}
             {messages.map((message) => (
               <GenMessageCard
@@ -355,7 +381,7 @@ export function CreatePage() {
           onRefAssetsChange={setRefAssets}
           onGenerate={handleGenerate}
           submitting={submitting}
-          busy={busy}
+          atConcurrencyLimit={atConcurrencyLimit}
         />
       </div>
 

@@ -103,11 +103,10 @@ class OpenAIProvider(BaseProvider):
     async def test_connection(self) -> bool:
         url = f"{self.base_url}/models"
         async with httpx.AsyncClient(timeout=15) as client:
-            try:
-                resp = await client.get(url, headers=self._headers())
-                return resp.status_code == 200
-            except Exception:
-                return False
+            resp = await client.get(url, headers=self._headers())
+            if resp.status_code == 200:
+                return True
+            raise ProviderError(f"OpenAI 返回 {resp.status_code}: {resp.text[:200]}")
 
     @staticmethod
     def _size_str(width: int, height: int) -> str:

@@ -67,7 +67,9 @@ export function AssetGrid({
               />
               {asset.type === 'video' && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <Play className="h-6 w-6 fill-fg-primary/90 text-fg-primary/90" />
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 shadow-lg">
+                    <Play className="h-4 w-4 translate-x-[1px] fill-black/80 text-black/80" />
+                  </span>
                 </div>
               )}
               {selectable && (
@@ -83,7 +85,7 @@ export function AssetGrid({
               <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <IconBtn label="收藏" onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(asset) }}>
                   <Star
-                    className={cn('h-3.5 w-3.5', asset.is_favorite ? 'fill-accent text-accent' : 'text-fg-secondary')}
+                    className={cn('h-3.5 w-3.5', asset.is_favorite ? 'fill-accent text-accent' : 'text-white')}
                   />
                 </IconBtn>
                 <a
@@ -92,7 +94,7 @@ export function AssetGrid({
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-fg-secondary transition-colors hover:text-fg-primary"
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm transition-colors hover:bg-black/80"
                   aria-label="下载"
                 >
                   <Download className="h-3.5 w-3.5" />
@@ -138,7 +140,7 @@ function IconBtn({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-fg-secondary transition-colors hover:text-fg-primary"
+      className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm transition-colors hover:bg-black/80"
     >
       {children}
     </button>

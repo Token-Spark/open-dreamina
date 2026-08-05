@@ -184,6 +184,34 @@ class ProviderTestResult(BaseModel):
     latency_ms: Optional[int] = None
 
 
+class ProviderSlugOption(BaseModel):
+    """可用 slug 元信息：驱动前端「添加自定义服务」下拉选择。"""
+    slug: str
+    display_name: str
+    modes: list[str]  # "image" | "video"
+    default_base_url: str
+    builtin: bool
+
+
+class ProviderTestBeforeCreate(BaseModel):
+    """新建前连通性测试入参：无需先落库即可测试。"""
+    slug: str
+    base_url: str
+    api_key: str = ""
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProviderTestOverride(BaseModel):
+    """按 id 测试时的可选覆盖项：用表单当前值测试未保存的改动。
+
+    - base_url / api_key / config 任一未提供则回退到已落库值。
+    - api_key 留空时后端使用已加密的旧 Key，避免泄露或重复输入。
+    """
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    config: Optional[dict[str, Any]] = None
+
+
 # ---------------- 模板 ----------------
 
 class TemplateCreate(BaseModel):
@@ -226,12 +254,11 @@ class HealthResponse(BaseModel):
     version: str = "0.1.0"
 
 
-class SettingsResponse(BaseModel):
-    settings: dict[str, str]
-
-
-class SettingsUpdate(BaseModel):
-    settings: dict[str, str]
+class SystemSettings(BaseModel):
+    """系统设置：扁平结构，与前端 SystemSettings 接口对齐。
+    持久化于 settings 表；GET 缺省值由路由层从 config 合并。"""
+    max_concurrent_tasks: int = Field(default=2, ge=1, le=8)
+    default_provider: str = ""
 
 
 class BackupResponse(BaseModel):

@@ -50,7 +50,8 @@ export interface GenerationInputBarProps {
   onRefAssetsChange: (assets: ReferenceAsset[]) => void
   onGenerate: () => void
   submitting: boolean
-  busy: boolean
+  /** 是否已达并发上限：达到时仅禁用生成按钮，输入区仍可编辑以准备下一条任务。 */
+  atConcurrencyLimit: boolean
 }
 
 export function GenerationInputBar({
@@ -70,7 +71,7 @@ export function GenerationInputBar({
   onRefAssetsChange,
   onGenerate,
   submitting,
-  busy,
+  atConcurrencyLimit,
 }: GenerationInputBarProps) {
   const [negativeOpen, setNegativeOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -134,7 +135,7 @@ export function GenerationInputBar({
 
   return (
     <div className="bg-transparent p-4">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-4xl">
         <div
           className="relative rounded-2xl border border-border/60 bg-bg-secondary/70 p-4 shadow-xl backdrop-blur-md"
           onPaste={onPaste}
@@ -166,11 +167,11 @@ export function GenerationInputBar({
               <textarea
                 value={prompt}
                 onChange={(e) => onPromptChange(e.target.value)}
-                disabled={submitting || busy}
+                disabled={submitting}
                 placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。支持上传多张参考图融合生成。"
                 rows={3}
                 className={cn(
-                  'w-full resize-none bg-transparent text-sm text-fg-primary placeholder:text-fg-muted',
+                  'w-full resize-none bg-transparent text-base text-fg-primary placeholder:text-fg-muted',
                   'focus-visible:outline-none',
                 )}
               />
@@ -190,9 +191,9 @@ export function GenerationInputBar({
                   type="text"
                   value={negativePrompt}
                   onChange={(e) => onNegativeChange(e.target.value)}
-                  disabled={submitting || busy}
+                  disabled={submitting}
                   placeholder="不希望出现的内容，如：模糊、低质量、变形…"
-                  className="w-full rounded-btn border border-border bg-bg-tertiary px-3 py-1.5 text-xs text-fg-primary placeholder:text-fg-muted focus-visible:outline-none focus-visible:border-fg-muted"
+                  className="w-full rounded-btn border border-border bg-bg-tertiary px-3 py-2 text-sm text-fg-primary placeholder:text-fg-muted focus-visible:outline-none focus-visible:border-fg-muted"
                 />
               )}
             </div>
@@ -200,14 +201,14 @@ export function GenerationInputBar({
 
           {/* 底部工具栏 */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <ModeDropdown mode={mode} onChange={onModeChange} disabled={busy} placement="top" />
+            <ModeDropdown mode={mode} onChange={onModeChange} disabled={submitting} placement="top" />
             <ModelPicker
               mode={mode}
               providerSlug={providerSlug}
               modelId={modelId}
               onProviderChange={onProviderChange}
               onModelChange={onModelChange}
-              disabled={busy}
+              disabled={submitting}
               placement="top"
             />
             <SizePicker
@@ -215,30 +216,30 @@ export function GenerationInputBar({
               aspectRatio={aspectRatio}
               resolution={resolution}
               onChange={updateRatioResolution}
-              disabled={busy}
+              disabled={submitting}
               placement="top"
             />
-            <CountSelector count={count} onChange={updateCount} disabled={busy} />
+            <CountSelector count={count} onChange={updateCount} disabled={submitting} />
 
             <button
               type="button"
               onClick={() => setNegativeOpen((v) => !v)}
               className={cn(
-                'flex h-8 items-center gap-1 rounded-btn border border-border px-2.5 text-xs transition-colors',
+                'flex h-9 items-center gap-1 rounded-btn border border-border px-3 text-sm transition-colors',
                 negativeOpen
                   ? 'border-fg-muted text-fg-primary'
                   : 'text-fg-secondary hover:text-fg-primary',
               )}
             >
-              <Type className="h-3.5 w-3.5" />
+              <Type className="h-4 w-4" />
               负面词
             </button>
 
             <div className="flex-1" />
 
-            <Button size="md" onClick={onGenerate} disabled={submitting || busy}>
+            <Button size="md" onClick={onGenerate} disabled={submitting || atConcurrencyLimit}>
               <Wand2 className="h-4 w-4" />
-              {submitting ? '提交中…' : busy ? '生成中…' : '生成'}
+              {submitting ? '提交中…' : atConcurrencyLimit ? '并发已满' : '生成'}
             </Button>
           </div>
         </div>
@@ -266,11 +267,11 @@ function ModeDropdown({
         <button
           type="button"
           disabled={disabled}
-          className="flex h-8 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-2.5 text-xs text-fg-secondary transition-colors hover:text-fg-primary disabled:opacity-50"
+          className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary transition-colors hover:text-fg-primary disabled:opacity-50"
         >
-          {mode === 'image' ? <ImageIcon className="h-3.5 w-3.5" /> : <MonitorPlay className="h-3.5 w-3.5" />}
+          {mode === 'image' ? <ImageIcon className="h-4 w-4" /> : <MonitorPlay className="h-4 w-4" />}
           {current.label}生成
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown className="h-3.5 w-3.5" />
         </button>
       }
     >
@@ -294,7 +295,7 @@ function CountSelector({
   disabled?: boolean
 }) {
   return (
-    <div className="flex h-8 items-center rounded-btn border border-border bg-bg-tertiary/70 p-0.5">
+    <div className="flex h-9 items-center rounded-btn border border-border bg-bg-tertiary/70 p-0.5">
       {GENERATION_COUNTS.map((n) => (
         <button
           key={n}
@@ -302,7 +303,7 @@ function CountSelector({
           disabled={disabled}
           onClick={() => onChange(n)}
           className={cn(
-            'flex h-6 w-6 items-center justify-center rounded-[4px] text-xs transition-colors',
+            'flex h-7 w-7 items-center justify-center rounded-[4px] text-sm transition-colors',
             count === n ? 'bg-accent text-bg-primary' : 'text-fg-secondary hover:text-fg-primary',
           )}
         >

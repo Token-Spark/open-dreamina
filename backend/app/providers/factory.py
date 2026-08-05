@@ -1,11 +1,12 @@
 """Provider 工厂。
 
 - 通过 slug 实例化对应 Provider。
-- 注册表声明式配置：slug -> (class, default_base_url)
+- 注册表声明式配置：slug -> RegistryEntry
 - 新增 Provider 只需在此处注册一行。
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .base import BaseProvider, ProviderError
@@ -13,20 +14,103 @@ from .dashscope_provider import DashScopeProvider
 from .kling_provider import KlingProvider
 from .mock_provider import MockProvider
 from .openai_provider import OpenAIProvider
+from .seedance_provider import MODEL_SEEDANCE_2_0, MODEL_SEEDANCE_2_5, SeedanceProvider
 from .seedream_provider import SeedreamProvider
 from .stability_provider import StabilityProvider
 
-# 注册表：slug -> (工厂函数, 默认 base_url, 是否内置免 Key)
 # 工厂函数签名: (base_url, api_key, config) -> BaseProvider
 ProviderFactoryFn = Callable[[str, str, dict[str, Any]], BaseProvider]
 
-_REGISTRY: dict[str, tuple[ProviderFactoryFn, str, bool]] = {
-    "mock": (lambda b, k, c: MockProvider(b or "mock://local", k or "mock-key", c), "mock://local", True),
-    "stability": (lambda b, k, c: StabilityProvider(b or "https://api.stability.ai", k, c), "https://api.stability.ai", False),
-    "openai": (lambda b, k, c: OpenAIProvider(b or "https://api.openai.com/v1", k, c), "https://api.openai.com/v1", False),
-    "dashscope": (lambda b, k, c: DashScopeProvider(b or "https://dashscope.aliyuncs.com", k, c), "https://dashscope.aliyuncs.com", False),
-    "kling": (lambda b, k, c: KlingProvider(b or "https://api.klingai.com", k, c), "https://api.klingai.com", False),
-    "seedream": (lambda b, k, c: SeedreamProvider(b or "https://ark.cn-beijing.volces.com/api/v3", k, c), "https://ark.cn-beijing.volces.com/api/v3", False),
+# 内容模式与任务类型的映射（与前端 ContentMode 对齐）
+_IMAGE_TYPES = {"text2img", "img2img"}
+_VIDEO_TYPES = {"text2video", "img2video"}
+
+
+def _modes_from_types(types: list[str]) -> list[str]:
+    """由 SUPPORTED_TYPES 派生内容模式（image/video），数据驱动避免硬编码。"""
+    modes: list[str] = []
+    if any(t in _IMAGE_TYPES for t in types):
+        modes.append("image")
+    if any(t in _VIDEO_TYPES for t in types):
+        modes.append("video")
+    return modes
+
+
+@dataclass
+class RegistryEntry:
+    """Provider 注册项：工厂 + 元信息（数据驱动 UI 展示）。"""
+    factory: ProviderFactoryFn
+    default_base_url: str
+    builtin: bool
+    display_name: str
+    modes: list[str] = field(default_factory=list)
+
+
+_REGISTRY: dict[str, RegistryEntry] = {
+    "mock": RegistryEntry(
+        factory=lambda b, k, c: MockProvider(b or "mock://local", k or "mock-key", c),
+        default_base_url="mock://local",
+        builtin=True,
+        display_name="Mock（本地测试）",
+        modes=_modes_from_types(MockProvider.SUPPORTED_TYPES),
+    ),
+    "stability": RegistryEntry(
+        factory=lambda b, k, c: StabilityProvider(b or "https://api.stability.ai", k, c),
+        default_base_url="https://api.stability.ai",
+        builtin=False,
+        display_name="Stability AI",
+        modes=_modes_from_types(StabilityProvider.SUPPORTED_TYPES),
+    ),
+    "openai": RegistryEntry(
+        factory=lambda b, k, c: OpenAIProvider(b or "https://api.openai.com/v1", k, c),
+        default_base_url="https://api.openai.com/v1",
+        builtin=False,
+        display_name="OpenAI",
+        modes=_modes_from_types(OpenAIProvider.SUPPORTED_TYPES),
+    ),
+    "dashscope": RegistryEntry(
+        factory=lambda b, k, c: DashScopeProvider(b or "https://dashscope.aliyuncs.com", k, c),
+        default_base_url="https://dashscope.aliyuncs.com",
+        builtin=False,
+        display_name="阿里云通义万相",
+        modes=_modes_from_types(DashScopeProvider.SUPPORTED_TYPES),
+    ),
+    "kling": RegistryEntry(
+        factory=lambda b, k, c: KlingProvider(b or "https://api.klingai.com", k, c),
+        default_base_url="https://api.klingai.com",
+        builtin=False,
+        display_name="快手可灵",
+        modes=_modes_from_types(KlingProvider.SUPPORTED_TYPES),
+    ),
+    "seedream": RegistryEntry(
+        factory=lambda b, k, c: SeedreamProvider(b or "https://ark.cn-beijing.volces.com/api/v3", k, c),
+        default_base_url="https://ark.cn-beijing.volces.com/api/v3",
+        builtin=False,
+        display_name="豆包 Seedream",
+        modes=_modes_from_types(SeedreamProvider.SUPPORTED_TYPES),
+    ),
+    "seedance-2-0": RegistryEntry(
+        factory=lambda b, k, c: SeedanceProvider(
+            b or "https://ark.cn-beijing.volces.com/api/v3",
+            k,
+            {**c, "model_id": MODEL_SEEDANCE_2_0},
+        ),
+        default_base_url="https://ark.cn-beijing.volces.com/api/v3",
+        builtin=False,
+        display_name="豆包 Seedance 2.0",
+        modes=_modes_from_types(SeedanceProvider.SUPPORTED_TYPES),
+    ),
+    "seedance-2-5": RegistryEntry(
+        factory=lambda b, k, c: SeedanceProvider(
+            b or "https://ark.cn-beijing.volces.com/api/v3",
+            k,
+            {**c, "model_id": MODEL_SEEDANCE_2_5},
+        ),
+        default_base_url="https://ark.cn-beijing.volces.com/api/v3",
+        builtin=False,
+        display_name="豆包 Seedance 2.5",
+        modes=_modes_from_types(SeedanceProvider.SUPPORTED_TYPES),
+    ),
 }
 
 
@@ -43,8 +127,7 @@ class ProviderFactory:
         entry = _REGISTRY.get(slug)
         if entry is None:
             raise ProviderError(f"未知 Provider slug: {slug}")
-        factory, default_base_url, _built_in = entry
-        return factory(base_url or default_base_url, api_key, config or {})
+        return entry.factory(base_url or entry.default_base_url, api_key, config or {})
 
     @staticmethod
     def list_slugs() -> list[str]:
@@ -53,7 +136,21 @@ class ProviderFactory:
     @staticmethod
     def is_builtin(slug: str) -> bool:
         entry = _REGISTRY.get(slug)
-        return bool(entry and entry[2])
+        return bool(entry and entry.builtin)
+
+    @staticmethod
+    def list_slug_info() -> list[dict[str, Any]]:
+        """返回所有可用 slug 的元信息，供前端下拉选择。"""
+        return [
+            {
+                "slug": slug,
+                "display_name": entry.display_name,
+                "modes": list(entry.modes),
+                "default_base_url": entry.default_base_url,
+                "builtin": entry.builtin,
+            }
+            for slug, entry in _REGISTRY.items()
+        ]
 
     @staticmethod
     def register(
@@ -63,7 +160,13 @@ class ProviderFactory:
         builtin: bool = False,
     ) -> None:
         """运行时注册新 Provider（用于插件式扩展）。"""
-        _REGISTRY[slug] = (factory, default_base_url, builtin)
+        _REGISTRY[slug] = RegistryEntry(
+            factory=factory,
+            default_base_url=default_base_url,
+            builtin=builtin,
+            display_name=slug,
+            modes=[],
+        )
 
 
 def get_provider(

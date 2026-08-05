@@ -11,11 +11,14 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import ApiProvider
-from ..providers import ProviderError, get_provider
+from ..providers import ProviderError, ProviderFactory, get_provider
 from ..schemas import (
     MessageResponse,
     ProviderCreate,
     ProviderResponse,
+    ProviderSlugOption,
+    ProviderTestBeforeCreate,
+    ProviderTestOverride,
     ProviderTestResult,
     ProviderUpdate,
 )
@@ -46,6 +49,46 @@ def _to_response(p: ApiProvider) -> ProviderResponse:
 def list_providers(db: Session = Depends(get_db)) -> list[ProviderResponse]:
     items = db.query(ApiProvider).order_by(ApiProvider.created_at).all()
     return [_to_response(p) for p in items]
+
+
+@router.get("/slug-options", response_model=list[ProviderSlugOption])
+def list_slug_options() -> list[ProviderSlugOption]:
+    """返回所有可用 slug 及其元信息，供前端「添加自定义服务」下拉选择。
+
+    静态路径置于 /{provider_id} 之前，避免被动态路由捕获。
+    """
+    return [ProviderSlugOption(**info) for info in ProviderFactory.list_slug_info()]
+
+
+@router.post("/test-before-create", response_model=ProviderTestResult)
+def test_provider_before_create(payload: ProviderTestBeforeCreate) -> ProviderTestResult:
+    """新建前连通性测试：无需先落库即可校验 slug / API Key / base_url。"""
+    try:
+        provider = get_provider(
+            payload.slug,
+            base_url=payload.base_url,
+            api_key=payload.api_key,
+            config=payload.config,
+        )
+    except ProviderError as e:
+        return ProviderTestResult(success=False, message=str(e))
+
+    start = time.perf_counter()
+    try:
+        ok = asyncio.run(provider.test_connection())
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return ProviderTestResult(
+            success=ok,
+            message="连通性测试通过" if ok else "连通性测试失败（API Key 无效或网络不通）",
+            latency_ms=latency_ms,
+        )
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return ProviderTestResult(
+            success=False,
+            message=f"测试异常: {type(e).__name__}: {e}",
+            latency_ms=latency_ms,
+        )
 
 
 @router.post("", response_model=ProviderResponse, status_code=201)
@@ -111,19 +154,31 @@ def delete_provider(provider_id: str, db: Session = Depends(get_db)) -> MessageR
 
 
 @router.post("/{provider_id}/test", response_model=ProviderTestResult)
-def test_provider(provider_id: str, db: Session = Depends(get_db)) -> ProviderTestResult:
+def test_provider(
+    provider_id: str,
+    payload: ProviderTestOverride | None = None,
+    db: Session = Depends(get_db),
+) -> ProviderTestResult:
     p = db.get(ApiProvider, provider_id)
     if not p:
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Provider 不存在"})
 
-    try:
-        api_key = decrypt(p.api_key_enc)
-    except Exception as e:
-        return ProviderTestResult(success=False, message=f"API Key 解密失败: {e}")
+    # api_key：优先用覆盖值，否则解密已落库的（编辑模式留空 = 保持旧 Key）
+    if payload and payload.api_key:
+        api_key = payload.api_key
+    else:
+        try:
+            api_key = decrypt(p.api_key_enc)
+        except Exception as e:
+            return ProviderTestResult(success=False, message=f"API Key 解密失败: {e}")
 
-    config = json.loads(p.config_json or "{}")
+    base_url = p.base_url
+    if payload and payload.base_url:
+        base_url = payload.base_url
+    config = json.loads(p.config_json or "{}") if not (payload and payload.config is not None) else payload.config
+
     try:
-        provider = get_provider(p.slug, base_url=p.base_url, api_key=api_key, config=config)
+        provider = get_provider(p.slug, base_url=base_url, api_key=api_key, config=config)
     except ProviderError as e:
         return ProviderTestResult(success=False, message=str(e))
 

@@ -21,6 +21,9 @@ services:
       - ASSETS_DIR=/app/data/assets
       - BACKUP_DIR=/app/data/backups
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+    extra_hosts:
+      # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
     restart: unless-stopped
@@ -38,6 +41,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ASSETS_DIR=/app/data/assets
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+    extra_hosts:
+      # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
     restart: unless-stopped

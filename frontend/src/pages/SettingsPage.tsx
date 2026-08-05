@@ -10,12 +10,10 @@ import {
   updateSystemSettings,
   type SystemSettings,
 } from '@/api/system'
-import { useProviders } from '@/hooks/useProviders'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
-import { Select } from '@/components/ui/Select'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -59,7 +57,6 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 /* ------------------------------ General tab ------------------------------ */
 
 function GeneralTab() {
-  const { data: providers } = useProviders()
   const { data: settings } = useQuery({ queryKey: ['system', 'settings'], queryFn: getSystemSettings })
   const { data: health } = useQuery({ queryKey: ['system', 'health'], queryFn: getSystemHealth, refetchInterval: 30000 })
   const qc = useQueryClient()
@@ -102,19 +99,6 @@ function GeneralTab() {
       <Card className="space-y-4 p-4">
         <h2 className="text-sm font-medium text-fg-primary">默认配置</h2>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="默认服务提供商">
-            <Select
-              value={form.default_provider ?? ''}
-              onChange={(e) => setForm({ ...form, default_provider: e.target.value })}
-            >
-              <option value="">未设置</option>
-              {(providers ?? []).filter((p) => p.is_active).map((p) => (
-                <option key={p.id} value={p.slug}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
           <Field label="最大并发任务数">
             <Input
               type="number"

@@ -43,18 +43,18 @@ export function SizePicker({
         <button
           type="button"
           disabled={disabled}
-          className="flex h-8 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-2.5 text-xs text-fg-secondary transition-colors hover:text-fg-primary disabled:opacity-50"
+          className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary transition-colors hover:text-fg-primary disabled:opacity-50"
         >
           <span className="font-medium">{ratioDef.label}</span>
           <span className="text-fg-muted">{resDef.value}</span>
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown className="h-3.5 w-3.5" />
         </button>
       }
       align="start"
     >
-      <div className="w-72 space-y-3 p-1">
+      <div className="w-80 space-y-3 p-1">
         <div>
-          <div className="mb-1.5 px-1 text-[10px] font-medium text-fg-muted">选择比例</div>
+          <div className="mb-1.5 px-1 text-xs font-medium text-fg-muted">选择比例</div>
           <div className="grid grid-cols-4 gap-1.5">
             {ratios.map((r) => (
               <button
@@ -62,7 +62,7 @@ export function SizePicker({
                 type="button"
                 onClick={() => onChange(r.value, effectiveResolution)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-1.5 rounded-btn border py-2 text-[11px] transition-colors',
+                  'flex flex-col items-center justify-center gap-1.5 rounded-btn border py-2.5 text-xs transition-colors',
                   effectiveRatio === r.value
                     ? 'border-accent bg-accent text-bg-primary'
                     : 'border-border bg-bg-tertiary/50 text-fg-secondary hover:border-fg-muted hover:text-fg-primary',
@@ -76,7 +76,7 @@ export function SizePicker({
         </div>
 
         <div>
-          <div className="mb-1.5 px-1 text-[10px] font-medium text-fg-muted">选择分辨率</div>
+          <div className="mb-1.5 px-1 text-xs font-medium text-fg-muted">选择分辨率</div>
           <div className="grid grid-cols-3 gap-1.5">
             {resolutions.map((r) => (
               <button
@@ -84,7 +84,7 @@ export function SizePicker({
                 type="button"
                 onClick={() => onChange(effectiveRatio, r.value)}
                 className={cn(
-                  'rounded-btn border px-2 py-1.5 text-xs transition-colors',
+                  'rounded-btn border px-2 py-2 text-sm transition-colors',
                   effectiveResolution === r.value
                     ? 'border-accent bg-accent text-bg-primary'
                     : 'border-border bg-bg-tertiary/50 text-fg-secondary hover:border-fg-muted hover:text-fg-primary',
@@ -96,7 +96,7 @@ export function SizePicker({
           </div>
         </div>
 
-        <div className="text-[10px] text-fg-muted">
+        <div className="text-xs text-fg-muted">
           {mode === 'image' ? '图片' : '视频'}尺寸：
           {(() => {
             const { width, height } = sizeFromRatioResolution(effectiveRatio, effectiveResolution, mode)

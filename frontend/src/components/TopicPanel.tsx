@@ -27,9 +27,9 @@ export function TopicPanel({ className }: TopicPanelProps) {
   }
 
   return (
-    <aside className={cn('flex w-64 shrink-0 flex-col border-r border-border bg-bg-secondary', className)}>
-      <div className="flex h-14 items-center justify-between border-b border-border px-3">
-        <h2 className="text-sm font-medium text-fg-primary">生成对话</h2>
+    <aside className={cn('flex w-64 shrink-0 flex-col bg-bg-secondary', className)}>
+      <div className="flex h-14 items-center justify-between px-3">
+        <h2 className="text-sm font-medium text-fg-primary">内容生成 - 对话列表</h2>
         <button
           type="button"
           onClick={handleNew}

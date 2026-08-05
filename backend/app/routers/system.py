@@ -16,8 +16,7 @@ from ..schemas import (
     BackupResponse,
     HealthResponse,
     MessageResponse,
-    SettingsResponse,
-    SettingsUpdate,
+    SystemSettings,
 )
 from ..services.backup_service import backup_database, list_backups
 
@@ -63,28 +62,36 @@ def health(db: Session = Depends(get_db)) -> HealthResponse:
     )
 
 
-@router.get("/settings", response_model=SettingsResponse)
-def get_settings(db: Session = Depends(get_db)) -> SettingsResponse:
-    items = db.query(Setting).all()
-    return SettingsResponse(settings={s.key: s.value for s in items})
+@router.get("/settings", response_model=SystemSettings)
+def get_settings(db: Session = Depends(get_db)) -> SystemSettings:
+    items = {s.key: s.value for s in db.query(Setting).all()}
+    # DB 无记录时回退到 config 默认值（环境变量 / .env），保证首次部署即可用。
+    return SystemSettings(
+        max_concurrent_tasks=int(items.get("max_concurrent_tasks", settings.max_concurrent_tasks)),
+        default_provider=items.get("default_provider", ""),
+    )
 
 
-@router.put("/settings", response_model=SettingsResponse)
+@router.put("/settings", response_model=SystemSettings)
 def update_settings(
-    payload: SettingsUpdate,
+    payload: SystemSettings,
     db: Session = Depends(get_db),
-) -> SettingsResponse:
+) -> SystemSettings:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for k, v in payload.settings.items():
-        s = db.get(Setting, k)
-        if s:
-            s.value = v
-            s.updated_at = now
-        else:
-            db.add(Setting(key=k, value=v, updated_at=now))
+    _upsert_setting(db, "max_concurrent_tasks", str(payload.max_concurrent_tasks), now)
+    _upsert_setting(db, "default_provider", payload.default_provider, now)
     db.commit()
-    items = db.query(Setting).all()
-    return SettingsResponse(settings={s.key: s.value for s in items})
+    return get_settings(db)
+
+
+def _upsert_setting(db: Session, key: str, value: str, now: str) -> None:
+    """插入或更新一条 settings 表记录。"""
+    s = db.get(Setting, key)
+    if s:
+        s.value = value
+        s.updated_at = now
+    else:
+        db.add(Setting(key=key, value=value, updated_at=now))
 
 
 @router.post("/backup", response_model=BackupResponse)

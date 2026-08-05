@@ -31,10 +31,66 @@
       ]
     },
     {
+      "slug": "seedance-2-0",
+      "name": "Seedance 2.0",
+      "vendor": "Volcengine",
+      "description": "豆包 Seedance 2.0 视频生成模型，支持文生视频与图生视频。",
+      "docsUrl": "https://www.volcengine.com/docs/82379/1520757",
+      "modes": ["video"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 Volcengine ARK API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://ark.cn-beijing.volces.com/api/v3"
+        }
+      ],
+      "models": [
+        { "id": "doubao-seedance-2-0-260128", "label": "Seedance 2.0", "types": ["text2video", "img2video"] }
+      ]
+    },
+    {
+      "slug": "seedance-2-5",
+      "name": "Seedance 2.5",
+      "vendor": "Volcengine",
+      "description": "豆包 Seedance 2.5 视频生成模型，支持文生视频与图生视频。",
+      "docsUrl": "https://www.volcengine.com/docs/82379/1520757",
+      "modes": ["video"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 Volcengine ARK API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://ark.cn-beijing.volces.com/api/v3"
+        }
+      ],
+      "models": [
+        { "id": "doubao-seedance-2-5", "label": "Seedance 2.5", "types": ["text2video", "img2video"] }
+      ]
+    },
+    {
       "slug": "gemini",
       "name": "Gemini Image",
       "vendor": "Google",
-      "description": "Google Gemini 图像生成系列，含 Image 2 与 Nano Banana。",
+      "description": "Google Gemini 图像生成系列",
       "docsUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
       "modes": ["image"],
       "fields": [
@@ -57,36 +113,6 @@
       "models": [
         { "id": "gemini-2.0-flash-exp-image-generation", "label": "Image 2 (Gemini 2.0 Flash)", "types": ["text2img", "img2img"] },
         { "id": "gemini-2.5-flash-image-preview", "label": "Nano Banana (Gemini 2.5 Flash Image)", "types": ["text2img", "img2img"] }
-      ]
-    },
-    {
-      "slug": "stability",
-      "name": "Stability AI",
-      "vendor": "Stability",
-      "description": "Stable Diffusion 系列图像生成模型。",
-      "docsUrl": "https://platform.stability.ai/docs/api-reference",
-      "modes": ["image"],
-      "fields": [
-        {
-          "key": "api_key",
-          "label": "API Key",
-          "kind": "secret",
-          "required": true,
-          "placeholder": "输入 Stability API Key"
-        },
-        {
-          "key": "base_url",
-          "label": "API 地址",
-          "kind": "url",
-          "required": false,
-          "placeholder": "留空使用默认地址",
-          "default": "https://api.stability.ai"
-        }
-      ],
-      "models": [
-        { "id": "sd3.5-large", "label": "Stable Diffusion 3.5 Large", "types": ["text2img", "img2img"] },
-        { "id": "sd3-medium", "label": "Stable Diffusion 3 Medium", "types": ["text2img", "img2img"] },
-        { "id": "sdxl-1.0", "label": "Stable Diffusion XL 1.0", "types": ["text2img", "img2img"] }
       ]
     },
     {
@@ -114,8 +140,7 @@
         }
       ],
       "models": [
-        { "id": "dall-e-3", "label": "DALL·E 3", "types": ["text2img"] },
-        { "id": "gpt-image-1", "label": "GPT Image 1", "types": ["text2img", "img2img"] }
+        { "id": "gpt-image-2", "label": "GPT Image 2", "types": ["text2img", "img2img"] }
       ]
     },
     {

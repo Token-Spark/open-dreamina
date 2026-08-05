@@ -5,18 +5,26 @@ import {
   createProvider,
   type CreateProviderPayload,
   type Provider,
+  type TestProviderOverrides,
   type UpdateProviderPayload,
 } from '@/api/providers'
-import { useTestProvider, useUpdateProvider } from '@/hooks/useProviders'
+import {
+  useSlugOptions,
+  useTestProvider,
+  useTestProviderBeforeCreate,
+  useUpdateProvider,
+} from '@/hooks/useProviders'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
+import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Dialog } from '@/components/ui/Dialog'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import {
   type CatalogField,
+  type ContentMode,
   type ModelService,
   type ProviderModelConfig,
 } from '@/lib/generation'
@@ -43,18 +51,29 @@ export function ServiceActivationDialog({
   const qc = useQueryClient()
   const updateProvider = useUpdateProvider()
   const testProvider = useTestProvider()
+  const testBeforeCreate = useTestProviderBeforeCreate()
+  const { data: slugOptions, isLoading: slugLoading } = useSlugOptions()
 
   // 动态字段值：key → value（api_key / base_url / 其他自定义字段）
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
   // 自定义服务基础信息
   const [customName, setCustomName] = useState('')
   const [customSlug, setCustomSlug] = useState('')
+  // 自定义服务内容模式（图片/视频），由所选 slug 支持的能力约束
+  const [customModes, setCustomModes] = useState<ContentMode[]>(['image'])
   // 模型 ID（留空使用目录默认）
   const [modelId, setModelId] = useState('')
   const [testing, setTesting] = useState(false)
 
   const isCustom = !service
   const isEditing = !!existingProvider
+
+  // 当前选中的 slug 元信息（自定义服务下拉选择后）
+  const selectedSlugOption = slugOptions?.find((o) => o.slug === customSlug)
+  // 该 slug 支持的内容模式；目录服务沿用 service.modes
+  const availableModes: ContentMode[] = isCustom
+    ? (selectedSlugOption?.modes as ContentMode[] | undefined) ?? ['image']
+    : (service!.modes as ContentMode[])
 
   const createMut = useMutation({
     mutationFn: createProvider,
@@ -84,10 +103,23 @@ export function ServiceActivationDialog({
       } else {
         setModelId('')
       }
+    } else if (existingProvider) {
+      // 编辑自定义服务：回填已有数据（slug 不可改）
+      setCustomName(existingProvider.name)
+      setCustomSlug(existingProvider.slug)
+      setFieldValues({ api_key: '', base_url: existingProvider.base_url ?? '' })
+      const existingModels = (existingProvider.config?.models as ProviderModelConfig[] | undefined) ?? []
+      setModelId(existingModels[0]?.id ?? '')
+      const types = existingModels[0]?.types ?? []
+      const modes: ContentMode[] = []
+      if (types.includes('text2img') || types.includes('img2img')) modes.push('image')
+      if (types.includes('text2video') || types.includes('img2video')) modes.push('video')
+      setCustomModes(modes.length > 0 ? modes : ['image'])
     } else {
-      // 自定义服务
+      // 新建自定义服务
       setCustomName('')
       setCustomSlug('')
+      setCustomModes(['image'])
       setFieldValues({ api_key: '', base_url: '' })
       setModelId('')
     }
@@ -95,6 +127,18 @@ export function ServiceActivationDialog({
 
   function updateField(key: string, value: string) {
     setFieldValues((v) => ({ ...v, [key]: value }))
+  }
+
+  /** 自定义服务：选择 slug 后自动填充默认 base_url 并重置内容模式。 */
+  function handleCustomSlugChange(slug: string) {
+    setCustomSlug(slug)
+    const opt = slugOptions?.find((o) => o.slug === slug)
+    if (opt) {
+      updateField('base_url', opt.default_base_url)
+      if (opt.modes.length > 0) {
+        setCustomModes([opt.modes[0] as ContentMode])
+      }
+    }
   }
 
   function handleSave() {
@@ -111,7 +155,7 @@ export function ServiceActivationDialog({
       config.models = [{
         id: trimmedId,
         label: trimmedId,
-        types: modesToTypes(service?.modes ?? ['image']),
+        types: modesToTypes(service?.modes ?? customModes),
       }]
     }
     // 其他自定义字段写入 config
@@ -138,7 +182,8 @@ export function ServiceActivationDialog({
       )
     } else {
       // 新建
-      if (!apiKey && service?.fields.some((f) => f.key === 'api_key' && f.required)) {
+      const fieldsForCheck = service?.fields ?? CUSTOM_DEFAULT_FIELDS
+      if (!apiKey && fieldsForCheck.some((f) => f.key === 'api_key' && f.required)) {
         return toast('请输入 API Key', 'error')
       }
       const name = service?.name ?? customName.trim()
@@ -157,14 +202,63 @@ export function ServiceActivationDialog({
     }
   }
 
+  /** 构建测试用 config（与 handleSave 一致，但不含 models 之外的非敏感字段）。 */
+  function buildTestConfig(): Record<string, unknown> {
+    const config: Record<string, unknown> = {}
+    const trimmedId = modelId.trim()
+    if (trimmedId) {
+      config.models = [{
+        id: trimmedId,
+        label: trimmedId,
+        types: modesToTypes(service?.modes ?? customModes),
+      }]
+    }
+    for (const f of service?.fields ?? []) {
+      if (f.key !== 'api_key' && f.key !== 'base_url' && fieldValues[f.key]) {
+        config[f.key] = fieldValues[f.key]
+      }
+    }
+    return config
+  }
+
   function handleTest() {
-    if (!existingProvider) return
+    if (isEditing && existingProvider) {
+      // 已落库：按 id 测试，但用表单当前值覆盖 base_url / api_key，可测未保存的改动
+      setTesting(true)
+      const overrides: TestProviderOverrides = {
+        base_url: (fieldValues.base_url ?? '').trim() || existingProvider.base_url,
+      }
+      const apiKey = fieldValues.api_key ?? ''
+      if (apiKey) overrides.api_key = apiKey
+      testProvider.mutate(
+        { id: existingProvider.id, overrides },
+        {
+          onSuccess: (r) => toast(r.success ? '连通正常' : `失败：${r.message}`, r.success ? 'success' : 'error'),
+          onError: (e) => toast(toApiError(e).message, 'error'),
+          onSettled: () => setTesting(false),
+        },
+      )
+      return
+    }
+    // 新建模式：before-create 测试，无需先落库
+    const slug = service?.slug ?? customSlug.trim()
+    if (!slug) return toast('请先选择标识', 'error')
+    const apiKey = fieldValues.api_key ?? ''
+    const baseUrl = (fieldValues.base_url ?? '').trim() || service?.fields.find((f) => f.key === 'base_url')?.default || ''
+    if (!baseUrl) return toast('请填写 API 地址', 'error')
+    const requiresKey = (service?.fields ?? CUSTOM_DEFAULT_FIELDS).some(
+      (f) => f.key === 'api_key' && f.required,
+    )
+    if (requiresKey && !apiKey) return toast('请先填写 API Key', 'error')
     setTesting(true)
-    testProvider.mutate(existingProvider.id, {
-      onSuccess: (r) => toast(r.success ? '连通正常' : `失败：${r.message}`, r.success ? 'success' : 'error'),
-      onError: (e) => toast(toApiError(e).message, 'error'),
-      onSettled: () => setTesting(false),
-    })
+    testBeforeCreate.mutate(
+      { slug, base_url: baseUrl, api_key: apiKey, config: buildTestConfig() },
+      {
+        onSuccess: (r) => toast(r.success ? '连通正常' : `失败：${r.message}`, r.success ? 'success' : 'error'),
+        onError: (e) => toast(toApiError(e).message, 'error'),
+        onSettled: () => setTesting(false),
+      },
+    )
   }
 
   const title = isEditing
@@ -182,11 +276,9 @@ export function ServiceActivationDialog({
       className="max-w-xl"
       footer={
         <>
-          {isEditing && (
-            <Button variant="outline" onClick={handleTest} disabled={testing} className="mr-auto">
-              {testing ? '测试中…' : '测试连通'}
-            </Button>
-          )}
+          <Button variant="outline" onClick={handleTest} disabled={testing} className="mr-auto">
+            {testing ? '测试中…' : '测试连通'}
+          </Button>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={handleSave} disabled={createMut.isPending || updateProvider.isPending}>
             {isEditing ? '保存' : '激活'}
@@ -195,19 +287,50 @@ export function ServiceActivationDialog({
       }
     >
       <div className="space-y-3 py-1">
-        {/* 自定义服务：名称 + 标识 */}
+        {/* 自定义服务：名称 + 标识（下拉） + 内容模式 */}
         {isCustom && (
-          <div className="grid grid-cols-2 gap-3">
-            <FieldRow label="名称">
-              <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="如 我的图服务" />
-            </FieldRow>
-            <FieldRow label="标识 (slug)">
-              <Input
-                value={customSlug}
-                onChange={(e) => setCustomSlug(e.target.value)}
-                placeholder="如 my-image-svc"
-                disabled={isEditing}
-              />
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="名称">
+                <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="如 我的图服务" />
+              </FieldRow>
+              <FieldRow label="标识 (slug)">
+                <Select
+                  value={customSlug}
+                  onChange={(e) => handleCustomSlugChange(e.target.value)}
+                  disabled={isEditing || slugLoading}
+                >
+                  <option value="">
+                    {slugLoading ? '加载中…' : '请选择'}
+                  </option>
+                  {slugOptions?.map((o) => (
+                    <option key={o.slug} value={o.slug}>
+                      {o.display_name}（{o.slug}）
+                    </option>
+                  ))}
+                </Select>
+              </FieldRow>
+            </div>
+            <FieldRow label="内容模式">
+              <Select
+                value={customModes.join('+')}
+                onChange={(e) => setCustomModes(e.target.value.split('+') as ContentMode[])}
+              >
+                {availableModes.includes('image') && availableModes.includes('video') && (
+                  <option value="image+video">图片 + 视频</option>
+                )}
+                {availableModes.includes('image') && (
+                  <option value="image">图片</option>
+                )}
+                {availableModes.includes('video') && (
+                  <option value="video">视频</option>
+                )}
+              </Select>
+              {selectedSlugOption && (
+                <p className="text-xs text-fg-muted">
+                  该标识支持：{selectedSlugOption.modes.map((m) => (m === 'image' ? '图片' : '视频')).join('、')}
+                </p>
+              )}
             </FieldRow>
           </div>
         )}

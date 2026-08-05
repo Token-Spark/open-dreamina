@@ -2,10 +2,25 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
+
+# 火山引擎官方 API 域名：base_url 指向它时，图片 URL 已是公网 CDN，无需改写
+_ARK_OFFICIAL_HOST = "ark.cn-beijing.volces.com"
+
+
+def _detect_mime(image_bytes: bytes) -> str:
+    """按魔数识别常见图片 MIME；未知则回退到 image/png。"""
+    if image_bytes.startswith(b"\x89PNG"):
+        return "image/png"
+    if image_bytes.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if image_bytes.startswith(b"RIFF") and b"WEBP" in image_bytes[:16]:
+        return "image/webp"
+    return "image/png"
 
 
 class SeedreamProvider(BaseProvider):
@@ -20,6 +35,20 @@ class SeedreamProvider(BaseProvider):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.config = config or {}
+
+    def _resolve_url(self, image_url: str) -> str:
+        """将图片 URL 的 host 改写为 base_url 的 host，使其走同一 mock/代理入口。
+
+        背景：当 base_url 指向本地 mock / 代理（如 http://host.docker.internal:23333/api/v3）时，
+        服务返回的图片 URL 可能是 http://localhost:23333/sample.jpg，容器内无法通过 localhost
+        访问宿主机服务，需改写为 base_url 的 host（如 host.docker.internal）。
+        官方公网 base_url 场景下图片 URL 已是公网 CDN，不改写。
+        """
+        base = urlparse(self.base_url)
+        if base.hostname == _ARK_OFFICIAL_HOST:
+            return image_url
+        target = urlparse(image_url)
+        return urlunparse(target._replace(scheme=base.scheme, netloc=base.netloc))
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
@@ -58,13 +87,32 @@ class SeedreamProvider(BaseProvider):
             )
         data = resp.json()
         items = data.get("data") or []
-        if not items or "b64_json" not in items[0]:
-            raise ProviderError("Seedream 响应中未找到 b64_json")
-        import base64 as _b64
+        if not items:
+            raise ProviderError(f"Seedream 响应中未找到 data: {data}")
+        item = items[0]
+        b64_json = item.get("b64_json")
+        if b64_json:
+            import base64 as _b64
+            file_bytes = _b64.b64decode(b64_json)
+            mime_type = "image/png"
+        else:
+            # 部分网关/mock 不返回 b64_json，仅返回可下载的 url（且 host 常是 localhost）
+            image_url = item.get("url")
+            if not image_url:
+                raise ProviderError(f"Seedream 响应中既无 b64_json 也无 url: {data}")
+            async with httpx.AsyncClient(timeout=120) as client:
+                dl = await self._request_with_retry(
+                    client,
+                    "GET",
+                    self._resolve_url(image_url),
+                    provider_name="Seedream 图片下载",
+                )
+            file_bytes = dl.content
+            mime_type = _detect_mime(file_bytes)
         metadata: dict[str, Any] = {"model": model_id}
         return GenerationResult(
-            file_bytes=_b64.b64decode(items[0]["b64_json"]),
-            mime_type="image/png",
+            file_bytes=file_bytes,
+            mime_type=mime_type,
             metadata=metadata,
         )
 
@@ -97,8 +145,7 @@ class SeedreamProvider(BaseProvider):
     async def test_connection(self) -> bool:
         url = f"{self.base_url}/models"
         async with httpx.AsyncClient(timeout=15) as client:
-            try:
-                resp = await client.get(url, headers=self._headers())
-                return resp.status_code == 200
-            except Exception:
-                return False
+            resp = await client.get(url, headers=self._headers())
+            if resp.status_code == 200:
+                return True
+            raise ProviderError(f"Seedream 返回 {resp.status_code}: {resp.text[:200]}")

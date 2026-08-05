@@ -21,7 +21,7 @@ const NAV = [
   { to: '/', label: '创作', icon: Brush },
   { to: '/assets', label: '资产库', icon: FolderOpen },
   { to: '/templates', label: '模板', icon: Layers },
-  { to: '/tasks', label: '任务中心', icon: ListTodo },
+  { to: '/tasks', label: '任务', icon: ListTodo },
   { to: '/settings/providers', label: '设置', icon: Settings2 },
 ]
 
@@ -35,8 +35,8 @@ export function Layout() {
     <div className="flex h-screen flex-col bg-bg-primary">
       <div className="flex flex-1 overflow-hidden">
         {/* Left icon rail */}
-        <aside className="flex w-16 shrink-0 flex-col border-r border-border bg-bg-secondary">
-          <div className="flex h-14 items-center justify-center border-b border-border">
+        <aside className="flex w-16 shrink-0 flex-col bg-bg-secondary">
+          <div className="flex h-14 items-center justify-center">
             <NavLink to="/" className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-bg-primary">
               <Sparkles className="h-4 w-4" />
             </NavLink>
@@ -60,7 +60,7 @@ export function Layout() {
                   }
                 >
                   <Icon className="h-5 w-5" />
-                  <span className="pointer-events-none absolute left-full ml-2 rounded-btn border border-border bg-bg-tertiary px-2 py-1 text-xs text-fg-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  <span className="pointer-events-none absolute left-full ml-2 z-50 rounded-btn border border-border bg-bg-tertiary px-2 py-1 text-xs text-fg-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
                     {item.label}
                   </span>
                 </NavLink>
@@ -69,7 +69,7 @@ export function Layout() {
           </nav>
 
           {/* Theme toggle pinned to the bottom of the rail */}
-          <div className="flex justify-center border-t border-border py-3">
+          <div className="flex justify-center py-3">
             <button
               type="button"
               onClick={toggleTheme}

@@ -64,7 +64,7 @@ export function DropdownItem({ active, onClick, children, className }: DropdownI
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center gap-2 rounded-btn px-2.5 py-1.5 text-xs transition-colors',
+        'flex w-full items-center gap-2 rounded-btn px-3 py-2 text-sm transition-colors',
         active
           ? 'bg-accent text-bg-primary'
           : 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',

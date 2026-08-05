@@ -98,8 +98,7 @@ class StabilityProvider(BaseProvider):
     async def test_connection(self) -> bool:
         url = f"{self.base_url}/v1/user/balance"
         async with httpx.AsyncClient(timeout=15) as client:
-            try:
-                resp = await client.get(url, headers=self._headers())
-                return resp.status_code == 200
-            except Exception:
-                return False
+            resp = await client.get(url, headers=self._headers())
+            if resp.status_code == 200:
+                return True
+            raise ProviderError(f"Stability 返回 {resp.status_code}: {resp.text[:200]}")
