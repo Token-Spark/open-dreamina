@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "10131:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "10130:10130"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
+      - REDIS_URL=redis://redis:6379/0
+      - ASSETS_DIR=/app/data/assets
+      - BACKUP_DIR=/app/data/backups
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 10130
+
+  celery-worker:
+    build: ./backend
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
+      - REDIS_URL=redis://redis:6379/0
+      - ASSETS_DIR=/app/data/assets
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=2
+
+  celery-beat:
+    build: ./backend
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
+      - REDIS_URL=redis://redis:6379/0
+      - BACKUP_DIR=/app/data/backups
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    command: celery -A app.worker beat --loglevel=info
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:

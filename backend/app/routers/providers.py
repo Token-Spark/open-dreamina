@@ -1,0 +1,145 @@
+"""Provider 配置路由：CRUD + test 连通性。"""
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from ..database import get_db
+from ..models import ApiProvider
+from ..providers import ProviderError, get_provider
+from ..schemas import (
+    MessageResponse,
+    ProviderCreate,
+    ProviderResponse,
+    ProviderTestResult,
+    ProviderUpdate,
+)
+from ..utils.crypto import decrypt, encrypt, mask_api_key
+
+router = APIRouter(prefix="/providers", tags=["providers"])
+
+
+def _to_response(p: ApiProvider) -> ProviderResponse:
+    try:
+        plain = decrypt(p.api_key_enc)
+    except Exception:
+        plain = ""
+    return ProviderResponse(
+        id=p.id,
+        name=p.name,
+        slug=p.slug,
+        base_url=p.base_url,
+        api_key_masked=mask_api_key(plain),
+        is_active=bool(p.is_active),
+        config=json.loads(p.config_json or "{}"),
+        created_at=p.created_at,
+        updated_at=p.updated_at,
+    )
+
+
+@router.get("", response_model=list[ProviderResponse])
+def list_providers(db: Session = Depends(get_db)) -> list[ProviderResponse]:
+    items = db.query(ApiProvider).order_by(ApiProvider.created_at).all()
+    return [_to_response(p) for p in items]
+
+
+@router.post("", response_model=ProviderResponse, status_code=201)
+def create_provider(payload: ProviderCreate, db: Session = Depends(get_db)) -> ProviderResponse:
+    existing = db.query(ApiProvider).filter(ApiProvider.slug == payload.slug).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "conflict", "message": f"slug '{payload.slug}' 已存在"},
+        )
+
+    p = ApiProvider(
+        id=str(uuid.uuid4()),
+        name=payload.name,
+        slug=payload.slug,
+        base_url=payload.base_url,
+        api_key_enc=encrypt(payload.api_key),
+        is_active=1 if payload.is_active else 0,
+        config_json=json.dumps(payload.config, ensure_ascii=False),
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return _to_response(p)
+
+
+@router.put("/{provider_id}", response_model=ProviderResponse)
+def update_provider(
+    provider_id: str,
+    payload: ProviderUpdate,
+    db: Session = Depends(get_db),
+) -> ProviderResponse:
+    p = db.get(ApiProvider, provider_id)
+    if not p:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Provider 不存在"})
+
+    if payload.name is not None:
+        p.name = payload.name
+    if payload.base_url is not None:
+        p.base_url = payload.base_url
+    if payload.api_key is not None:
+        p.api_key_enc = encrypt(payload.api_key)
+    if payload.is_active is not None:
+        p.is_active = 1 if payload.is_active else 0
+    if payload.config is not None:
+        p.config_json = json.dumps(payload.config, ensure_ascii=False)
+
+    from datetime import datetime
+    p.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    db.commit()
+    db.refresh(p)
+    return _to_response(p)
+
+
+@router.delete("/{provider_id}", response_model=MessageResponse)
+def delete_provider(provider_id: str, db: Session = Depends(get_db)) -> MessageResponse:
+    p = db.get(ApiProvider, provider_id)
+    if not p:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Provider 不存在"})
+    db.delete(p)
+    db.commit()
+    return MessageResponse(message=f"Provider {provider_id} 已删除")
+
+
+@router.post("/{provider_id}/test", response_model=ProviderTestResult)
+def test_provider(provider_id: str, db: Session = Depends(get_db)) -> ProviderTestResult:
+    p = db.get(ApiProvider, provider_id)
+    if not p:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Provider 不存在"})
+
+    try:
+        api_key = decrypt(p.api_key_enc)
+    except Exception as e:
+        return ProviderTestResult(success=False, message=f"API Key 解密失败: {e}")
+
+    config = json.loads(p.config_json or "{}")
+    try:
+        provider = get_provider(p.slug, base_url=p.base_url, api_key=api_key, config=config)
+    except ProviderError as e:
+        return ProviderTestResult(success=False, message=str(e))
+
+    start = time.perf_counter()
+    try:
+        ok = asyncio.run(provider.test_connection())
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return ProviderTestResult(
+            success=ok,
+            message="连通性测试通过" if ok else "连通性测试失败（API Key 无效或网络不通）",
+            latency_ms=latency_ms,
+        )
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return ProviderTestResult(
+            success=False,
+            message=f"测试异常: {type(e).__name__}: {e}",
+            latency_ms=latency_ms,
+        )

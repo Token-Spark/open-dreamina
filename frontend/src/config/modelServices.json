@@ -1,0 +1,201 @@
+{
+  "$comment": "模型服务目录：驱动设置页服务卡片与激活表单。新增服务只需在此追加一项。",
+  "services": [
+    {
+      "slug": "seedream",
+      "name": "Seedream 5.0",
+      "vendor": "Volcengine",
+      "description": "豆包 Seedream 文生图模型，支持高质量图像生成与编辑。",
+      "docsUrl": "https://www.volcengine.com/docs/82379/1541523",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 Volcengine ARK API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://ark.cn-beijing.volces.com/api/v3"
+        }
+      ],
+      "models": [
+        { "id": "doubao-seedream-5-0-pro-260628", "label": "Seedream 5.0 Pro", "types": ["text2img", "img2img"] },
+        { "id": "doubao-seedream-5-0-lite-250828", "label": "Seedream 5.0 Lite", "types": ["text2img", "img2img"] }
+      ]
+    },
+    {
+      "slug": "gemini",
+      "name": "Gemini Image",
+      "vendor": "Google",
+      "description": "Google Gemini 图像生成系列，含 Image 2 与 Nano Banana。",
+      "docsUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 Google AI Studio API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://generativelanguage.googleapis.com/v1beta"
+        }
+      ],
+      "models": [
+        { "id": "gemini-2.0-flash-exp-image-generation", "label": "Image 2 (Gemini 2.0 Flash)", "types": ["text2img", "img2img"] },
+        { "id": "gemini-2.5-flash-image-preview", "label": "Nano Banana (Gemini 2.5 Flash Image)", "types": ["text2img", "img2img"] }
+      ]
+    },
+    {
+      "slug": "stability",
+      "name": "Stability AI",
+      "vendor": "Stability",
+      "description": "Stable Diffusion 系列图像生成模型。",
+      "docsUrl": "https://platform.stability.ai/docs/api-reference",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 Stability API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://api.stability.ai"
+        }
+      ],
+      "models": [
+        { "id": "sd3.5-large", "label": "Stable Diffusion 3.5 Large", "types": ["text2img", "img2img"] },
+        { "id": "sd3-medium", "label": "Stable Diffusion 3 Medium", "types": ["text2img", "img2img"] },
+        { "id": "sdxl-1.0", "label": "Stable Diffusion XL 1.0", "types": ["text2img", "img2img"] }
+      ]
+    },
+    {
+      "slug": "openai",
+      "name": "OpenAI",
+      "vendor": "OpenAI",
+      "description": "DALL·E 与 GPT Image 系列图像生成模型。",
+      "docsUrl": "https://platform.openai.com/docs/api-reference/images",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 OpenAI API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://api.openai.com/v1"
+        }
+      ],
+      "models": [
+        { "id": "dall-e-3", "label": "DALL·E 3", "types": ["text2img"] },
+        { "id": "gpt-image-1", "label": "GPT Image 1", "types": ["text2img", "img2img"] }
+      ]
+    },
+    {
+      "slug": "dashscope",
+      "name": "通义万相",
+      "vendor": "阿里云",
+      "description": "阿里云 DashScope 通义万相图像与视频生成模型。",
+      "docsUrl": "https://help.aliyun.com/zh/dashscope/",
+      "modes": ["image", "video"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 DashScope API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://dashscope.aliyuncs.com"
+        }
+      ],
+      "models": [
+        { "id": "wanx2.1-t2i-turbo", "label": "通义万相 2.1 文生图 Turbo", "types": ["text2img"] },
+        { "id": "wanx-v1", "label": "通义万相 v1", "types": ["text2img", "img2img"] },
+        { "id": "wanx2.1-t2v-plus", "label": "通义万相 2.1 文生视频", "types": ["text2video"] }
+      ]
+    },
+    {
+      "slug": "kling",
+      "name": "可灵",
+      "vendor": "快手",
+      "description": "快手可灵 v2 视频生成模型。",
+      "docsUrl": "https://docs.qingque.cn/d/home/eZQB2STeWPItUVpUm5kqEY7Vh",
+      "modes": ["video"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入可灵 API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://api.klingai.com"
+        }
+      ],
+      "models": [
+        { "id": "kling-v2-text2video", "label": "可灵 v2 文生视频", "types": ["text2video"] },
+        { "id": "kling-v2-image2video", "label": "可灵 v2 图生视频", "types": ["img2video"] }
+      ]
+    },
+    {
+      "slug": "comfyui",
+      "name": "ComfyUI",
+      "vendor": "开源",
+      "description": "本地 ComfyUI 自定义工作流节点，无需 API Key。",
+      "docsUrl": "https://docs.comfy.org/",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "base_url",
+          "label": "服务地址",
+          "kind": "url",
+          "required": true,
+          "placeholder": "http://127.0.0.1:8188"
+        }
+      ],
+      "models": [
+        { "id": "custom-workflow", "label": "自定义工作流", "types": ["text2img", "img2img"] }
+      ]
+    }
+  ]
+}

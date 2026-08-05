@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (spec section 10.1) exposed as CSS variables.
+   Tailwind 颜色 token 全部引用这些变量，主题切换只需切换 <html> 上的 class。
+   - .dark  深色：黑底白字（默认）
+   - .light 浅色：白底黑字
+*/
+:root,
+.dark {
+  --bg-primary: #0a0a0b;
+  --bg-secondary: #141416;
+  --bg-tertiary: #1e1e22;
+  --fg-primary: #f5f5f7;
+  --fg-secondary: #a1a1aa;
+  --fg-muted: #63636b;
+  --accent: #ffffff;
+  --success: #22c55e;
+  --error: #ef4444;
+  --border: #2a2a2e;
+  --glow-color: rgba(255, 255, 255, 0.35);
+  --scrollbar-thumb: #2a2a2e;
+  --scrollbar-thumb-hover: #3a3a3e;
+  --selection-bg: rgba(255, 255, 255, 0.15);
+  color-scheme: dark;
+}
+
+.light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f8;
+  --bg-tertiary: #ededf0;
+  --fg-primary: #0a0a0b;
+  --fg-secondary: #52525b;
+  --fg-muted: #9ca3af;
+  --accent: #0a0a0b;
+  --success: #16a34a;
+  --error: #dc2626;
+  --border: #e4e4e7;
+  --glow-color: rgba(10, 10, 11, 0.18);
+  --scrollbar-thumb: #d4d4d8;
+  --scrollbar-thumb-hover: #a1a1aa;
+  --selection-bg: rgba(10, 10, 11, 0.12);
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    border-color: theme('colors.border.DEFAULT');
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg-primary text-fg-primary font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Headings: tighter tracking for a refined tech feel */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight;
+  }
+
+  ::selection {
+    background-color: var(--selection-bg);
+    color: theme('colors.fg.primary');
+  }
+}
+
+@layer components {
+  /* Thin, low-presence scrollbars that match the active theme */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+}
+
+/* Progress bar breathing glow (spec 10.1 动效) */
+.progress-glow {
+  animation: breath-glow 2s ease-in-out infinite;
+}

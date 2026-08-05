@@ -1,0 +1,152 @@
+import { useEffect } from 'react'
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Pencil, ImagePlus } from 'lucide-react'
+import { useTaskSSE } from '@/hooks/useTaskSSE'
+import { useConversationStore, type GenMessage } from '@/stores/conversationStore'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Progress } from '@/components/ui/Progress'
+import { STATUS_LABEL, TASK_TYPE_LABEL, statusBadgeVariant } from '@/lib/taskStatus'
+
+interface GenMessageCardProps {
+  topicId: string
+  message: GenMessage
+  onRetry: (message: GenMessage) => void
+  onOpenLightbox: (message: GenMessage) => void
+  onEdit: (message: GenMessage) => void
+}
+
+export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEdit }: GenMessageCardProps) {
+  const updateMessage = useConversationStore((s) => s.updateMessage)
+  const running = message.status === 'running'
+  const pending = message.status === 'pending'
+
+  const { status, progress, error, data } = useTaskSSE(pending || running ? message.id : null)
+
+  useEffect(() => {
+    if (!status && progress === 0 && !error && !data.message) return
+    updateMessage(topicId, message.id, {
+      status: status ?? message.status,
+      progress,
+      error,
+      message: data.message,
+      resultUrl: data.resultUrl,
+      thumbnailUrl: data.thumbnailUrl,
+    })
+  }, [status, progress, error, data.resultUrl, data.thumbnailUrl, data.message, topicId, message.id, message.status, updateMessage])
+
+  return (
+    <div className="animate-slide-up">
+      <div className="mb-3 flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-tertiary text-xs font-medium text-fg-secondary">
+          U
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-1">
+            <p className="whitespace-pre-wrap text-sm text-fg-primary">{message.prompt}</p>
+            {message.negativePrompt && (
+              <p className="text-xs text-fg-muted">排除：{message.negativePrompt}</p>
+            )}
+          </div>
+
+          <ResultCard
+            message={message}
+            onRetry={() => onRetry(message)}
+            onOpenLightbox={() => onOpenLightbox(message)}
+            onEdit={() => onEdit(message)}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ResultCard({
+  message,
+  onRetry,
+  onOpenLightbox,
+  onEdit,
+}: {
+  message: GenMessage
+  onRetry: () => void
+  onOpenLightbox: () => void
+  onEdit: () => void
+}) {
+  const running = message.status === 'running'
+  const resultType = message.type === 'text2img' || message.type === 'img2img' ? 'image' : 'video'
+
+  return (
+    <div className="rounded-card border border-border bg-bg-secondary p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {running && <Loader2 className="h-4 w-4 animate-spin text-fg-secondary" />}
+          {message.status === 'completed' && <CheckCircle2 className="h-4 w-4 text-success" />}
+          {message.status === 'failed' && <AlertCircle className="h-4 w-4 text-error" />}
+          <span className="text-sm font-medium text-fg-primary">{TASK_TYPE_LABEL[message.type]}</span>
+        </div>
+        <Badge variant={statusBadgeVariant(message.status)}>{STATUS_LABEL[message.status]}</Badge>
+      </div>
+
+      {running && (
+        <div className="space-y-1.5">
+          <Progress value={message.progress} glow />
+          <div className="flex items-center justify-between text-xs text-fg-muted">
+            <span>{message.message ?? '生成中…'}</span>
+            <span>{message.progress}%</span>
+          </div>
+        </div>
+      )}
+
+      {message.status === 'pending' && (
+        <p className="text-xs text-fg-muted">任务已提交，等待分配执行资源…</p>
+      )}
+      {message.status === 'queued' && (
+        <p className="text-xs text-fg-muted">任务已入队，排队等待执行…</p>
+      )}
+
+      {message.status === 'failed' && (
+        <div className="space-y-2 rounded-btn border border-error/30 bg-error/10 p-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-error">生成失败</p>
+              <p className="text-xs text-error/80">{message.error ?? '未知错误'}</p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            重新生成
+          </Button>
+        </div>
+      )}
+
+      {message.status === 'completed' && message.resultUrl && (
+        <div className="space-y-2">
+          <div
+            className="cursor-pointer overflow-hidden rounded-btn border border-border bg-transparent"
+            onClick={onOpenLightbox}
+          >
+            {resultType === 'image' ? (
+              <img src={message.resultUrl} alt="生成结果" className="max-h-[50vh] w-full object-contain" />
+            ) : (
+              <video src={message.resultUrl} controls className="max-h-[50vh] w-full" />
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-fg-muted">点击可放大查看</span>
+            <Button variant="secondary" size="sm" onClick={onEdit}>
+              <Pencil className="h-3.5 w-3.5" />
+              重新编辑
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {message.status === 'completed' && !message.resultUrl && (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-btn border border-dashed border-border py-8 text-fg-muted">
+          <ImagePlus className="h-6 w-6" />
+          <p className="text-xs">任务已完成，但未返回结果</p>
+        </div>
+      )}
+    </div>
+  )
+}
