@@ -32,8 +32,9 @@ class Settings(BaseSettings):
     assets_dir: str = "./data/assets"
     backup_dir: str = "./data/backups"
 
-    # 加密
-    encryption_key: str = "d3fault-encryption-key-change-me-please-32b"
+    # 加密（必须显式配置，无默认值；deploy 脚本会自动生成随机值写入 .env）
+    # 未设置时启动即报错，避免使用弱默认值导致 API Key 加密形同虚设
+    encryption_key: str
 
     # CORS
     cors_origins: List[str] = Field(

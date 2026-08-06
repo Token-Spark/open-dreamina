@@ -20,7 +20,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ASSETS_DIR=/app/data/assets
       - BACKUP_DIR=/app/data/backups
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+      # ENCRYPTION_KEY 必须通过 .env 提供（deploy.sh / deploy.ps1 会自动生成随机值）
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"
@@ -40,7 +41,7 @@ services:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0
       - ASSETS_DIR=/app/data/assets
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
       # 即梦 CLI：HOME 指向挂载卷内的持久化目录，CLI 二进制与 ~/.dreamina_cli 登录态
       # 在容器重建后不丢失（安装/登录引导见 设置 → 服务管理 → 即梦 CLI）
       - HOME=/app/data/dreamina-home
@@ -62,7 +63,7 @@ services:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0
       - BACKUP_DIR=/app/data/backups
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-d3fault-encryption-key-change-me-please-32b}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
     depends_on:
       - redis
     restart: unless-stopped
