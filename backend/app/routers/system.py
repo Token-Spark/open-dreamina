@@ -35,6 +35,7 @@ from ..schemas import (
 )
 from ..services.backup_service import backup_database, list_backups
 from ..worker import (
+    celery_app,
     dreamina_cli_install_task,
     dreamina_cli_login_check_task,
     dreamina_cli_login_start_task,
@@ -50,7 +51,7 @@ VERSION = "0.1.0"
 def health(db: Session = Depends(get_db)) -> HealthResponse:
     db_status = "down"
     redis_status = "down"
-    worker_status = "unknown"
+    worker_status = "down"
 
     # DB
     try:
@@ -64,11 +65,17 @@ def health(db: Session = Depends(get_db)) -> HealthResponse:
         r = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=2)
         r.ping()
         redis_status = "ok"
-        # 简单判断 worker：查询是否有 inspect 响应（轻量探测 celery 在线）
-        # 此处仅做 Redis 可达性判断；Worker 深度检查需 celery inspect，依赖较重，暂标记 unknown
         r.close()
     except Exception:
         redis_status = "down"
+
+    # Worker：通过 celery inspect 探测在线节点
+    try:
+        inspector = celery_app.control.inspect(timeout=2)
+        if inspector.ping():
+            worker_status = "ok"
+    except Exception:
+        worker_status = "down"
 
     overall = "ok" if (db_status == "ok" and redis_status == "ok") else "degraded"
     if db_status == "down":
