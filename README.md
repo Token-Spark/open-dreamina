@@ -47,7 +47,7 @@
 > 💡 使用 AI 智能体？复制下面这句话发给它，即可自动完成安装部署：
 >
 > ```text
-> 克隆 https://github.com/你的仓库/open-dreamina 到本地，按照仓库 README 执行一键部署脚本（Linux/macOS 运行 bash deploy.sh，Windows 运行 deploy.ps1），完成环境检查、构建镜像并启动服务，最后确认服务健康并告诉我访问地址。
+> 克隆 https://github.com/Token-Spark/open-dreaminaa 到本地，按照仓库 README 执行一键部署脚本（Linux/macOS 运行 bash deploy.sh，Windows 运行 deploy.ps1），完成环境检查、构建镜像并启动服务，最后确认服务健康并告诉我访问地址。
 > ```
 
 **Linux / macOS**
