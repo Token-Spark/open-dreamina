@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from .base import BaseProvider, ProviderError
 from .dashscope_provider import DashScopeProvider
+from .dreamina_cli_provider import DreaminaSeedanceProvider, DreaminaSeedreamProvider
 from .kling_provider import KlingProvider
 from .mock_provider import MockProvider
 from .openai_provider import OpenAIProvider
@@ -44,6 +45,7 @@ class RegistryEntry:
     builtin: bool
     display_name: str
     modes: list[str] = field(default_factory=list)
+    hidden: bool = False  # 不在前端 slug 下拉中展示（如已拆分的遗留 slug 兼容别名）
 
 
 _REGISTRY: dict[str, RegistryEntry] = {
@@ -111,6 +113,32 @@ _REGISTRY: dict[str, RegistryEntry] = {
         display_name="豆包 Seedance 2.5",
         modes=_modes_from_types(SeedanceProvider.SUPPORTED_TYPES),
     ),
+    "dreamina-seedance": RegistryEntry(
+        # 即梦 CLI 视频侧（Seedance 系列）；base_url 复用为 CLI 可执行路径，api_key 不使用（本机 OAuth 登录态）
+        factory=lambda b, k, c: DreaminaSeedanceProvider(b or "dreamina", k, c),
+        default_base_url="dreamina",
+        builtin=False,
+        display_name="即梦 Seedance（CLI 视频）",
+        modes=_modes_from_types(DreaminaSeedanceProvider.SUPPORTED_TYPES),
+    ),
+    "dreamina-seedream": RegistryEntry(
+        # 即梦 CLI 图片侧（Seedream / 即梦图片模型）；与视频侧共用同一个 CLI 与登录态
+        factory=lambda b, k, c: DreaminaSeedreamProvider(b or "dreamina", k, c),
+        default_base_url="dreamina",
+        builtin=False,
+        display_name="即梦 Seedream（CLI 图片）",
+        modes=_modes_from_types(DreaminaSeedreamProvider.SUPPORTED_TYPES),
+    ),
+    "dreamina-cli": RegistryEntry(
+        # 遗留 slug 兼容别名：已拆分为 dreamina-seedance / dreamina-seedream，
+        # 仅为存量已配置的 Provider（DB 中 slug=dreamina-cli）继续提供视频生成能力
+        factory=lambda b, k, c: DreaminaSeedanceProvider(b or "dreamina", k, c),
+        default_base_url="dreamina",
+        builtin=False,
+        display_name="即梦 CLI（已拆分，请改用 dreamina-seedance / dreamina-seedream）",
+        modes=_modes_from_types(DreaminaSeedanceProvider.SUPPORTED_TYPES),
+        hidden=True,
+    ),
 }
 
 
@@ -140,7 +168,7 @@ class ProviderFactory:
 
     @staticmethod
     def list_slug_info() -> list[dict[str, Any]]:
-        """返回所有可用 slug 的元信息，供前端下拉选择。"""
+        """返回所有可用 slug 的元信息，供前端下拉选择（隐藏项除外）。"""
         return [
             {
                 "slug": slug,
@@ -150,6 +178,7 @@ class ProviderFactory:
                 "builtin": entry.builtin,
             }
             for slug, entry in _REGISTRY.items()
+            if not entry.hidden
         ]
 
     @staticmethod

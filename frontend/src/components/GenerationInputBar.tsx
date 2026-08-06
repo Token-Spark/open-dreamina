@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type * as React from 'react'
 import {
   Wand2,
@@ -6,6 +6,7 @@ import {
   ImageIcon,
   MonitorPlay,
   Type,
+  Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
@@ -79,6 +80,7 @@ export function GenerationInputBar({
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
   const count = (params.n as number) ?? 1
+  const duration = (params.duration as number) ?? 5
 
   // 串行上传多张图片，逐张追加到参考图列表（避免并发状态竞争）。
   async function handleUploadFiles(files: FileList | File[]) {
@@ -131,6 +133,10 @@ export function GenerationInputBar({
 
   function updateCount(next: number) {
     onParamsChange({ ...params, n: next })
+  }
+
+  function updateDuration(next: number) {
+    onParamsChange({ ...params, duration: next })
   }
 
   return (
@@ -219,6 +225,9 @@ export function GenerationInputBar({
               disabled={submitting}
               placement="top"
             />
+            {mode === 'video' && (
+              <DurationPicker duration={duration} onChange={updateDuration} disabled={submitting} />
+            )}
             <CountSelector count={count} onChange={updateCount} disabled={submitting} />
 
             <button
@@ -282,6 +291,48 @@ function ModeDropdown({
         </DropdownItem>
       ))}
     </Dropdown>
+  )
+}
+
+function DurationPicker({
+  duration,
+  onChange,
+  disabled,
+}: {
+  duration: number
+  onChange: (duration: number) => void
+  disabled?: boolean
+}) {
+  // 本地文本态，允许自由输入；失焦/回车时校验并提交。
+  const [text, setText] = useState(String(duration))
+  useEffect(() => {
+    setText(String(duration))
+  }, [duration])
+
+  function commit() {
+    const n = Number(text)
+    if (Number.isFinite(n) && n > 0) onChange(n)
+    else setText(String(duration))
+  }
+
+  return (
+    <div className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary">
+      <Clock className="h-4 w-4" />
+      <input
+        type="number"
+        min={1}
+        step={1}
+        value={text}
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
+        className="w-12 bg-transparent text-fg-primary focus-visible:outline-none disabled:opacity-50"
+      />
+      <span className="text-fg-muted">秒</span>
+    </div>
   )
 }
 

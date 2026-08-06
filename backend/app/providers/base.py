@@ -10,7 +10,15 @@ import httpx
 
 
 class ProviderError(RuntimeError):
-    """Provider 调用失败时抛出。"""
+    """Provider 调用失败时抛出。
+
+    submit_id：异步任务型 Provider（如本地 CLI）在任务已提交后失败时，
+    携带上游任务 ID，供 worker 落库以便 retry 时断点续查、避免重复扣费。
+    """
+
+    def __init__(self, message: str, submit_id: str | None = None) -> None:
+        super().__init__(message)
+        self.submit_id = submit_id
 
 
 @dataclass

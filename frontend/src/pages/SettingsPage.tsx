@@ -29,7 +29,7 @@ export function SettingsPage() {
       <h1 className="mb-4 text-lg font-medium tracking-tight">设置</h1>
       <div className="mb-4 flex gap-1 rounded-btn border border-border bg-bg-secondary p-1">
         <TabBtn active={tab === 'providers'} onClick={() => navigate('/settings/providers')}>
-          服务提供商
+          模型接入
         </TabBtn>
         <TabBtn active={tab === 'general'} onClick={() => navigate('/settings/general')}>
           系统设置

@@ -152,7 +152,8 @@ const SIZE_OPTIONS = [
   { value: '1536', label: '1536 × 640' },
 ]
 
-const DURATION_OPTIONS = [
+/** 视频生成时长选项（秒）。 */
+export const DURATION_OPTIONS = [
   { value: '5', label: '5 秒' },
   { value: '10', label: '10 秒' },
 ]

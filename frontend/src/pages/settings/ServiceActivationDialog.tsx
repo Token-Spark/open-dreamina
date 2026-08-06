@@ -32,6 +32,7 @@ import {
   modesToTypes,
   ModelSelectorSection,
 } from './ModelSelectorSection'
+import { DreaminaCliSetup } from './DreaminaCliSetup'
 
 export interface ServiceActivationDialogProps {
   open: boolean
@@ -67,6 +68,10 @@ export function ServiceActivationDialog({
 
   const isCustom = !service
   const isEditing = !!existingProvider
+  // 即梦 CLI：需引导安装 + 登录（目录服务或自定义服务选中即梦 CLI 系列 slug；
+  // 拆分后视频/图片两个 slug 共用同一套 CLI，dreamina-cli 为遗留 slug 兼容）
+  const activeSlug = service?.slug ?? customSlug
+  const isDreaminaCli = ['dreamina-cli', 'dreamina-seedance', 'dreamina-seedream'].includes(activeSlug)
 
   // 当前选中的 slug 元信息（自定义服务下拉选择后）
   const selectedSlugOption = slugOptions?.find((o) => o.slug === customSlug)
@@ -354,6 +359,9 @@ export function ServiceActivationDialog({
             )}
           </div>
         )}
+
+        {/* 即梦 CLI：安装 / 登录引导（worker 节点） */}
+        {isDreaminaCli && <DreaminaCliSetup />}
 
         {/* 动态字段（由 JSON 驱动） */}
         <DynamicFields

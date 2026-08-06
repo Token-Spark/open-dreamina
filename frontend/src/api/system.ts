@@ -36,3 +36,58 @@ export async function backupSystem(): Promise<BackupResult> {
   const { data } = await apiClient.post<BackupResult>('/system/backup')
   return data
 }
+
+// ============================ 即梦 CLI 引导 ============================
+
+/** worker 节点上即梦 CLI 的安装 / 登录状态。 */
+export interface DreaminaCliStatus {
+  installed: boolean
+  installing: boolean
+  cli_path: string | null
+  version: string | null
+  logged_in: boolean
+  credit_info: string | null
+  message: string
+  /** worker 不在线时的降级标记 */
+  worker_offline?: boolean
+}
+
+/** headless 登录发起结果：需用户在浏览器完成的授权材料。 */
+export interface DreaminaCliLoginStart {
+  ok: boolean
+  message?: string
+  verification_uri?: string
+  user_code?: string
+  device_code?: string
+  raw_output?: string
+  worker_offline?: boolean
+}
+
+/** 登录授权轮询结果。 */
+export interface DreaminaCliLoginStatus {
+  state: 'no_session' | 'waiting' | 'success' | 'failed'
+  logged_in: boolean
+  message: string
+  credit_info?: string
+  worker_offline?: boolean
+}
+
+export async function getDreaminaCliStatus(): Promise<DreaminaCliStatus> {
+  const { data } = await apiClient.get<DreaminaCliStatus>('/system/dreamina-cli/status')
+  return data
+}
+
+export async function installDreaminaCli(): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/system/dreamina-cli/install')
+  return data
+}
+
+export async function startDreaminaCliLogin(): Promise<DreaminaCliLoginStart> {
+  const { data } = await apiClient.post<DreaminaCliLoginStart>('/system/dreamina-cli/login/start')
+  return data
+}
+
+export async function getDreaminaCliLoginStatus(): Promise<DreaminaCliLoginStatus> {
+  const { data } = await apiClient.get<DreaminaCliLoginStatus>('/system/dreamina-cli/login/status')
+  return data
+}

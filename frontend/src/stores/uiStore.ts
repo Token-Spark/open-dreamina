@@ -33,7 +33,7 @@ interface UIState {
   setSidebarCollapsed: (collapsed: boolean) => void
   /** Transient toast notifications rendered at the bottom. */
   toasts: Toast[]
-  pushToast: (toast: Omit<Toast, 'id'>) => void
+  pushToast: (toast: Omit<Toast, 'id'> & { id?: string }) => void
   dismissToast: (id: string) => void
 }
 
@@ -77,19 +77,18 @@ export const useUIStore = create<UIState>((set) => ({
   toasts: [],
   pushToast: (toast) =>
     set((s) => ({
-      toasts: [...s.toasts, { ...toast, id: `t${++toastSeq}` }],
+      toasts: [...s.toasts, { ...toast, id: toast.id ?? `t${++toastSeq}` }],
     })),
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }))
 
-/** Convenience helper: push a toast and auto-dismiss after 3.5s. */
+/** Convenience helper: push a toast and auto-dismiss after 5s. */
 export function toast(
   message: string,
   variant: Toast['variant'] = 'default',
 ): void {
-  const store = useUIStore.getState()
   const id = `t${++toastSeq}`
-  store.pushToast({ message, variant })
-  window.setTimeout(() => useUIStore.getState().dismissToast(id), 3500)
+  useUIStore.getState().pushToast({ id, message, variant })
+  window.setTimeout(() => useUIStore.getState().dismissToast(id), 5000)
 }

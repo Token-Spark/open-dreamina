@@ -6,6 +6,7 @@ import json
 import time
 import uuid
 
+from celery.exceptions import TimeoutError as CeleryTimeoutError
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -23,8 +24,37 @@ from ..schemas import (
     ProviderUpdate,
 )
 from ..utils.crypto import decrypt, encrypt, mask_api_key
+from ..worker import dreamina_cli_user_credit_task
 
 router = APIRouter(prefix="/providers", tags=["providers"])
+
+# 即梦 CLI 的连通性测试必须在 worker 节点执行（CLI 装在 worker 所在机器）；
+# 拆分后的视频/图片两个 slug 与遗留 slug 共用同一套 CLI 自检
+_DREAMINA_CLI_SLUGS = {"dreamina-cli", "dreamina-seedance", "dreamina-seedream"}
+
+
+def _test_dreamina_cli_on_worker(cli_path: str | None) -> ProviderTestResult:
+    """分发 user_credit 自检任务到 worker，同步等待结果。"""
+    start = time.perf_counter()
+    try:
+        result = dreamina_cli_user_credit_task.apply_async(args=[cli_path]).get(timeout=60)
+    except CeleryTimeoutError:
+        return ProviderTestResult(
+            success=False,
+            message="celery-worker 不在线，无法检测即梦 CLI，请检查 worker 容器是否运行",
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
+    except Exception as e:
+        return ProviderTestResult(
+            success=False,
+            message=f"测试异常: {type(e).__name__}: {e}",
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
+    return ProviderTestResult(
+        success=bool(result.get("success")),
+        message=result.get("message", ""),
+        latency_ms=int((time.perf_counter() - start) * 1000),
+    )
 
 
 def _to_response(p: ApiProvider) -> ProviderResponse:
@@ -63,6 +93,9 @@ def list_slug_options() -> list[ProviderSlugOption]:
 @router.post("/test-before-create", response_model=ProviderTestResult)
 def test_provider_before_create(payload: ProviderTestBeforeCreate) -> ProviderTestResult:
     """新建前连通性测试：无需先落库即可校验 slug / API Key / base_url。"""
+    if payload.slug in _DREAMINA_CLI_SLUGS:
+        return _test_dreamina_cli_on_worker(payload.base_url)
+
     try:
         provider = get_provider(
             payload.slug,
@@ -176,6 +209,9 @@ def test_provider(
     if payload and payload.base_url:
         base_url = payload.base_url
     config = json.loads(p.config_json or "{}") if not (payload and payload.config is not None) else payload.config
+
+    if p.slug in _DREAMINA_CLI_SLUGS:
+        return _test_dreamina_cli_on_worker(base_url)
 
     try:
         provider = get_provider(p.slug, base_url=base_url, api_key=api_key, config=config)

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { ExternalLink, Plus, Pencil, Trash2, CheckCircle2, PlusCircle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useDeleteProvider, useProviders } from '@/hooks/useProviders'
+import { getDreaminaCliStatus } from '@/api/system'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -14,6 +16,7 @@ import {
 import type { Provider } from '@/api/providers'
 import { cn } from '@/lib/utils'
 import { ServiceActivationDialog } from './ServiceActivationDialog'
+import { DreaminaCliSetup } from './DreaminaCliSetup'
 
 /** 卡片 + 已有 Provider 的合并视图。 */
 interface ServiceCardData {
@@ -25,6 +28,14 @@ interface ServiceCardData {
 export function ProvidersTab() {
   const { data: providers, isLoading } = useProviders()
   const deleteProvider = useDeleteProvider()
+
+  // 即梦 CLI 环境状态（worker 节点）：未就绪时在顶部展示安装/登录引导
+  const { data: cliStatus } = useQuery({
+    queryKey: ['dreamina-cli-status'],
+    queryFn: getDreaminaCliStatus,
+    retry: false,
+  })
+  const showCliSetup = !!cliStatus && !cliStatus.worker_offline && (!cliStatus.installed || !cliStatus.logged_in)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [activeService, setActiveService] = useState<ModelService | null>(null)
@@ -75,6 +86,9 @@ export function ProvidersTab() {
 
   return (
     <div className="space-y-4">
+      {/* 即梦 CLI 环境未就绪时提供安装 / 登录引导 */}
+      {showCliSetup && <DreaminaCliSetup />}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (
           <ServiceCard

@@ -14,6 +14,7 @@ from typing import Any
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
 
 from .config import settings
 from .database import db_session
@@ -96,6 +97,17 @@ def _update_task(
             task.started_at = _now()
         if completed:
             task.completed_at = _now()
+
+
+def _persist_submit_id(task_id: str, submit_id: str) -> None:
+    """把已提交的上游任务 ID 合并进 params_json 落库，供 retry 断点续查（不覆盖其它参数）。"""
+    with db_session() as db:
+        task = db.get(Task, task_id)
+        if not task:
+            return
+        params: dict[str, Any] = json.loads(task.params_json or "{}")
+        params["submit_id"] = submit_id
+        task.params_json = json.dumps(params, ensure_ascii=False)
 
 
 def _extract_tokens(metadata: dict[str, Any]) -> int | None:
@@ -182,6 +194,9 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         for k in ("negative_prompt", "width", "height", "steps", "guidance_scale", "seed", "duration", "strength"):
             if k in params:
                 kwargs[k] = params[k]
+        # 断点续查：上一轮失败后落库的 submit_id 透传给 provider，避免重新 submit 重复扣费
+        if params.get("submit_id"):
+            kwargs["submit_id"] = params["submit_id"]
 
         # 参考图：优先从 params.input_asset_ids 读取多图列表，回退到 input_asset_id 单图
         raw_ids: list[str] = []
@@ -278,6 +293,10 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
     except Exception as e:
         err_msg = f"{type(e).__name__}: {e}"
         logger.exception("Task %s failed", task_id)
+        # 异步任务型 provider（如本地 CLI）：已提交的任务携带 submit_id，落库以便 retry 断点续查
+        submit_id = getattr(e, "submit_id", None)
+        if submit_id:
+            _persist_submit_id(task_id, submit_id)
         _update_task(task_id, status="failed", error_msg=err_msg, completed=True)
         task_service.set_progress(task_id, "failed", 0, err_msg)
         # 失败时保留 Redis 进度一段时间，让 SSE 推送失败事件后由客户端断开
@@ -343,3 +362,91 @@ def backup_database_task() -> dict[str, Any]:
     except Exception as e:
         logger.exception("Backup failed")
         return {"success": False, "error": str(e)}
+
+
+# ============================================================
+# 即梦 CLI 引导任务（必须在 worker 节点执行：生成任务在 worker 内调用 CLI）
+# ============================================================
+
+@celery_app.task(name="app.worker.dreamina_cli_status")
+def dreamina_cli_status_task(cli_path: str | None = None) -> dict[str, Any]:
+    """探测 worker 节点上即梦 CLI 的安装 / 登录状态。"""
+    from .services import dreamina_cli_service
+    return dreamina_cli_service.get_status(cli_path)
+
+
+@celery_app.task(name="app.worker.dreamina_cli_install")
+def dreamina_cli_install_task() -> dict[str, Any]:
+    """在 worker 节点执行官方安装脚本（幂等，可重复触发作为升级）。"""
+    from .services import dreamina_cli_service
+    return dreamina_cli_service.install_cli()
+
+
+@celery_app.task(name="app.worker.dreamina_cli_login_start")
+def dreamina_cli_login_start_task(cli_path: str | None = None) -> dict[str, Any]:
+    """启动 headless 登录，返回 verification_uri / user_code / device_code。"""
+    from .services import dreamina_cli_service
+    return dreamina_cli_service.start_login(cli_path)
+
+
+@celery_app.task(name="app.worker.dreamina_cli_login_check")
+def dreamina_cli_login_check_task(cli_path: str | None = None) -> dict[str, Any]:
+    """校验 headless 登录是否已在浏览器完成。"""
+    from .services import dreamina_cli_service
+    return dreamina_cli_service.check_login(cli_path)
+
+
+@celery_app.task(name="app.worker.dreamina_cli_user_credit")
+def dreamina_cli_user_credit_task(cli_path: str | None = None) -> dict[str, Any]:
+    """worker 侧连通性自检（供 Provider「测试连通」使用）。"""
+    from .services import dreamina_cli_service
+    return dreamina_cli_service.user_credit_check(cli_path)
+
+
+_DREAMINA_AUTO_INSTALL_MAX_ATTEMPTS = 3
+
+
+@worker_ready.connect
+def _dreamina_cli_bootstrap(sender=None, **kwargs) -> None:  # noqa: ANN001
+    """worker 就绪时提供即梦 CLI 引导：已装则提示登录，未装则自动安装。
+
+    自动安装失败最多重试 3 次（Redis 计数），避免网络异常时无限循环。
+    """
+    try:
+        from .services import dreamina_cli_service as dcs
+
+        status = dcs.get_status()
+        if status["installed"]:
+            logger.info(
+                "[即梦CLI] worker 节点已安装即梦 CLI（version=%s, logged_in=%s, path=%s）",
+                status.get("version"), status.get("logged_in"), status.get("cli_path"),
+            )
+            if not status["logged_in"]:
+                logger.info(
+                    "[即梦CLI] 尚未登录：请打开 设置 → 服务管理 → 即梦 CLI，按引导完成 dreamina login"
+                )
+            return
+
+        if status["installing"]:
+            logger.info("[即梦CLI] 检测到安装正在进行中，跳过自动安装")
+            return
+
+        try:
+            attempts = int(dcs._redis().incr(dcs._INSTALL_ATTEMPTS_KEY))
+            dcs._redis().expire(dcs._INSTALL_ATTEMPTS_KEY, 3600)
+        except Exception:
+            attempts = 1
+
+        if attempts > _DREAMINA_AUTO_INSTALL_MAX_ATTEMPTS:
+            logger.warning(
+                "[即梦CLI] worker 节点未检测到即梦 CLI，且自动安装已失败 %s 次。"
+                "请在 设置 → 服务管理 → 即梦 CLI 中手动触发安装，或在 worker 所在机器执行 "
+                "curl -fsSL %s | bash",
+                attempts - 1, dcs.INSTALL_SCRIPT_URL,
+            )
+            return
+
+        logger.info("[即梦CLI] worker 节点未检测到即梦 CLI，开始自动安装（第 %s 次）…", attempts)
+        dreamina_cli_install_task.delay()
+    except Exception:
+        logger.exception("[即梦CLI] 启动引导检查失败（不影响 worker 正常工作）")

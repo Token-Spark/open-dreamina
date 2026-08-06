@@ -44,7 +44,7 @@ export function ModelSelector({
   return (
     <div className={cn('grid grid-cols-2 gap-3', className)}>
       <div className="space-y-1.5">
-        <Label>服务提供商</Label>
+        <Label>模型接入</Label>
         <Select
           value={providerSlug}
           onChange={(e) => onProviderChange(e.target.value)}
