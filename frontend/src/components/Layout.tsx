@@ -25,6 +25,7 @@ import {
   ListTodo,
   Sun,
   Moon,
+  Github,
 } from 'lucide-react'
 import { TaskBar } from '@/components/TaskBar'
 import { TaskSSEManager } from '@/components/TaskSSEManager'
@@ -82,8 +83,23 @@ export function Layout() {
             })}
           </nav>
 
-          {/* Theme toggle pinned to the bottom of the rail */}
-          <div className="flex justify-center py-3">
+          {/* GitHub link + theme toggle pinned to the bottom of the rail */}
+          <div className="flex flex-col items-center gap-1 py-3">
+            <a
+              href="https://github.com/Token-Spark/open-dreamina"
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-colors',
+                'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
+              )}
+              aria-label="GitHub 仓库"
+            >
+              <Github className="h-5 w-5" />
+              <span className="pointer-events-none absolute left-full ml-2 z-50 rounded-btn border border-border bg-bg-tertiary px-2 py-1 text-xs text-fg-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                GitHub
+              </span>
+            </a>
             <button
               type="button"
               onClick={toggleTheme}
