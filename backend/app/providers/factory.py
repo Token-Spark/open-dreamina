@@ -78,10 +78,13 @@ _REGISTRY: dict[str, RegistryEntry] = {
         modes=_modes_from_types(StabilityProvider.SUPPORTED_TYPES),
     ),
     "openai": RegistryEntry(
+        # slug 标识「OpenAI 兼容图片生成接口」，与供应商解耦：
+        # 官方 api.openai.com 或 OpenRouter（https://openrouter.ai/api/v1）均可接入，
+        # 模型为 GPT Image 2（gpt-image-2）。
         factory=lambda b, k, c: OpenAIProvider(b or "https://api.openai.com/v1", k, c),
         default_base_url="https://api.openai.com/v1",
         builtin=False,
-        display_name="OpenAI",
+        display_name="OpenAI（GPT Image 2）",
         modes=_modes_from_types(OpenAIProvider.SUPPORTED_TYPES),
     ),
     "dashscope": RegistryEntry(

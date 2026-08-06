@@ -313,7 +313,7 @@ export function ServiceActivationDialog({
               <FieldRow label="名称">
                 <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="如 我的图服务" />
               </FieldRow>
-              <FieldRow label="标识 (slug)">
+              <FieldRow label="模型唯一标识">
                 <Select
                   value={customSlug}
                   onChange={(e) => handleCustomSlugChange(e.target.value)}
@@ -328,6 +328,9 @@ export function ServiceActivationDialog({
                     </option>
                   ))}
                 </Select>
+                <p className="text-xs text-fg-muted">
+                  标识（slug）确定模型类型和参数；实际供应商由下方 API 地址决定，可填官方地址或 OpenRouter 等兼容中转站。
+                </p>
               </FieldRow>
             </div>
             <FieldRow label="内容模式">

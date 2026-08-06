@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { ExternalLink } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
 import {
@@ -54,6 +55,16 @@ export function ModelSelectorSection({
       {defaults.length > 0 && (
         <p className="text-xs text-fg-muted">
           可选默认：{defaults.map((m) => m.id).join('、')}
+          {service?.docsUrl && (
+            <a
+              href={service.docsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-2 inline-flex items-center gap-0.5 transition-colors hover:text-fg-primary"
+            >
+              模型文档 <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
         </p>
       )}
     </div>

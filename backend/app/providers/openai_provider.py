@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""OpenAI Provider - DALL·E 3 / GPT-4o Image（简化实现）。"""
+"""OpenAI Provider - GPT Image 2（兼容 OpenRouter 等 OpenAI 兼容网关）。
+
+- slug `openai` 标识「OpenAI 兼容的图片生成接口」，与具体供应商解耦：
+  官方 api.openai.com 或 OpenRouter（https://openrouter.ai/api/v1）均可接入。
+- OpenAI 当前图片生成模型为 GPT Image 2（model id: gpt-image-2），
+  模型文档：https://openrouter.ai/openai/gpt-image-2
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -20,6 +26,9 @@ from typing import Any
 import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
+
+# OpenAI 默认图片生成模型（GPT Image 2）
+MODEL_GPT_IMAGE_2 = "gpt-image-2"
 
 
 class OpenAIProvider(BaseProvider):
@@ -52,7 +61,7 @@ class OpenAIProvider(BaseProvider):
         steps: int = 30,
         **kwargs: Any,
     ) -> GenerationResult:
-        model_id = kwargs.get("model_id") or self.config.get("model_id", "dall-e-3")
+        model_id = kwargs.get("model_id") or self.config.get("model_id", MODEL_GPT_IMAGE_2)
         size = self._size_str(width, height)
         url = f"{self.base_url}/images/generations"
         payload = {
@@ -76,7 +85,7 @@ class OpenAIProvider(BaseProvider):
         if not items or "b64_json" not in items[0]:
             raise ProviderError("OpenAI 响应中未找到 b64_json")
         import base64 as _b64
-        # DALL·E 响应通常不带 usage；新版 gpt-image-1 等模型可能在 usage 中返回 token 用量
+        # GPT Image 系列在 usage 中返回 token 用量；部分兼容网关可能省略
         usage = data.get("usage") or {}
         total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
         metadata: dict[str, Any] = {"model": model_id}
@@ -124,8 +133,9 @@ class OpenAIProvider(BaseProvider):
 
     @staticmethod
     def _size_str(width: int, height: int) -> str:
-        # DALL·E 3 仅支持 1024x1024 / 1792x1024 / 1024x1792
-        for w, h in [(1024, 1024), (1792, 1024), (1024, 1792)]:
-            if abs(width - w) < 100 and abs(height - h) < 100:
-                return f"{w}x{h}"
+        # GPT Image 2 支持 1024x1024 / 1536x1024 / 1024x1536
+        if width > height:
+            return "1536x1024"
+        if height > width:
+            return "1024x1536"
         return "1024x1024"

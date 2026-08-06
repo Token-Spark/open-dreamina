@@ -2,6 +2,34 @@
   "$comment": "模型服务目录：驱动设置页服务卡片与激活表单。新增服务只需在此追加一项。",
   "services": [
     {
+      "slug": "openai",
+      "name": "GPT Image 2",
+      "vendor": "OpenAI",
+      "description": "OpenAI 图片生成模型 GPT Image 2。slug 仅标识模型接口，与供应商解耦：可直连 OpenAI 官方，也可将 API 地址改为 OpenRouter（https://openrouter.ai/api/v1）等兼容网关接入同一模型。",
+      "docsUrl": "https://openrouter.ai/openai/gpt-image-2",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 OpenAI / OpenRouter API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用 OpenAI 官方地址；OpenRouter 填 https://openrouter.ai/api/v1",
+          "default": "https://api.openai.com/v1"
+        }
+      ],
+      "models": [
+        { "id": "gpt-image-2", "label": "GPT Image 2", "types": ["text2img", "img2img"] }
+      ]
+    },
+    {
       "slug": "seedream",
       "name": "Seedream 5.0",
       "vendor": "Volcengine",
