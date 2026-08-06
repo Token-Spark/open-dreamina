@@ -30,7 +30,6 @@ import { SizePicker } from '@/components/SizePicker'
 import { uploadAsset, assetFileUrl } from '@/api/assets'
 import {
   CONTENT_MODES,
-  GENERATION_COUNTS,
   sizeFromRatioResolution,
   type ContentMode,
   type AspectRatio,
@@ -93,7 +92,6 @@ export function GenerationInputBar({
 
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
-  const count = (params.n as number) ?? 1
   const duration = (params.duration as number) ?? 5
 
   // 串行上传多张图片，逐张追加到参考图列表（避免并发状态竞争）。
@@ -143,10 +141,6 @@ export function GenerationInputBar({
   function updateRatioResolution(nextRatio: AspectRatio, nextResolution: Resolution) {
     const { width, height } = sizeFromRatioResolution(nextRatio, nextResolution, mode)
     onParamsChange({ ...params, aspect_ratio: nextRatio, resolution: nextResolution, width, height })
-  }
-
-  function updateCount(next: number) {
-    onParamsChange({ ...params, n: next })
   }
 
   function updateDuration(next: number) {
@@ -242,7 +236,6 @@ export function GenerationInputBar({
             {mode === 'video' && (
               <DurationPicker duration={duration} onChange={updateDuration} disabled={submitting} />
             )}
-            <CountSelector count={count} onChange={updateCount} disabled={submitting} />
 
             <button
               type="button"
@@ -350,31 +343,3 @@ function DurationPicker({
   )
 }
 
-function CountSelector({
-  count,
-  onChange,
-  disabled,
-}: {
-  count: number
-  onChange: (count: number) => void
-  disabled?: boolean
-}) {
-  return (
-    <div className="flex h-9 items-center rounded-btn border border-border bg-bg-tertiary/70 p-0.5">
-      {GENERATION_COUNTS.map((n) => (
-        <button
-          key={n}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(n)}
-          className={cn(
-            'flex h-7 w-7 items-center justify-center rounded-[4px] text-sm transition-colors',
-            count === n ? 'bg-accent text-bg-primary' : 'text-fg-secondary hover:text-fg-primary',
-          )}
-        >
-          {n}
-        </button>
-      ))}
-    </div>
-  )
-}

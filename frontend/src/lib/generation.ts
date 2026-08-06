@@ -207,7 +207,6 @@ export function defaultParamsForType(type: TaskType): Record<string, number | st
   const resolution = defaultResolutionForMode(mode)
   out.aspect_ratio = ratio
   out.resolution = resolution
-  out.n = 1
   // 用比例+分辨率反算真实宽高，避免与 SizePicker 展示不一致
   const { width, height } = sizeFromRatioResolution(ratio, resolution, mode)
   out.width = width
@@ -299,9 +298,6 @@ export function defaultAspectRatioForMode(mode: ContentMode): AspectRatio {
 export function defaultResolutionForMode(mode: ContentMode): Resolution {
   return mode === 'image' ? '2K' : '720p'
 }
-
-/** 单次生成数量。 */
-export const GENERATION_COUNTS = [1, 2, 3, 4]
 
 /**
  * 图片生成像素表（基于 Seedream 5.0 lite 官方推荐宽高组合，全部按 64 对齐）。
