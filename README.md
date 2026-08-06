@@ -18,9 +18,25 @@
 
 ---
 
-## ✨ 产品特点
+## 已接入模型
 
--  **干净无广告** —— 专注创作，没有干扰
+| 模型名称 | 简介 |
+| --- | --- |
+| GPT Image 2 | OpenAI 图片生成模型，支持文生图与图生图，可经 OpenRouter 等兼容网关接入。 |
+| Seedream 5.0 | 火山引擎豆包文生图模型，支持高质量图像生成与编辑。 |
+| Seedance 2.0 | 火山引擎豆包视频生成模型，支持文生视频与图生视频。 |
+| Seedance 2.5 | 火山引擎豆包视频生成模型，支持文生视频与图生视频。 |
+| 即梦 Seedream（CLI） | 通过本机即梦 CLI 生成图片，复用本机登录态，无需 API Key。 |
+| 即梦 Seedance（CLI） | 通过本机即梦 CLI 生成视频，复用本机登录态，无需 API Key。 |
+| Stability AI | Stability 图像生成模型服务。 |
+| 通义万相 | 阿里云通义万相图像/视频生成模型服务。 |
+| 可灵 | 快手可灵视频生成模型服务。 |
+
+---
+
+## 特性
+
+- **干净无广告** —— 专注创作，没有干扰
 - **设计克制** —— 谨慎增加按钮和确认环节
 - **免注册开箱即用** —— 无需注册即可使用
 - **数据本地保存** —— 数据保存在本地，无需二次下载
@@ -29,13 +45,14 @@
 - **性能与体验领先** —— 核心功能的性能和使用体验达到同类产品领先水平（排除模型服务带来的差异）
 
 ![视频生成示例](frontend/src/static/video-generation-sample-01.png)
+
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 本地智能体一键部署
 
-> 💡 使用 codex, workbuddy 等 AI 智能体，复制下面这句话发给它，即可自动完成安装部署：
+> 使用 codex, workbuddy 等 AI 智能体，复制下面这句话发给它，即可自动完成安装部署：
 >
 > ```text
 > 克隆 https://github.com/Token-Spark/open-dreamina 到本地，按照仓库 README 执行一键部署脚本（Linux/macOS 运行 bash deploy.sh，Windows 运行 deploy.ps1），完成环境检查、构建镜像并启动服务，最后确认服务健康并告诉我访问地址。
@@ -58,7 +75,7 @@ bash deploy.sh
 .\deploy.ps1
 ```
 
-> 💡 若提示脚本被禁止执行，先运行 `Set-ExecutionPolicy -Scope Process Bypass` 再执行。
+> 若提示脚本被禁止执行，先运行 `Set-ExecutionPolicy -Scope Process Bypass` 再执行。
 
 
 
@@ -96,17 +113,17 @@ docker compose down
 
 ---
 
-## 📖 使用引导
+## 使用引导
 
-### 1️⃣ 首次使用
+### 首次使用
 
 打开 <http://localhost:10131> 即可直接使用，无需注册登录。所有数据（对话、生成记录、API Key）均保存在本地 `./data` 目录。
 
-### 2️⃣ 配置模型服务
+### 配置模型服务
 
 进入「设置 → 服务管理」，选择并激活你使用的 AIGC 模型服务（如即梦、通义万相、可灵、Stability 等），填入对应的 API Key。API Key 会使用 `.env` 中的 `ENCRYPTION_KEY` 加密后存储。
 
-### 3️⃣ 即梦 CLI（可选）
+### 即梦 CLI（可选）
 
 若使用即梦 CLI 作为模型服务，需在运行 `celery-worker` 的机器上安装 CLI 并完成登录：
 
@@ -114,15 +131,15 @@ docker compose down
 2. 安装完成后点击「登录」，按页面提示完成授权；
 3. 登录态保存在 `./data/dreamina-home`，容器重建后不丢失。
 
-> ⚠️ 注意：CLI 需安装在 celery-worker 所在机器上，且 `dreamina login` 需手动完成授权（自动发起的登录链接可能存在兼容问题）。
+> 注意：CLI 需安装在 celery-worker 所在机器上，且 `dreamina login` 需手动完成授权（自动发起的登录链接可能存在兼容问题）。
 
-### 4️⃣ 数据备份
+### 数据备份
 
 进入「设置」可手动触发数据库备份，备份文件保存在 `./data/backups`（默认保留最近 3 份）。
 
 ---
 
-## 💬 社区交流
+## 社区交流
 
 <div align="center">
   <p>扫描下方二维码，加入飞书话题群，获取使用帮助与最新动态：</p>
