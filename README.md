@@ -20,44 +20,38 @@
 
 ## ✨ 产品特点
 
-- 🧹 **干净无广告** —— 专注创作，没有干扰
-- 🚀 **免注册开箱即用** —— 无需注册即可使用
-- 💾 **数据本地保存** —— 数据保存在本地，无需二次下载
-- 🎯 **设计克制** —— 谨慎增加按钮和确认环节
-- 📦 **一键部署** —— 支持 Windows / Linux / macOS，一键启动
-- 🔌 **模型灵活接入** —— 自由选择 AIGC 模型服务，提供 API 调用记录统计与分析
-- ⚡ **性能与体验领先** —— 核心功能的性能和使用体验达到同类产品领先水平（排除模型服务带来的差异）
+-  **干净无广告** —— 专注创作，没有干扰
+- **设计克制** —— 谨慎增加按钮和确认环节
+- **免注册开箱即用** —— 无需注册即可使用
+- **数据本地保存** —— 数据保存在本地，无需二次下载
+- **一键部署** —— 支持 Windows / Linux / macOS，一键启动
+- **模型灵活接入** —— 自由选择 AIGC 模型服务，提供 API 调用记录统计与分析
+- **性能与体验领先** —— 核心功能的性能和使用体验达到同类产品领先水平（排除模型服务带来的差异）
 
+![视频生成示例](frontend/src/static/video-generation-sample-01.png)
 ---
 
 ## 🚀 快速开始
 
-服务通过 Docker Compose 编排，包含前端、后端、Celery 任务队列与 Redis。首次部署只需一条命令，脚本会自动完成：
+### 本地智能体一键部署
 
-> 环境检查 → 生成 `.env`（含随机加密密钥）→ 构建镜像 → 启动服务 → 健康检查
-
-### 环境要求
-
-- 已安装 [Docker](https://docs.docker.com/get-docker/)（Windows / macOS 使用 Docker Desktop，Linux 使用 Docker Engine）
-- Docker Compose 插件（Docker Desktop 与新版 Docker Engine 已内置）
-- 端口 `10131`（前端）、`10130`（后端）未被占用
-
-### 一键部署
-
-> 💡 使用 AI 智能体？复制下面这句话发给它，即可自动完成安装部署：
+> 💡 使用 codex, workbuddy 等 AI 智能体，复制下面这句话发给它，即可自动完成安装部署：
 >
 > ```text
 > 克隆 https://github.com/Token-Spark/open-dreamina 到本地，按照仓库 README 执行一键部署脚本（Linux/macOS 运行 bash deploy.sh，Windows 运行 deploy.ps1），完成环境检查、构建镜像并启动服务，最后确认服务健康并告诉我访问地址。
 > ```
 
-**Linux / macOS**
+### 脚本部署
+服务通过 Docker Compose 编排，包含前端、后端、Celery 任务队列与 Redis。首次部署只需一条命令，脚本会自动完成：
 
+> 环境检查 → 生成 `.env`（含随机加密密钥）→ 构建镜像 → 启动服务 → 健康检查
+
+**Linux / macOS 脚本部署**
 ```bash
 bash deploy.sh
 ```
 
-**Windows**
-
+**Windows 脚本部署**
 在项目根目录打开 PowerShell，执行：
 
 ```powershell
@@ -65,6 +59,14 @@ bash deploy.sh
 ```
 
 > 💡 若提示脚本被禁止执行，先运行 `Set-ExecutionPolicy -Scope Process Bypass` 再执行。
+
+
+
+### 环境要求
+
+- 已安装 [Docker](https://docs.docker.com/get-docker/)（Windows / macOS 使用 Docker Desktop，Linux 使用 Docker Engine）
+- Docker Compose 插件（Docker Desktop 与新版 Docker Engine 已内置）
+- 端口 `10131`（前端）、`10130`（后端）未被占用
 
 ### 部署完成后
 
