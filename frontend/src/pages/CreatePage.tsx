@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { createTask, getTask, retryTask } from '@/api/tasks'
-import { assetFileUrl } from '@/api/assets'
+import { assetFileUrl, getAsset } from '@/api/assets'
 import type { Template } from '@/api/templates'
 import { listTemplates } from '@/api/templates'
 import { getSystemSettings } from '@/api/system'
@@ -258,7 +258,7 @@ export function CreatePage() {
   }
 
   // 重新编辑：将该消息的输入回填到生成对话框，复用提示词/负向提示/参数/模型
-  function handleEdit(message: GenMessage) {
+  async function handleEdit(message: GenMessage) {
     const nextMode = modeOfTaskType(message.type)
     const nextParams = message.params as Record<string, number | string>
     // mode 改变会触发默认参数重置，用 ref 暂存待复用的参数
@@ -272,11 +272,22 @@ export function CreatePage() {
     setNegativePrompt(message.negativePrompt)
     if (message.provider) setProviderSlug(message.provider)
     if (message.modelId) setModelId(message.modelId)
-    // 复用参考图：回填 assetId 与预览地址列表
+    // 复用参考素材：回填 assetId 与预览地址列表；从后端资产记录恢复类型（图片/视频/音频），
+    // 查询失败时缺省按图片处理（兼容旧任务）。
+    const kinds = await Promise.all(
+      message.inputAssetIds.map(async (assetId) => {
+        try {
+          return (await getAsset(assetId)).type
+        } catch {
+          return 'image' as const
+        }
+      }),
+    )
     setRefAssets(
       message.inputAssetIds.map((assetId, i) => ({
         assetId,
         previewUrl: message.inputAssetUrls[i] ?? assetFileUrl(assetId),
+        kind: kinds[i] ?? 'image',
       })),
     )
   }

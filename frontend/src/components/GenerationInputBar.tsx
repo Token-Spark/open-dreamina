@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
-import { ReferenceSlot } from '@/components/ReferenceSlot'
+import { ReferenceSlot, type ReferenceKind } from '@/components/ReferenceSlot'
 import { ModelPicker } from '@/components/ModelPicker'
 import { SizePicker } from '@/components/SizePicker'
 import { uploadAsset, assetFileUrl } from '@/api/assets'
@@ -39,11 +39,45 @@ import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { cn } from '@/lib/utils'
 
-/** 一张参考图：assetId 用于提交任务，previewUrl 用于本地预览。 */
+/** 一个参考素材（图片/视频/音频）：assetId 用于提交任务，previewUrl 用于本地预览。 */
 export interface ReferenceAsset {
   assetId: string
   previewUrl: string
+  /** 素材类型；旧数据缺省按图片处理。 */
+  kind?: ReferenceKind
 }
+
+/**
+ * 视频模式多模态参考限制（火山方舟 Seedance 2.0 系列：参考图 0-9 + 参考视频 0-3 + 参考音频 0-3）。
+ * 参考: 创建视频生成任务 API（.trae/docs/火山方舟 - 视频生成 API）。
+ */
+const MAX_REF_IMAGES = 9
+const MAX_REF_VIDEOS = 3
+const MAX_REF_AUDIOS = 3
+const MAX_IMAGE_BYTES = 30 * 1024 * 1024 // 单张图片 < 30 MB
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024 // 单个视频 ≤ 200 MB
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024 // 单个音频 ≤ 15 MB
+/** API 仅接受 mp4/mov 参考视频、wav/mp3 参考音频（按扩展名兑底，部分浏览器 MIME 缺失）。 */
+const VIDEO_EXTS = ['.mp4', '.mov']
+const AUDIO_EXTS = ['.wav', '.mp3']
+const KIND_CAPS: Record<ReferenceKind, number> = {
+  image: MAX_REF_IMAGES,
+  video: MAX_REF_VIDEOS,
+  audio: MAX_REF_AUDIOS,
+}
+const KIND_SIZE_CAPS: Record<ReferenceKind, number> = {
+  image: MAX_IMAGE_BYTES,
+  video: MAX_VIDEO_BYTES,
+  audio: MAX_AUDIO_BYTES,
+}
+const KIND_LABELS: Record<ReferenceKind, string> = {
+  image: '参考图',
+  video: '参考视频',
+  audio: '参考音频',
+}
+/** 视频模式下文件选择器接受：图片 + mp4/mov 视频 + wav/mp3 音频。 */
+const ACCEPT_VIDEO_MODE =
+  'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
 
 export interface GenerationInputBarProps {
   /** 内容模式：图片 / 视频（需求1：合并文生图/图生图、文生视频/图生视频）。 */
@@ -94,22 +128,69 @@ export function GenerationInputBar({
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
 
-  // 串行上传多张图片，逐张追加到参考图列表（避免并发状态竞争）。
+  // 切回图片模式时移除视频/音频参考（图片模式不支持多模态参考）。
+  useEffect(() => {
+    if (mode === 'image' && refAssets.some((a) => (a.kind ?? 'image') !== 'image')) {
+      onRefAssetsChange(refAssets.filter((a) => (a.kind ?? 'image') === 'image'))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+
+  /** 识别文件类型；不支持的类型返回 null。 */
+  function kindOfFile(file: File): ReferenceKind | null {
+    const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase()
+    if (file.type.startsWith('image/')) return 'image'
+    if (file.type.startsWith('video/') || VIDEO_EXTS.includes(ext)) return 'video'
+    if (file.type.startsWith('audio/') || AUDIO_EXTS.includes(ext)) return 'audio'
+    return null
+  }
+
+  // 串行上传多个素材，逐个追加到参考列表（避免并发状态竞争）。
+  // 视频模式支持图片/视频/音频；图片模式仅支持图片。按文档限制数量与大小。
   async function handleUploadFiles(files: FileList | File[]) {
-    const images = Array.from(files).filter((f) => f.type.startsWith('image/'))
-    if (images.length === 0) return
+    const next: ReferenceAsset[] = [...refAssets]
     const added: ReferenceAsset[] = []
-    for (const file of images) {
+    for (const file of Array.from(files)) {
+      const kind = kindOfFile(file)
+      if (!kind) {
+        toast(`不支持的文件类型：${file.name}`, 'error')
+        continue
+      }
+      if (mode === 'image' && kind !== 'image') {
+        toast('图片模式仅支持上传图片参考，视频/音频参考请在视频模式下使用', 'error')
+        continue
+      }
+      if (kind === 'video' && !VIDEO_EXTS.includes('.' + (file.name.split('.').pop() ?? '').toLowerCase())) {
+        toast(`参考视频仅支持 ${VIDEO_EXTS.join(' / ')} 格式：${file.name}`, 'error')
+        continue
+      }
+      if (kind === 'audio' && !AUDIO_EXTS.includes('.' + (file.name.split('.').pop() ?? '').toLowerCase())) {
+        toast(`参考音频仅支持 ${AUDIO_EXTS.join(' / ')} 格式：${file.name}`, 'error')
+        continue
+      }
+      const cap = KIND_CAPS[kind]
+      if (next.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
+        toast(`${KIND_LABELS[kind]}最多 ${cap} 个`, 'error')
+        continue
+      }
+      if (file.size > KIND_SIZE_CAPS[kind]) {
+        toast(
+          `${KIND_LABELS[kind]}超出大小限制（${Math.round(KIND_SIZE_CAPS[kind] / 1024 / 1024)} MB）：${file.name}`,
+          'error',
+        )
+        continue
+      }
       try {
         const asset = await uploadAsset(file)
-        added.push({ assetId: asset.id, previewUrl: assetFileUrl(asset.id) })
+        next.push({ assetId: asset.id, previewUrl: assetFileUrl(asset.id), kind })
+        added.push({ assetId: asset.id, previewUrl: assetFileUrl(asset.id), kind })
       } catch (e) {
         toast(toApiError(e).message, 'error')
       }
     }
     if (added.length) {
-      onRefAssetsChange([...refAssets, ...added])
-      toast(`已上传 ${added.length} 张参考图`, 'success')
+      onRefAssetsChange(next)
+      toast(`已上传 ${added.length} 个参考素材`, 'success')
     }
   }
 
@@ -120,14 +201,17 @@ export function GenerationInputBar({
   function onDrop(e: React.DragEvent) {
     e.preventDefault()
     const files = Array.from(e.dataTransfer.files ?? [])
-    if (files.some((f) => f.type.startsWith('image/'))) handleUploadFiles(files)
+    if (files.length) handleUploadFiles(files)
   }
 
   function onPaste(e: React.ClipboardEvent) {
     const items = e.clipboardData.items
     const files: File[] = []
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith('image/')) {
+      const t = items[i].type
+      // 粘贴通常只有图片；视频模式下兼容剪贴板中的视频/音频文件
+      const allowed = t.startsWith('image/') || (mode === 'video' && (t.startsWith('video/') || t.startsWith('audio/')))
+      if (allowed) {
         const file = items[i].getAsFile()
         if (file) files.push(file)
       }
@@ -156,13 +240,14 @@ export function GenerationInputBar({
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
         >
-          {/* 已上传的参考图列表（多图） */}
+          {/* 已上传的参考素材列表（图片/视频/音频） */}
           {refAssets.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {refAssets.map((ref, i) => (
                 <ReferenceSlot
                   key={ref.assetId}
                   previewUrl={ref.previewUrl}
+                  kind={ref.kind ?? 'image'}
                   onPick={() => {}}
                   onClear={() => removeRef(i)}
                 />
@@ -182,7 +267,11 @@ export function GenerationInputBar({
                 value={prompt}
                 onChange={(e) => onPromptChange(e.target.value)}
                 disabled={submitting}
-                placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。支持上传多张参考图融合生成。"
+                placeholder={
+                  mode === 'video'
+                    ? '上传参考图/视频/音频、输入文字或 @主体，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
+                    : '上传参考图、输入文字或 @主体，描述你想生成的图片。支持上传多张参考图融合生成。'
+                }
                 rows={3}
                 className={cn(
                   'w-full resize-none bg-transparent text-base text-fg-primary placeholder:text-fg-muted',
@@ -192,7 +281,7 @@ export function GenerationInputBar({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept={mode === 'video' ? ACCEPT_VIDEO_MODE : 'image/*'}
                 multiple
                 className="hidden"
                 onChange={(e) => {

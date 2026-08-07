@@ -29,7 +29,7 @@ export function Dropdown({
   children,
   align = 'start',
   placement = 'bottom',
-  opaque = false,
+  opaque = true,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)

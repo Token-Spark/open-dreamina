@@ -12,18 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { ImagePlus, X } from 'lucide-react'
+import { ImagePlus, Music, Video, X } from 'lucide-react'
+
+/** 参考素材类型：图片 / 视频 / 音频（视频模式支持多模态参考，见火山方舟视频生成 API）。 */
+export type ReferenceKind = 'image' | 'video' | 'audio'
 
 export interface ReferenceSlotProps {
   previewUrl: string | null
+  /** 素材类型，决定预览渲染方式；缺省按图片处理。 */
+  kind?: ReferenceKind
   onPick: () => void
   onClear: () => void
 }
 
-export function ReferenceSlot({ previewUrl, onPick, onClear }: ReferenceSlotProps) {
+const KIND_LABEL: Record<ReferenceKind, string> = {
+  image: '参考图',
+  video: '参考视频',
+  audio: '参考音频',
+}
+
+export function ReferenceSlot({ previewUrl, kind = 'image', onPick, onClear }: ReferenceSlotProps) {
   return previewUrl ? (
     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-btn border border-border">
-      <img src={previewUrl} alt="参考图" className="h-full w-full object-cover" />
+      {kind === 'video' ? (
+        <>
+          <video src={previewUrl} muted playsInline className="h-full w-full object-cover" />
+          <span className="absolute bottom-0.5 left-0.5 flex items-center rounded bg-black/60 px-1 py-0.5 text-white">
+            <Video className="h-2.5 w-2.5" />
+          </span>
+        </>
+      ) : kind === 'audio' ? (
+        <div className="flex h-full w-full items-center justify-center bg-bg-tertiary">
+          <Music className="h-6 w-6 text-fg-muted" />
+        </div>
+      ) : (
+        <img src={previewUrl} alt={KIND_LABEL[kind]} className="h-full w-full object-cover" />
+      )}
       <button
         type="button"
         onClick={onClear}
@@ -38,7 +62,7 @@ export function ReferenceSlot({ previewUrl, onPick, onClear }: ReferenceSlotProp
       type="button"
       onClick={onPick}
       className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-btn border border-dashed border-border text-fg-muted transition-colors hover:border-fg-muted hover:text-fg-secondary"
-      aria-label="上传参考图"
+      aria-label="上传参考素材"
     >
       <ImagePlus className="h-5 w-5" />
     </button>
