@@ -1,0 +1,14 @@
+# Runtime data
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+.trae/
+
+# Env
+.env
