@@ -1,0 +1,133 @@
+# Copyright 2026 Open Dreamina Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Spark Hub Seedream 生图 Provider。
+
+对接 Spark Hub 中转站的 Seedream 文生图模型（api_name：doubao_seedream_5 等）。
+异步任务模式，返回 result.images[]（图片 URL 数组）。
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from .base import GenerationResult, ProviderError
+from .sparkhub_base import SparkHubBaseProvider, _find
+
+
+def _aspect_ratio_from_size(width: int, height: int) -> str:
+    """按宽高比就近归入 Spark Hub 支持的比例串（数据驱动查找）。"""
+    if width <= 0 or height <= 0:
+        return "9:16"  # Spark Hub 默认比例
+    ratio = width / height
+    # (比例值, 比例串)，越靠前优先级越高
+    candidates = [
+        (21 / 9, "21:9"),
+        (16 / 9, "16:9"),
+        (3 / 2, "3:2"),
+        (4 / 3, "4:3"),
+        (1 / 1, "1:1"),
+        (3 / 4, "3:4"),
+        (2 / 3, "2:3"),
+        (9 / 16, "9:16"),
+    ]
+    return min(candidates, key=lambda c: abs(ratio - c[0]))[1]
+
+
+def _resolution_from_size(width: int, height: int) -> str:
+    """按长边像素映射 Spark Hub 分辨率档位（2K/3K/4K；默认 2K）。"""
+    long_side = max(width or 0, height or 0)
+    if long_side >= 4096:
+        return "4K"
+    if long_side >= 3072:
+        return "3K"
+    return "2K"
+
+
+class SparkHubSeedreamProvider(SparkHubBaseProvider):
+    SUPPORTED_TYPES = ["text2img", "img2img"]
+
+    def _build_create_payload(self, prompt: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+        api_name = kwargs.get("model_id") or self.config.get("model_id")
+        if not api_name:
+            raise ProviderError("Spark Hub Seedream 未配置 api_name（模型 ID）")
+        width = int(kwargs.get("width") or 0)
+        height = int(kwargs.get("height") or 0)
+        pl: dict[str, Any] = {
+            "api_name": api_name,
+            "prompt": prompt,
+            "aspect_ratio": _aspect_ratio_from_size(width, height),
+            "resolution": _resolution_from_size(width, height),
+        }
+        # kwargs.size 支持 2K/3K/4K 或自定义宽高（如 "768x1024"）
+        size = kwargs.get("size")
+        if size:
+            pl["kwargs"] = {"size": str(size)}
+        return pl
+
+    def _extract_result_urls(self, polled: dict[str, Any]) -> list[str]:
+        images = _find(polled, "images", "result")
+        if isinstance(images, dict):
+            images = images.get("images")
+        if not isinstance(images, list):
+            return []
+        return [u for u in images if isinstance(u, str) and u]
+
+    def _result_mime(self) -> str:
+        return "image/png"
+
+    async def text_to_image(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        width: int = 1024,
+        height: int = 1024,
+        steps: int = 30,
+        **kwargs: Any,
+    ) -> GenerationResult:
+        payload = self._build_create_payload(prompt, kwargs)
+        result = await self._run_task(payload, self._extract_result_urls, self._result_mime())
+        # 用真实字节嗅探更准确的 MIME（jpeg/png）
+        from .sparkhub_base import _detect_mime
+        result.mime_type = _detect_mime(result.file_bytes)
+        return result
+
+    async def image_to_image(
+        self,
+        image_bytes: list[bytes],
+        prompt: str,
+        strength: float = 0.7,
+        **kwargs: Any,
+    ) -> GenerationResult:
+        # Spark Hub 生图需参考图公网 URL；本地资产默认无公网链接，明示原因避免用户困惑。
+        raise ProviderError(
+            "Spark Hub Seedream 图生图需要参考图公网链接，当前本地资产暂不支持，"
+            "请选择文生图，或使用支持图生的其他服务"
+        )
+
+    async def text_to_video(
+        self,
+        prompt: str,
+        duration: int = 5,
+        **kwargs: Any,
+    ) -> GenerationResult:
+        raise ProviderError("Spark Hub Seedream 不支持 text_to_video")
+
+    async def image_to_video(
+        self,
+        image_bytes: bytes,
+        prompt: str = "",
+        duration: int = 5,
+        **kwargs: Any,
+    ) -> GenerationResult:
+        raise ProviderError("Spark Hub Seedream 不支持 image_to_video")

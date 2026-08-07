@@ -31,6 +31,8 @@ from .mock_provider import MockProvider
 from .openai_provider import OpenAIProvider
 from .seedance_provider import MODEL_SEEDANCE_2_0, MODEL_SEEDANCE_2_5, SeedanceProvider
 from .seedream_provider import SeedreamProvider
+from .sparkhub_seedance import SparkHubSeedanceProvider
+from .sparkhub_seedream import SparkHubSeedreamProvider
 from .stability_provider import StabilityProvider
 
 # 工厂函数签名: (base_url, api_key, config) -> BaseProvider
@@ -129,6 +131,26 @@ _REGISTRY: dict[str, RegistryEntry] = {
         builtin=False,
         display_name="豆包 Seedance 2.5",
         modes=_modes_from_types(SeedanceProvider.SUPPORTED_TYPES),
+    ),
+    "sparkhub-seedream": RegistryEntry(
+        # Spark Hub 中转站生图（Seedream）；协议为统一异步任务 + X-API-Key
+        factory=lambda b, k, c: SparkHubSeedreamProvider(
+            b or "https://operation.spark-hub.cn/task-api", k, c,
+        ),
+        default_base_url="https://operation.spark-hub.cn/task-api",
+        builtin=False,
+        display_name="Spark Hub Seedream（中转生图）",
+        modes=_modes_from_types(SparkHubSeedreamProvider.SUPPORTED_TYPES),
+    ),
+    "sparkhub-seedance": RegistryEntry(
+        # Spark Hub 中转站生视频（Seedance）；协议为统一异步任务 + X-API-Key
+        factory=lambda b, k, c: SparkHubSeedanceProvider(
+            b or "https://operation.spark-hub.cn/task-api", k, c,
+        ),
+        default_base_url="https://operation.spark-hub.cn/task-api",
+        builtin=False,
+        display_name="Spark Hub Seedance（中转生视频）",
+        modes=_modes_from_types(SparkHubSeedanceProvider.SUPPORTED_TYPES),
     ),
     "dreamina-seedance": RegistryEntry(
         # 即梦 CLI 视频侧（Seedance 系列）；base_url 复用为 CLI 可执行路径，api_key 不使用（本机 OAuth 登录态）

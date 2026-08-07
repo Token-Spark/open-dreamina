@@ -1,0 +1,243 @@
+# Copyright 2026 Open Dreamina Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Spark Hub 中转站 Provider 基类。
+
+对接 Spark Hub 星火社区大模型资源管理平台（https://operation.spark-hub.cn/api-doc）：
+生图 / 生视频均为「统一异步任务」模式——创建任务 → 轮询状态 → 下载结果 URL。
+
+本类只承载 Spark Hub 的通用机制（鉴权头、异步任务生命周期、业务错误码映射、
+结果下载）；生图 / 生视频的具体入参构造与结果解析由子类完成，体现策略与机制分离。
+"""
+from __future__ import annotations
+
+import asyncio
+from abc import ABC
+from typing import Any, Callable
+
+import httpx
+
+from .base import BaseProvider, GenerationResult, ProviderError
+
+# Spark Hub 统一异步任务接口路径
+_CREATE_PATH = "/task/create_task"
+_QUERY_PATH = "/task/query_task/{task_id}"
+
+# 业务错误码 → 修复建议（数据驱动，P0.3；码表见 API 文档「错误码对照表」）。
+_ERROR_HINTS: dict[int, str] = {
+    401: "API Key 缺失或无效，请在设置页检查并修改",
+    403: "当前账号无权限访问该资源，请联系 Spark Hub 平台",
+    404: "访问的接口或资源不存在，请检查 API 地址与 api_name",
+    405: "目标模型当前队列已满，请稍后重试",
+    406: "指定调用的模型暂不可用，请更换模型或稍后再试",
+    409: "账户余额不足，无法发起任务，请前往 Spark Hub 充值",
+    412: "当前账号未开通该模型 API 调用权限，请联系平台开通",
+    413: "API Key 所属账号已被停用，请联系平台管理员",
+    500: "Spark Hub 服务内部异常，建议稍后重试",
+    504: "请求处理超时，建议稍后重试",
+}
+
+
+def _find(data: dict[str, Any], *keys: str) -> Any:
+    """深度优先取首个命中的键值（兼容多种字段命名差异）。"""
+    for key in keys:
+        if not isinstance(data, dict):
+            break
+        if key in data:
+            return data[key]
+        for v in data.values():
+            if isinstance(v, dict):
+                found = _find(v, *keys)
+                if found is not None:
+                    return found
+    return None
+
+
+def _detect_mime(data: bytes) -> str:
+    """按魔数识别常见媒体 MIME；未知回退到 image/png。"""
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"RIFF") and b"WEBP" in data[:16]:
+        return "image/webp"
+    if data.startswith(b"\x00\x00\x00") and b"ftyp" in data[4:12]:
+        return "video/mp4"
+    return "image/png"
+
+
+class SparkHubBaseProvider(BaseProvider, ABC):
+    """Spark Hub 通用机制基类。
+
+    子类需实现：
+    - _build_create_payload(prompt, kwargs) -> dict：构造 create_task 请求体
+    - _extract_result_urls(polled: dict) -> list[str]：从终态响应提取结果 URL
+    - _result_mime() -> str：结果默认 MIME
+    """
+
+    SUPPORTED_TYPES: list[str] = []
+
+    # 任务轮询配置
+    _POLL_INTERVAL = 5.0
+    _POLL_TIMEOUT = 600.0  # 单次生成最长等待（秒）：10 分钟
+
+    # 终态判定：轮询返回体中判为成功的关键字；失败/其它视为失败
+    _SUCCESS_STATUS = "succeeded"
+    _TERMINAL_FAILED = {"failed", "cancelled", "expired"}
+
+    def __init__(
+        self,
+        base_url: str = "https://operation.spark-hub.cn/task-api",
+        api_key: str = "",
+        config: dict[str, Any] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.config = config or {}
+
+    # ---------- HTTP / 业务错误码 ----------
+
+    def _headers(self) -> dict[str, str]:
+        if not self.api_key:
+            raise ProviderError("Spark Hub API Key 未配置，请在设置页填写")
+        return {
+            "X-API-Key": self.api_key,
+            "Content-Type": "application/json",
+        }
+
+    def _raise_business_error(self, payload: dict[str, Any], context: str) -> None:
+        """解析业务响应码，命中已知码表时抛出带修复建议的错误。
+
+        Spark Hub 业务码可能以 HTTP 状态码返回，也可能以 HTTP 200 + 响应体 code 返回，
+        这里统一检查响应体 code（Http 状态码由 _request_with_retry 处理）。
+        """
+        code = _find(payload, "code", "error_code", "status_code")
+        if not isinstance(code, int):
+            return
+        hint = _ERROR_HINTS.get(code)
+        message = _find(payload, "message", "error", "msg")
+        if hint:
+            raise ProviderError(f"{context}失败（code={code}）：{message or ''} {hint}".strip())
+        if code != 200:
+            raise ProviderError(f"{context}失败（code={code}）：{message or ''}".strip())
+
+    # ---------- 异步任务生命周期 ----------
+
+    async def _submit(self, client: httpx.AsyncClient, payload: dict[str, Any]) -> str:
+        """创建异步任务，返回 task_id。"""
+        resp = await self._request_with_retry(
+            client, "POST", f"{self.base_url}{_CREATE_PATH}",
+            provider_name="Spark Hub", headers=self._headers(), json=payload,
+        )
+        data = resp.json()
+        self._raise_business_error(data, "创建任务")
+        task_id = _find(data, "task_id", "id", "data")
+        if not isinstance(task_id, str) or not task_id:
+            raise ProviderError(f"Spark Hub 创建任务未返回 task_id：{data}")
+        return task_id
+
+    async def _poll(self, client: httpx.AsyncClient, task_id: str) -> dict[str, Any]:
+        """轮询任务直到终态；返回终态响应体。"""
+        url = f"{self.base_url}{_QUERY_PATH.format(task_id=task_id)}"
+        elapsed = 0.0
+        while elapsed < self._POLL_TIMEOUT:
+            resp = await self._request_with_retry(
+                client, "GET", url, provider_name="Spark Hub", headers=self._headers(),
+            )
+            data = resp.json()
+            self._raise_business_error(data, "查询任务")
+            status = _find(data, "status", "state", "task_status")
+            status = str(status).lower() if status is not None else ""
+            if status == self._SUCCESS_STATUS:
+                return data
+            if status in self._TERMINAL_FAILED:
+                err = _find(data, "error", "message", "fail_reason")
+                raise ProviderError(
+                    f"Spark Hub 任务 {task_id} 未成功（status={status}）"
+                    f"{('：' + str(err)) if err else ''}",
+                    submit_id=task_id,
+                )
+            if not status:
+                # 状态字段缺失可能意味着结构差异，保守推进轮询
+                await asyncio.sleep(self._POLL_INTERVAL)
+                elapsed += self._POLL_INTERVAL
+                continue
+            await asyncio.sleep(self._POLL_INTERVAL)
+            elapsed += self._POLL_INTERVAL
+        raise ProviderError(
+            f"Spark Hub 任务 {task_id} 轮询超时（>{int(self._POLL_TIMEOUT)}s）。"
+            "重试将从已有 submit_id 断点续查，不会重复扣费",
+            submit_id=task_id,
+        )
+
+    async def _download(self, url: str) -> bytes:
+        """下载结果字节（CDN 链接，瞬时故障自动重试）。"""
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await self._request_with_retry(
+                client, "GET", url, provider_name="Spark Hub 结果下载",
+            )
+        return resp.content
+
+    # ---------- 模板方法：提交 → 轮询 → 提取 URL → 下载 ----------
+
+    async def _run_task(
+        self,
+        payload: dict[str, Any],
+        pick_urls: Callable[[dict[str, Any]], list[str]],
+        mime_type: str,
+    ) -> GenerationResult:
+        """提交任务并等待结果，构造 GenerationResult。"""
+        async with httpx.AsyncClient(timeout=120) as client:
+            task_id = await self._submit(client, payload)
+            polled = await self._poll(client, task_id)
+
+        urls = pick_urls(polled)
+        if not urls:
+            raise ProviderError(f"Spark Hub 任务 {task_id} 成功但未返回结果 URL：{polled}")
+        file_bytes = await self._download(urls[0])
+        return GenerationResult(
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            metadata={"model": payload.get("api_name", ""), "task_id": task_id, "urls": urls},
+        )
+
+    # ---------- 抽象方法由子类实现 ----------
+
+    def _build_create_payload(self, prompt: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def _extract_result_urls(self, polled: dict[str, Any]) -> list[str]:
+        raise NotImplementedError
+
+    def _result_mime(self) -> str:
+        raise NotImplementedError
+
+    async def test_connection(self) -> bool:
+        """探测连通性：GET 一个不存在的任务，通过业务码判断 key 是否有效。
+
+        - 401/403/413：key 无效或账号被停用，判定失败。
+        - 其它（含 404）：说明鉴权通过、服务可达，判定成功。
+        """
+        if not self.api_key:
+            raise ProviderError("Spark Hub API Key 未配置，请在设置页填写")
+        sentinel = "__probe__"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{self.base_url}{_QUERY_PATH.format(task_id=sentinel)}",
+                headers=self._headers(),
+            )
+        if resp.status_code >= 500 or isinstance(resp.status_code, int) and resp.status_code in (401, 403, 413):
+            raise ProviderError(f"Spark Hub 返回 {resp.status_code}: {resp.text[:200]}")
+        # 其余（200 / 404 等）视为 API Key 有效、服务可达
+        return True

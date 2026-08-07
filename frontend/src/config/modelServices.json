@@ -160,6 +160,65 @@
         { "id": "jimeng4.0", "label": "即梦 4.0", "types": ["text2img", "img2img"] },
         { "id": "jimeng3.1", "label": "即梦 3.1", "types": ["text2img", "img2img"] }
       ]
+    },
+    {
+      "slug": "sparkhub-seedream",
+      "name": "Seedream（Spark Hub 中转）",
+      "vendor": "Spark Hub",
+      "description": "通过 Spark Hub 中转站调用 Seedream 生图模型，统一异步任务模式，填入 X-API-Key 即可。",
+      "docsUrl": "https://operation.spark-hub.cn/api-doc",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 Spark Hub X-API-Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://operation.spark-hub.cn/task-api"
+        }
+      ],
+      "models": [
+        { "id": "doubao_seedream_5", "label": "Seedream 5", "types": ["text2img"] },
+        { "id": "doubao_seedream_5_pro", "label": "Seedream 5 Pro", "types": ["text2img"] }
+      ]
+    },
+    {
+      "slug": "sparkhub-seedance",
+      "name": "Seedance（Spark Hub 中转）",
+      "vendor": "Spark Hub",
+      "description": "通过 Spark Hub 中转站调用 Seedance 生视频模型，统一异步任务模式，填入 X-API-Key 即可。",
+      "docsUrl": "https://operation.spark-hub.cn/api-doc",
+      "modes": ["video"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 Spark Hub X-API-Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://operation.spark-hub.cn/task-api"
+        }
+      ],
+      "models": [
+        { "id": "doubao_seedance_2", "label": "Seedance 2", "types": ["text2video"] },
+        { "id": "doubao_seedance_2_fast", "label": "Seedance 2 Fast", "types": ["text2video"] },
+        { "id": "doubao_seedance_2_mini", "label": "Seedance 2 Mini", "types": ["text2video"] }
+      ]
     }
   ]
 }
