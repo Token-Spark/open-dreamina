@@ -55,7 +55,7 @@
 > 使用 codex, workbuddy 等 AI 智能体，复制下面这句话发给它，即可自动完成安装部署：
 >
 > ```text
-> 克隆 https://github.com/Token-Spark/open-dreamina 到本地，按照仓库 README 执行一键部署脚本（Linux/macOS 运行 bash deploy.sh，Windows 运行 deploy.ps1），完成环境检查、构建镜像并启动服务，最后确认服务健康并告诉我访问地址。
+> 克隆 https://github.com/Token-Spark/open-dreamina 到本地，按照仓库 AGENTS.md 引导完成部署，最后告诉我访问地址。
 > ```
 
 ### 脚本部署
@@ -68,13 +68,24 @@
 bash deploy.sh
 ```
 
-**Windows 脚本部署**
-在项目根目录打开 PowerShell，执行：
+**Windows 脚本部署（推荐三步走）**
 
-```powershell
-.\deploy.ps1
-```
+1. **安装/确认 Docker Desktop**：从 [Docker 官网](https://www.docker.com/products/docker-desktop/) 下载安装，启动后等待左下角显示 `Engine running`。
+2. **（推荐）安装 PowerShell 7**：避免 Windows 自带 PowerShell 5 的中文编码兼容问题。安装后执行：
+   ```powershell
+   pwsh .\deploy.ps1
+   ```
+   下载地址：[https://aka.ms/powershell](https://aka.ms/powershell)
+3. **直接部署**：若坚持使用 PowerShell 5，请在项目根目录执行：
+   ```powershell
+   .\deploy.ps1
+   ```
 
+> 首次部署前，可先运行环境检查（不构建镜像）：
+> ```powershell
+> .\deploy.ps1 -Check
+> ```
+>
 > 若提示脚本被禁止执行，先运行 `Set-ExecutionPolicy -Scope Process Bypass` 再执行。
 
 
@@ -83,7 +94,20 @@ bash deploy.sh
 
 - 已安装 [Docker](https://docs.docker.com/get-docker/)（Windows / macOS 使用 Docker Desktop，Linux 使用 Docker Engine）
 - Docker Compose 插件（Docker Desktop 与新版 Docker Engine 已内置）
+- **Windows 用户**：Docker Desktop 默认使用 WSL 2 后端，请确保：
+  - 系统已启用虚拟化（Hyper-V / 虚拟机平台）；
+  - WSL 2 内核已更新到最新版（首次安装 Docker Desktop 时通常会提示）；
+  - 不建议在 WSL 发行版内部再单独安装 Docker Engine，否则可能与 Docker Desktop 的 WSL 2 后端冲突，导致引擎无法连接。
 - 端口 `10131`（前端）、`10130`（后端）未被占用
+
+### Windows 常见问题
+
+| 现象 | 可能原因 | 解决方案 |
+| --- | --- | --- |
+| 运行 `deploy.ps1` 后出现中文乱码或解析错误 | Windows PowerShell 5 默认按 GBK 代码页读取无 BOM 的 UTF-8 脚本 | 安装 PowerShell 7 后执行 `pwsh .\deploy.ps1`；或确保 `deploy.ps1` 以 UTF-8 with BOM 保存 |
+| Docker 已安装，但脚本提示"无法连接到 Docker 引擎" | Docker Desktop 引擎未启动，或 WSL 2 后端异常 | 1. 打开 Docker Desktop 等待左下角显示 `Engine running`；<br>2. 执行 `wsl --update && wsl --shutdown` 后重启 Docker Desktop；<br>3. 若 WSL 内独立安装过 Docker，请卸载或禁用 |
+| Docker Desktop 弹出"计算机无法连接到远程计算机" | WSL 2 后端初始化失败或 RemoteApp/RDP 相关组件异常 | 执行 `wsl --update` 更新 WSL 2 内核；确保 Hyper-V 与虚拟机平台功能已启用；必要时重启 Windows |
+| 健康检查超时 | 服务首次启动较慢，或端口被占用 | 执行 `docker compose logs -f` 查看具体错误；确认端口 `10131`/`10130` 未被占用 |
 
 ### 部署完成后
 
