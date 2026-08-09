@@ -85,6 +85,23 @@ def _to_data_url(image_bytes: bytes) -> str:
     return f"data:{mime};base64,{b64}"
 
 
+def _build_image_content(
+    url: str,
+    role: str | None = None,
+) -> dict[str, Any]:
+    """构造 Seedance content 中的 image_url 对象，role 按需附加。
+
+    role 合法取值（详见官方文档 content.role）：
+    - first_frame：首帧（可省略）
+    - last_frame：尾帧
+    - reference_image：多模态参考图
+    """
+    item: dict[str, Any] = {"type": "image_url", "image_url": {"url": url}}
+    if role:
+        item["role"] = role
+    return item
+
+
 class SeedanceProvider(BaseProvider):
     """豆包 Seedance 视频生成 Provider（火山引擎 ARK）。"""
 
@@ -275,12 +292,48 @@ class SeedanceProvider(BaseProvider):
         duration: int = 5,
         **kwargs: Any,
     ) -> GenerationResult:
+        """图生视频。
+
+        支持三种模式，通过 ``kwargs["frame_mode"]`` 指定：
+
+        - ``first``（默认）：单首帧，对应 ``role=first_frame``（可省略）。
+        - ``first_last``：首尾帧，需同时提供 ``kwargs["last_image_bytes"]``，
+          两张图片分别携带 ``role=first_frame`` / ``role=last_frame``。
+        - ``reference``：多模态参考图（Seedance 2.0 系列），每张图
+          ``role=reference_image``，可通过 ``kwargs["reference_image_bytes_list"]``
+          传入多图。
+        """
         if not image_bytes:
             raise ProviderError("Seedance 图生视频缺少输入图片")
+
+        frame_mode = kwargs.pop("frame_mode", "first")
         content: list[dict[str, Any]] = []
         if prompt:
             content.append({"type": "text", "text": prompt})
-        content.append({"type": "image_url", "image_url": {"url": _to_data_url(image_bytes)}})
+
+        if frame_mode == "first_last":
+            last_image_bytes = kwargs.pop("last_image_bytes", None)
+            if not last_image_bytes:
+                raise ProviderError(
+                    "Seedance 首尾帧模式需要 last_image_bytes（尾帧图片），"
+                    "当前未提供"
+                )
+            content.append(_build_image_content(_to_data_url(image_bytes), "first_frame"))
+            content.append(_build_image_content(_to_data_url(last_image_bytes), "last_frame"))
+        elif frame_mode == "reference":
+            reference_list = kwargs.pop("reference_image_bytes_list", None)
+            if not reference_list:
+                # 单图退化为 reference_image，便于与多图模式统一入口
+                content.append(
+                    _build_image_content(_to_data_url(image_bytes), "reference_image")
+                )
+            else:
+                for img in reference_list:
+                    content.append(_build_image_content(_to_data_url(img), "reference_image"))
+        else:
+            # 默认首帧模式，官方文档说明 role 可省略
+            content.append(_build_image_content(_to_data_url(image_bytes)))
+
         return await self._generate(content, kwargs)
 
     async def text_to_image(

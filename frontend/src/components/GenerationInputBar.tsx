@@ -21,6 +21,7 @@ import {
   MonitorPlay,
   Type,
   Clock,
+  Film,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
@@ -79,6 +80,20 @@ const KIND_LABELS: Record<ReferenceKind, string> = {
 const ACCEPT_VIDEO_MODE =
   'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
 
+/** Seedance 图生视频模式：首帧 / 首尾帧 / 多模态参考。 */
+type FrameMode = 'first' | 'first_last' | 'reference'
+
+const FRAME_MODES: { mode: FrameMode; label: string; hint: string }[] = [
+  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧' },
+  { mode: 'first_last', label: '首尾帧', hint: '上传 2 张图片，分别作为首帧与尾帧' },
+  { mode: 'reference', label: '参考图', hint: '上传 1~9 张图片作为多模态参考' },
+]
+
+/** 判断当前 provider 是否为 Seedance 系列（slug 含 seedance）。 */
+function isSeedanceProvider(slug: string): boolean {
+  return slug.toLowerCase().includes('seedance')
+}
+
 export interface GenerationInputBarProps {
   /** 内容模式：图片 / 视频（需求1：合并文生图/图生图、文生视频/图生视频）。 */
   mode: ContentMode
@@ -127,6 +142,8 @@ export function GenerationInputBar({
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
+  const frameMode = (params.frame_mode as FrameMode) ?? 'first'
+  const isSeedance = isSeedanceProvider(providerSlug)
 
   // 切回图片模式时移除视频/音频参考（图片模式不支持多模态参考）。
   useEffect(() => {
@@ -135,6 +152,29 @@ export function GenerationInputBar({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
+
+  // Seedance 首尾帧/参考图模式下仅保留图片参考，视频/音频不适用。
+  useEffect(() => {
+    if (mode === 'video' && isSeedance && frameMode !== 'reference') {
+      const cleaned = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
+      if (cleaned.length !== refAssets.length) {
+        onRefAssetsChange(cleaned)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, frameMode, isSeedance])
+
+  // 首尾帧模式限制最多 2 张图片。
+  useEffect(() => {
+    if (mode === 'video' && isSeedance && frameMode === 'first_last') {
+      const images = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
+      if (images.length > 2) {
+        onRefAssetsChange(images.slice(0, 2))
+        toast('首尾帧模式最多保留 2 张参考图（首帧 + 尾帧）', 'info')
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, frameMode, isSeedance, refAssets])
 
   /** 识别文件类型；不支持的类型返回 null。 */
   function kindOfFile(file: File): ReferenceKind | null {
@@ -167,6 +207,24 @@ export function GenerationInputBar({
       if (kind === 'audio' && !AUDIO_EXTS.includes('.' + (file.name.split('.').pop() ?? '').toLowerCase())) {
         toast(`参考音频仅支持 ${AUDIO_EXTS.join(' / ')} 格式：${file.name}`, 'error')
         continue
+      }
+      // Seedance 首尾帧/首帧模式仅接受图片参考
+      if (mode === 'video' && isSeedance && frameMode !== 'reference' && kind !== 'image') {
+        toast(
+          frameMode === 'first_last'
+            ? '首尾帧模式仅支持上传图片参考（首帧 + 尾帧）'
+            : '首帧模式仅支持上传图片参考',
+          'error',
+        )
+        continue
+      }
+      // 首尾帧模式最多 2 张图片
+      if (mode === 'video' && isSeedance && frameMode === 'first_last' && kind === 'image') {
+        const imageCount = next.filter((a) => (a.kind ?? 'image') === 'image').length
+        if (imageCount >= 2) {
+          toast('首尾帧模式最多上传 2 张参考图（首帧 + 尾帧）', 'error')
+          continue
+        }
       }
       const cap = KIND_CAPS[kind]
       if (next.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
@@ -231,6 +289,16 @@ export function GenerationInputBar({
     onParamsChange({ ...params, duration: next })
   }
 
+  function updateFrameMode(next: FrameMode) {
+    onParamsChange({ ...params, frame_mode: next })
+  }
+
+  /** 当前模式下的参考素材提示文案。 */
+  function refHint(): string {
+    if (mode !== 'video' || !isSeedance) return ''
+    return FRAME_MODES.find((m) => m.mode === frameMode)?.hint ?? ''
+  }
+
   return (
     <div className="bg-transparent p-4">
       <div className="mx-auto max-w-4xl">
@@ -269,7 +337,9 @@ export function GenerationInputBar({
                 disabled={submitting}
                 placeholder={
                   mode === 'video'
-                    ? '上传参考图/视频/音频、输入文字或 @主体，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
+                    ? isSeedance
+                      ? `${refHint()}，输入文字描述你想生成的视频。`
+                      : '上传参考图/视频/音频、输入文字或 @主体，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
                     : '上传参考图、输入文字或 @主体，描述你想生成的图片。支持上传多张参考图融合生成。'
                 }
                 rows={3}
@@ -324,6 +394,9 @@ export function GenerationInputBar({
             />
             {mode === 'video' && (
               <DurationPicker duration={duration} onChange={updateDuration} disabled={submitting} />
+            )}
+            {mode === 'video' && isSeedance && (
+              <FrameModePicker frameMode={frameMode} onChange={updateFrameMode} disabled={submitting} />
             )}
 
             <button
@@ -429,6 +502,44 @@ function DurationPicker({
       />
       <span className="text-fg-muted">秒</span>
     </div>
+  )
+}
+
+function FrameModePicker({
+  frameMode,
+  onChange,
+  disabled,
+}: {
+  frameMode: FrameMode
+  onChange: (mode: FrameMode) => void
+  disabled?: boolean
+}) {
+  const current = FRAME_MODES.find((m) => m.mode === frameMode) ?? FRAME_MODES[0]
+  return (
+    <Dropdown
+      placement="top"
+      trigger={
+        <button
+          type="button"
+          disabled={disabled}
+          className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary transition-colors hover:text-fg-primary disabled:opacity-50"
+        >
+          <Film className="h-4 w-4" />
+          {current.label}
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      }
+    >
+      {FRAME_MODES.map((m) => (
+        <DropdownItem key={m.mode} active={frameMode === m.mode} onClick={() => onChange(m.mode)}>
+          <Film className="h-3.5 w-3.5" />
+          <div className="flex flex-col">
+            <span>{m.label}</span>
+            <span className="text-xs text-fg-muted">{m.hint}</span>
+          </div>
+        </DropdownItem>
+      ))}
+    </Dropdown>
   )
 }
 

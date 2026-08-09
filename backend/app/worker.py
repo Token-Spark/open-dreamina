@@ -211,6 +211,9 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         # 断点续查：上一轮失败后落库的 submit_id 透传给 provider，避免重新 submit 重复扣费
         if params.get("submit_id"):
             kwargs["submit_id"] = params["submit_id"]
+        # Seedance 图生视频模式：first | first_last | reference
+        if params.get("frame_mode"):
+            kwargs["frame_mode"] = params["frame_mode"]
 
         # 参考图：优先从 params.input_asset_ids 读取多图列表，回退到 input_asset_id 单图
         raw_ids: list[str] = []
@@ -235,10 +238,17 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             elif task_type == "text2video":
                 result = loop.run_until_complete(provider.text_to_video(prompt=prompt, **_filter_kwargs(provider.text_to_video, kwargs)))
             elif task_type == "img2video":
-                # 视频生成仅取首张参考图（多图视频暂未接入）
                 first_bytes = image_bytes_list[0] if image_bytes_list else None
                 if first_bytes is None:
                     raise ProviderError("图生视频缺少输入图片")
+                if kwargs.get("frame_mode") == "first_last":
+                    if len(image_bytes_list) < 2:
+                        raise ProviderError(
+                            "首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前不足"
+                        )
+                    kwargs["last_image_bytes"] = image_bytes_list[1]
+                elif kwargs.get("frame_mode") == "reference":
+                    kwargs["reference_image_bytes_list"] = image_bytes_list
                 result = loop.run_until_complete(provider.image_to_video(image_bytes=first_bytes, prompt=prompt, **_filter_kwargs(provider.image_to_video, kwargs)))
             else:
                 raise ProviderError(f"未知任务类型: {task_type}")
