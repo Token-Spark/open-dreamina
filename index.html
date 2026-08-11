@@ -172,10 +172,44 @@
       background: var(--gray-50);
     }
 
+    .agent-note {
+      margin-top: 40px;
+      max-width: 640px;
+      margin-left: auto;
+      margin-right: auto;
+      padding: 16px 20px;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      background: var(--gray-50);
+      font-size: 14px;
+      color: var(--gray-700);
+      text-align: left;
+    }
+
+    .agent-note .label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--gray-400);
+      margin-bottom: 6px;
+    }
+
+    .agent-note code {
+      display: block;
+      margin-top: 8px;
+      padding: 10px 12px;
+      background: var(--gray-900);
+      color: var(--gray-200);
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.7;
+      font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
+      word-break: break-word;
+    }
+
     /* ---------- Sections ---------- */
     section { padding: 80px 0; }
-
-    section + section { border-top: 1px solid var(--gray-200); }
 
     .section-title {
       font-size: 13px;
@@ -311,7 +345,6 @@
 
     /* ---------- Footer ---------- */
     footer {
-      border-top: 1px solid var(--gray-200);
       padding: 40px 0;
       font-size: 13px;
       color: var(--gray-400);
@@ -372,6 +405,11 @@
         <span class="badge">Docker Compose</span>
         <span class="badge">Windows · Linux · macOS</span>
       </div>
+      <div class="agent-note">
+        <div class="label">Agent 一键部署</div>
+        使用 codex、workbuddy 等 AI 智能体，复制下面这句话发给它，即可自动完成本地安装与更新：
+        <code>克隆 https://github.com/Token-Spark/open-dreamina 到本地，按仓库 AGENTS.md 引导完成部署，最后告诉我访问地址。</code>
+      </div>
     </div>
   </header>
 
@@ -421,6 +459,8 @@
           <tr><td>Seedream 5.0</td><td>火山引擎豆包文生图模型，支持高质量图像生成与编辑。</td></tr>
           <tr><td>Seedance 2.0 / 2.5</td><td>火山引擎豆包视频生成模型，支持文生视频与图生视频。</td></tr>
           <tr><td>即梦 Seedream / Seedance（CLI）</td><td>通过本机即梦 CLI 生成图片与视频，复用本机登录态，无需 API Key。</td></tr>
+          <tr><td>Seedream（Spark Hub 中转）</td><td>经 Spark Hub 中转站调用 Seedream 生图模型（Seedream 5 / 5 Pro），统一异步任务模式。</td></tr>
+          <tr><td>Seedance（Spark Hub 中转）</td><td>经 Spark Hub 中转站调用 Seedance 生视频模型（Seedance 2 / 2 Fast / 2 Mini / 2.5），统一异步任务模式。</td></tr>
           <tr><td>Stability AI</td><td>Stability 图像生成模型服务。</td></tr>
           <tr><td>通义万相</td><td>阿里云通义万相图像 / 视频生成模型服务。</td></tr>
           <tr><td>可灵</td><td>快手可灵视频生成模型服务。</td></tr>
