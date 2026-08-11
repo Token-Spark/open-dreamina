@@ -14,9 +14,14 @@
 
 """Spark Hub Seedance 生视频 Provider。
 
-对接 Spark Hub 中转站的 Seedance 生视频模型（api_name：doubao_seedance_2 等）。
+对接 Spark Hub 中转站的 Seedance 生视频模型（api_name：doubao_seedance_2、
+doubao_seedance_2_fast/mini、doubao_seedance_2_5 等）。
 异步任务模式，返回 result.videos[]（视频 URL 数组）。
-各型号分辨率限制用配置表表达（doubao_seedance_2 支持 4K，fast/mini 仅 480p/720p）。
+各型号分辨率限制用配置表表达（doubao_seedance_2 支持 4K，fast/mini/2.5 仅 480p/720p）。
+
+Seedance 2.5 额外支持：多模态参考（image_urls[]/video_urls[]/audio_urls[]）、
+首帧/尾帧（first_image_url/last_image_url，此时 aspect_ratio 必须为 adaptive）、
+生成同步音频（kwargs.generate_audio）。
 """
 from __future__ import annotations
 
@@ -55,6 +60,14 @@ _MODEL_MAX_RESOLUTION: dict[str, str] = {
     "doubao_seedance_2": "2160p",        # 480p/720p/1080p/2160p(4K)
     "doubao_seedance_2_fast": "720p",    # 仅 480p/720p
     "doubao_seedance_2_mini": "720p",    # 仅 480p/720p
+    "doubao_seedance_2_5": "720p",       # 仅 480p/720p
+}
+
+# 多模态参考素材的类型与最大数量（Seedance 2.5；总数上限 50，图 30/视频 10/音频 10）。
+_REF_URL_KEYS: dict[str, int] = {
+    "image_urls": 30,
+    "video_urls": 10,
+    "audio_urls": 10,
 }
 
 
@@ -87,6 +100,9 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
         if not resolution:
             resolution = "720p"
             ratio = _aspect_ratio_from_size(width, height)
+        # 首帧/尾帧任务仅支持 aspect_ratio=adaptive（Seedance 2.5 约束）
+        if kwargs.get("first_image_url") or kwargs.get("last_image_url"):
+            ratio = "adaptive"
         # 校验当前 api_name 允许的分辨率档位
         max_res = _MODEL_MAX_RESOLUTION.get(api_name, "2160p")
         if resolution in _RESOLUTION_ALIAS:
@@ -104,6 +120,18 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
             "aspect_ratio": ratio,
             "duration": duration,
         }
+        # 多模态参考素材（公网 URL 或审核后 asset:// 地址）：图/视频/音频，按类型限量
+        for key, cap in _REF_URL_KEYS.items():
+            urls = kwargs.get(key)
+            if isinstance(urls, list):
+                cleaned = [u for u in urls if isinstance(u, str) and u][:cap]
+                if cleaned:
+                    pl[key] = cleaned
+        # 首帧 / 尾帧图（尾帧必须与首帧同时使用，交由上游校验）
+        for key in ("first_image_url", "last_image_url"):
+            url = kwargs.get(key)
+            if isinstance(url, str) and url:
+                pl[key] = url
         # 是否生成配音音效（默认 true；false 生成无声视频）
         generate_audio = kwargs.get("generate_audio")
         if generate_audio is not None:
@@ -137,16 +165,24 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
         duration: int = 5,
         **kwargs: Any,
     ) -> GenerationResult:
-        # Spark Hub 生视频支持 image_urls[]/first_image_url（公网 URL 或审核后 asset:// 地址）。
+        # Spark Hub 生视频支持首帧/尾帧（first_image_url/last_image_url，aspect_ratio 强制 adaptive）、
+        # 多模态参考（image_urls[]/video_urls[]/audio_urls[]），均需公网 URL 或审核后 asset:// 地址。
         # 本地资产无公网 URL，且素材提审本期未接入，因此图片输入走 URL 需由调用方提供。
-        url = kwargs.get("first_image_url") or kwargs.get("image_url")
-        if not url:
+        has_ref = any(
+            kwargs.get(k)
+            for k in ("first_image_url", "last_image_url", "image_url", "image_urls", "video_urls", "audio_urls")
+        )
+        if not has_ref:
             raise ProviderError(
-                "Spark Hub Seedance 图生视频需要参考图公网链接（first_image_url），"
-                "当前本地资产暂不支持，请选择文生视频，或提供公网参考图 URL"
+                "Spark Hub Seedance 图生视频需要参考素材的公网链接"
+                "（first_image_url / image_urls / video_urls / audio_urls），"
+                "当前本地资产暂不支持，请选择文生视频，或提供公网参考素材 URL"
             )
         payload = self._build_create_payload(prompt, kwargs)
-        payload.setdefault("kwargs", {}).setdefault("image_urls", [url])
+        # 兼容旧入口 image_url：归入多模态 image_urls（first_image_url 由 _build_create_payload 顶层处理）
+        legacy_url = kwargs.get("image_url")
+        if legacy_url and not kwargs.get("image_urls"):
+            payload.setdefault("image_urls", []).append(legacy_url)
         return await self._run_task(payload, self._extract_result_urls, self._result_mime())
 
     async def text_to_image(

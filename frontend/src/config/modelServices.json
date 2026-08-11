@@ -217,7 +217,8 @@
       "models": [
         { "id": "doubao_seedance_2", "label": "Seedance 2", "types": ["text2video"] },
         { "id": "doubao_seedance_2_fast", "label": "Seedance 2 Fast", "types": ["text2video"] },
-        { "id": "doubao_seedance_2_mini", "label": "Seedance 2 Mini", "types": ["text2video"] }
+        { "id": "doubao_seedance_2_mini", "label": "Seedance 2 Mini", "types": ["text2video"] },
+        { "id": "doubao_seedance_2_5", "label": "Seedance 2.5", "types": ["text2video"] }
       ]
     }
   ]

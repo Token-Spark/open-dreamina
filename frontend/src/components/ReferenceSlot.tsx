@@ -23,6 +23,8 @@ export interface ReferenceSlotProps {
   kind?: ReferenceKind
   onPick: () => void
   onClear: () => void
+  /** 角色标注（如“首帧”“尾帧”），展示在格子下方帮助理解用途。 */
+  label?: string
 }
 
 const KIND_LABEL: Record<ReferenceKind, string> = {
@@ -31,8 +33,8 @@ const KIND_LABEL: Record<ReferenceKind, string> = {
   audio: '参考音频',
 }
 
-export function ReferenceSlot({ previewUrl, kind = 'image', onPick, onClear }: ReferenceSlotProps) {
-  return previewUrl ? (
+export function ReferenceSlot({ previewUrl, kind = 'image', onPick, onClear, label }: ReferenceSlotProps) {
+  const slot = previewUrl ? (
     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-btn border border-border">
       {kind === 'video' ? (
         <>
@@ -62,9 +64,17 @@ export function ReferenceSlot({ previewUrl, kind = 'image', onPick, onClear }: R
       type="button"
       onClick={onPick}
       className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-btn border border-dashed border-border text-fg-muted transition-colors hover:border-fg-muted hover:text-fg-secondary"
-      aria-label="上传参考素材"
+      aria-label={label ? `上传${label}` : '上传参考素材'}
     >
       <ImagePlus className="h-5 w-5" />
     </button>
+  )
+
+  if (!label) return slot
+  return (
+    <div className="flex w-16 shrink-0 flex-col items-center gap-1">
+      {slot}
+      <span className="text-xs text-fg-muted">{label}</span>
+    </div>
   )
 }

@@ -27,7 +27,13 @@ import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { TopicPanel } from '@/components/TopicPanel'
 import { GenMessageCard } from '@/components/GenMessageCard'
-import { GenerationInputBar, type ReferenceAsset } from '@/components/GenerationInputBar'
+import {
+  GenerationInputBar,
+  frameModeSpec,
+  isSeedanceProvider,
+  type FrameMode,
+  type ReferenceAsset,
+} from '@/components/GenerationInputBar'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import {
   defaultParamsForType,
@@ -187,6 +193,18 @@ export function CreatePage() {
     const requestType = deriveTaskType(requestMode, hasRef)
     if (!hasRef && (requestType === 'img2img' || requestType === 'img2video')) {
       return toast('请上传参考图', 'error')
+    }
+    // Seedance 首帧需 1 张、首尾帧需 2 张参考图；不足时阻止提交并提醒。
+    const frameSpec = frameModeSpec(
+      requestMode,
+      isSeedanceProvider(providerSlug),
+      (requestParams.frame_mode as FrameMode) ?? 'first',
+    )
+    if (frameSpec) {
+      const imageCount = requestRefAssets.filter((a) => (a.kind ?? 'image') === 'image').length
+      if (imageCount < frameSpec.required) {
+        return toast(`${frameSpec.label}模式需上传 ${frameSpec.required} 张参考图`, 'error')
+      }
     }
     if (!currentTopicId) return toast('对话未就绪，请稍候', 'error')
 

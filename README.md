@@ -28,6 +28,8 @@
 | Seedance 2.5 | 火山引擎豆包视频生成模型，支持文生视频与图生视频。 |
 | 即梦 Seedream（CLI） | 通过本机即梦 CLI 生成图片，复用本机登录态，无需 API Key。 |
 | 即梦 Seedance（CLI） | 通过本机即梦 CLI 生成视频，复用本机登录态，无需 API Key。 |
+| Seedream（Spark Hub 中转） | 经 Spark Hub 中转站调用 Seedream 生图模型（Seedream 5 / 5 Pro），统一异步任务模式。 |
+| Seedance（Spark Hub 中转） | 经 Spark Hub 中转站调用 Seedance 生视频模型（Seedance 2 / 2 Fast / 2 Mini / 2.5），统一异步任务模式。 |
 | Stability AI | Stability 图像生成模型服务。 |
 | 通义万相 | 阿里云通义万相图像/视频生成模型服务。 |
 | 可灵 | 快手可灵视频生成模型服务。 |

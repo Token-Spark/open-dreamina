@@ -81,17 +81,49 @@ const ACCEPT_VIDEO_MODE =
   'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
 
 /** Seedance 图生视频模式：首帧 / 首尾帧 / 多模态参考。 */
-type FrameMode = 'first' | 'first_last' | 'reference'
+export type FrameMode = 'first' | 'first_last' | 'reference'
 
-const FRAME_MODES: { mode: FrameMode; label: string; hint: string }[] = [
-  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧' },
-  { mode: 'first_last', label: '首尾帧', hint: '上传 2 张图片，分别作为首帧与尾帧' },
-  { mode: 'reference', label: '参考图', hint: '上传 1~9 张图片作为多模态参考' },
+/**
+ * 各图生视频帧模式对参考图片数量的要求（required 为提交任务所需张数）。
+ * slots 为固定图片格子的角色标注（首帧/尾帧），用于在输入区渲染指定数量的上传格子；
+ * reference 模式走多模态参考，不设固定格子，上限沿用 MAX_REF_IMAGES。
+ */
+const FRAME_MODES: {
+  mode: FrameMode
+  label: string
+  hint: string
+  maxImages: number
+  required: number
+  slots?: string[]
+}[] = [
+  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧', maxImages: 1, required: 1, slots: ['首帧'] },
+  {
+    mode: 'first_last',
+    label: '首尾帧',
+    hint: '上传 2 张图片，分别作为首帧与尾帧',
+    maxImages: 2,
+    required: 2,
+    slots: ['首帧', '尾帧'],
+  },
+  { mode: 'reference', label: '参考图', hint: '上传 1~9 张图片作为多模态参考', maxImages: MAX_REF_IMAGES, required: 1 },
 ]
 
-/** 判断当前 provider 是否为 Seedance 系列（slug 含 seedance）。 */
-function isSeedanceProvider(slug: string): boolean {
-  return slug.toLowerCase().includes('seedance')
+/** 当前帧模式配置；非 Seedance 视频/图片模式返回 null（走通用多模态限制）。 */
+export function frameModeSpec(
+  mode: ContentMode,
+  isSeedance: boolean,
+  frameMode: FrameMode,
+): (typeof FRAME_MODES)[number] | null {
+  if (mode !== 'video' || !isSeedance) return null
+  return FRAME_MODES.find((m) => m.mode === frameMode) ?? null
+}
+
+/** 判断当前 provider 是否为 Seedance 系列（slug 含 seedance，或已知遗留别名 dreamina-cli）。 */
+export function isSeedanceProvider(slug: string): boolean {
+  const s = slug.toLowerCase()
+  // dreamina-cli 是遗留 slug，后端实际使用 DreaminaSeedanceProvider（Seedance 系列），
+  // 见 backend/app/providers/factory.py 中 "dreamina-cli" 注册项。
+  return s.includes('seedance') || s === 'dreamina-cli'
 }
 
 export interface GenerationInputBarProps {
@@ -164,14 +196,14 @@ export function GenerationInputBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, frameMode, isSeedance])
 
-  // 首尾帧模式限制最多 2 张图片。
+  // 首帧/首尾帧模式限制图片数量（首帧 1 张、首尾帧 2 张），超出部分按上传顺序裁剪并提醒。
   useEffect(() => {
-    if (mode === 'video' && isSeedance && frameMode === 'first_last') {
-      const images = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
-      if (images.length > 2) {
-        onRefAssetsChange(images.slice(0, 2))
-        toast('首尾帧模式最多保留 2 张参考图（首帧 + 尾帧）', 'info')
-      }
+    const spec = frameModeSpec(mode, isSeedance, frameMode)
+    if (!spec) return
+    const images = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
+    if (images.length > spec.maxImages) {
+      onRefAssetsChange(images.slice(0, spec.maxImages))
+      toast(`${spec.label}模式最多保留 ${spec.maxImages} 张参考图`, 'error')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, frameMode, isSeedance, refAssets])
@@ -208,21 +240,16 @@ export function GenerationInputBar({
         toast(`参考音频仅支持 ${AUDIO_EXTS.join(' / ')} 格式：${file.name}`, 'error')
         continue
       }
-      // Seedance 首尾帧/首帧模式仅接受图片参考
-      if (mode === 'video' && isSeedance && frameMode !== 'reference' && kind !== 'image') {
-        toast(
-          frameMode === 'first_last'
-            ? '首尾帧模式仅支持上传图片参考（首帧 + 尾帧）'
-            : '首帧模式仅支持上传图片参考',
-          'error',
-        )
-        continue
-      }
-      // 首尾帧模式最多 2 张图片
-      if (mode === 'video' && isSeedance && frameMode === 'first_last' && kind === 'image') {
+      // Seedance 首帧/首尾帧模式仅接受图片参考，并按帧模式限制图片数量
+      const spec = frameModeSpec(mode, isSeedance, frameMode)
+      if (spec && spec.mode !== 'reference') {
+        if (kind !== 'image') {
+          toast(`${spec.label}模式仅支持上传图片参考`, 'error')
+          continue
+        }
         const imageCount = next.filter((a) => (a.kind ?? 'image') === 'image').length
-        if (imageCount >= 2) {
-          toast('首尾帧模式最多上传 2 张参考图（首帧 + 尾帧）', 'error')
+        if (imageCount >= spec.maxImages) {
+          toast(`${spec.label}模式最多上传 ${spec.maxImages} 张参考图`, 'error')
           continue
         }
       }
@@ -299,6 +326,19 @@ export function GenerationInputBar({
     return FRAME_MODES.find((m) => m.mode === frameMode)?.hint ?? ''
   }
 
+  // 首帧/首尾帧模式：用带角色标注的固定格子渲染（首帧 1 格、首尾帧 2 格），
+  // 已上传图片按上传顺序填充到格子中，让用户直观看到“还差哪一帧”。
+  const activeFrameSpec = frameModeSpec(mode, isSeedance, frameMode)
+  const frameSlots = activeFrameSpec?.slots ?? null
+  const frameImages = frameSlots ? refAssets.filter((a) => (a.kind ?? 'image') === 'image') : []
+
+  /** 移除固定格子中第 slotIndex 张图片（对应 frameImages 的下标）。 */
+  function removeFrameImage(slotIndex: number) {
+    const target = frameImages[slotIndex]
+    if (!target) return
+    onRefAssetsChange(refAssets.filter((a) => a.assetId !== target.assetId))
+  }
+
   return (
     <div className="bg-transparent p-4">
       <div className="mx-auto max-w-4xl">
@@ -308,28 +348,46 @@ export function GenerationInputBar({
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
         >
-          {/* 已上传的参考素材列表（图片/视频/音频） */}
+          {/* 已上传的参考素材列表（图片/视频/音频）；首帧/首尾帧模式下图片在下方固定格子中展示 */}
           {refAssets.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
-              {refAssets.map((ref, i) => (
-                <ReferenceSlot
-                  key={ref.assetId}
-                  previewUrl={ref.previewUrl}
-                  kind={ref.kind ?? 'image'}
-                  onPick={() => {}}
-                  onClear={() => removeRef(i)}
-                />
-              ))}
+              {refAssets.map((ref, i) =>
+                frameSlots && (ref.kind ?? 'image') === 'image' ? null : (
+                  <ReferenceSlot
+                    key={ref.assetId}
+                    previewUrl={ref.previewUrl}
+                    kind={ref.kind ?? 'image'}
+                    onPick={() => {}}
+                    onClear={() => removeRef(i)}
+                  />
+                ),
+              )}
             </div>
           )}
 
           {/* 输入区：参考图槽 + 提示词 */}
           <div className="flex gap-3">
-            <ReferenceSlot
-              previewUrl={null}
-              onPick={() => fileInputRef.current?.click()}
-              onClear={() => {}}
-            />
+            {frameSlots ? (
+              // 首帧/首尾帧：渲染指定数量的角色格子；全部填满后不再显示上传按钮，
+              // 需先移除已有图片才能重新上传。
+              <div className="flex gap-2">
+                {frameSlots.map((label, i) => (
+                  <ReferenceSlot
+                    key={label}
+                    label={label}
+                    previewUrl={frameImages[i]?.previewUrl ?? null}
+                    onPick={() => fileInputRef.current?.click()}
+                    onClear={() => removeFrameImage(i)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <ReferenceSlot
+                previewUrl={null}
+                onPick={() => fileInputRef.current?.click()}
+                onClear={() => {}}
+              />
+            )}
             <div className="flex flex-1 flex-col gap-2">
               <textarea
                 value={prompt}
