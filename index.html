@@ -407,8 +407,11 @@
       </div>
       <div class="agent-note">
         <div class="label">Agent 一键部署</div>
-        使用 codex、workbuddy 等 AI 智能体，复制下面这句话发给它，即可自动完成本地安装与更新：
+        使用 codex、workbuddy 等 AI 智能体，复制下面这句话发给它，即可自动完成本地安装：
         <code>克隆 https://github.com/Token-Spark/open-dreamina 到本地，按仓库 AGENTS.md 引导完成部署，最后告诉我访问地址。</code>
+        <div class="label" style="margin-top: 14px;">Agent 一键更新</div>
+        项目发布新版本后，复制下面这句话发给它，即可自动拉取最新代码并应用到本地：
+        <code>拉取 https://github.com/Token-Spark/open-dreamina 的最新代码（git pull），然后执行 docker compose up -d --build 重建镜像并重启服务，最后告诉我访问地址。</code>
       </div>
     </div>
   </header>
