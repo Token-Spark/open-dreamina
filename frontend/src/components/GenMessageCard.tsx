@@ -126,10 +126,16 @@ function ResultCard({
               <p className="text-xs text-error/80">{message.error ?? '未知错误'}</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={onRetry}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            重新生成
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              重新生成
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onEdit}>
+              <Pencil className="h-3.5 w-3.5" />
+              重新编辑
+            </Button>
+          </div>
         </div>
       )}
 

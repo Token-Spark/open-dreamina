@@ -11,3 +11,4 @@ pydantic-settings
 python-dotenv
 cryptography
 python-multipart
+qiniu

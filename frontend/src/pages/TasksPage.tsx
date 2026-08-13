@@ -178,7 +178,14 @@ export function TasksPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={statusBadgeVariant(status)}>
+                      <Badge
+                        variant={statusBadgeVariant(status)}
+                        title={
+                          status === 'failed' && task.error_msg
+                            ? task.error_msg
+                            : undefined
+                        }
+                      >
                         {STATUS_LABEL[status]}
                       </Badge>
                     </td>

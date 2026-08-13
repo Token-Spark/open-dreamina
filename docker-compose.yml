@@ -22,6 +22,12 @@ services:
       - BACKUP_DIR=/app/data/backups
       # ENCRYPTION_KEY 必须通过 .env 提供（deploy.sh / deploy.ps1 会自动生成随机值）
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
+      # 七牛云对象存储：为 Seedance 参考素材提供公网临时 URL（14 天自动过期）
+      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY:-}
+      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY:-}
+      - QINIU_BUCKET=${QINIU_BUCKET:-}
+      - QINIU_DOMAIN=${QINIU_DOMAIN:-}
+      - QINIU_AUDIT_EXPIRE_DAYS=${QINIU_AUDIT_EXPIRE_DAYS:-14}
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"

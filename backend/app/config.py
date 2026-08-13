@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     # 部署时需配置为外部可访问的地址，否则无法提交 Seedance 参考素材审核。
     public_base_url: str = ""
 
+    # 七牛云对象存储：为 Seedance 参考素材提供公网临时 URL（14 天自动过期）。
+    # 配置后优先使用七牛云上传；未配置时回退到 public_base_url 指向本服务的地址。
+    qiniu_access_key: str = ""
+    qiniu_secret_key: str = ""
+    qiniu_bucket: str = ""
+    qiniu_domain: str = ""
+    # 临时文件保留天数，到期由七牛云生命周期规则自动删除
+    qiniu_audit_expire_days: int = 14
+
     # 加密（必须显式配置，无默认值；deploy 脚本会自动生成随机值写入 .env）
     # 未设置时启动即报错，避免使用弱默认值导致 API Key 加密形同虚设
     encryption_key: str

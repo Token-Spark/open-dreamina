@@ -46,12 +46,40 @@ import {
   type ContentMode,
 } from '@/lib/generation'
 
+/** 生成对话框上次使用的模式/模型持久化键（localStorage），页面重载后默认恢复。 */
+const LAST_MODE_KEY = 'dreamina.lastMode'
+const LAST_PROVIDER_KEY = 'dreamina.lastProvider'
+const LAST_MODEL_KEY = 'dreamina.lastModel'
+
+/** 安全读取 localStorage（隐私模式/禁用时回退默认值）。 */
+function readStored<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw == null ? fallback : (JSON.parse(raw) as T)
+  } catch {
+    return fallback
+  }
+}
+
+/** 安全写入 localStorage（隐私模式/禁用时静默忽略）。 */
+function writeStored(key: string, value: unknown): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* localStorage may be unavailable (private mode) */
+  }
+}
+
 export function CreatePage() {
-  const [mode, setMode] = useState<ContentMode>('image')
+  const [mode, setMode] = useState<ContentMode>(() =>
+    readStored<ContentMode>(LAST_MODE_KEY, 'image'),
+  )
   const [prompt, setPrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
-  const [providerSlug, setProviderSlug] = useState('')
-  const [modelId, setModelId] = useState('')
+  const [providerSlug, setProviderSlug] = useState(() =>
+    readStored<string>(LAST_PROVIDER_KEY, ''),
+  )
+  const [modelId, setModelId] = useState(() => readStored<string>(LAST_MODEL_KEY, ''))
   const [params, setParams] = useState<Record<string, number | string>>(
     defaultParamsForType('text2img'),
   )
@@ -133,6 +161,17 @@ export function CreatePage() {
     }
     setParams(defaultParamsForType(deriveTaskType(mode, false)))
   }, [mode])
+
+  // 持久化上次使用的模式/模型，页面重载或重新进入时默认恢复
+  useEffect(() => {
+    writeStored(LAST_MODE_KEY, mode)
+  }, [mode])
+  useEffect(() => {
+    writeStored(LAST_PROVIDER_KEY, providerSlug)
+  }, [providerSlug])
+  useEffect(() => {
+    writeStored(LAST_MODEL_KEY, modelId)
+  }, [modelId])
 
   // 需求2：按内容模式筛选模型；参考图变化时校验当前模型是否仍支持派生类型。
   // 当前 provider 在该模式下无模型时，自动切换到首个有模型的 active provider
