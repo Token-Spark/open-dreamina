@@ -18,6 +18,7 @@ import {
   Wand2,
   ChevronDown,
   ImageIcon,
+  Images,
   MonitorPlay,
   Clock,
   Film,
@@ -118,6 +119,7 @@ const FRAME_MODES: {
   required: number
   allowMultimodal: boolean
   slots?: string[]
+  icon: React.ComponentType<{ className?: string }>
 }[] = [
   {
     mode: 'auto',
@@ -126,8 +128,9 @@ const FRAME_MODES: {
     maxImages: MAX_REF_IMAGES,
     required: 0,
     allowMultimodal: true,
+    icon: Wand2,
   },
-  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧', maxImages: 1, required: 1, allowMultimodal: false, slots: ['首帧'] },
+  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧', maxImages: 1, required: 1, allowMultimodal: false, slots: ['首帧'], icon: ImageIcon },
   {
     mode: 'first_last',
     label: '首尾帧',
@@ -136,6 +139,7 @@ const FRAME_MODES: {
     required: 2,
     allowMultimodal: false,
     slots: ['首帧', '尾帧'],
+    icon: Images,
   },
 ]
 
@@ -686,15 +690,18 @@ function FrameModePicker({
         </button>
       }
     >
-      {FRAME_MODES.map((m) => (
-        <DropdownItem key={m.mode} active={frameMode === m.mode} onClick={() => onChange(m.mode)}>
-          <Film className="h-3.5 w-3.5" />
-          <div className="flex flex-col">
-            <span>{m.label}</span>
-            <span className="text-xs text-fg-muted">{m.hint}</span>
-          </div>
-        </DropdownItem>
-      ))}
+      {FRAME_MODES.map((m) => {
+        const Icon = m.icon
+        return (
+          <DropdownItem key={m.mode} active={frameMode === m.mode} onClick={() => onChange(m.mode)}>
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            <div className="flex flex-col">
+              <span>{m.label}</span>
+              <span className="text-xs text-fg-muted">{m.hint}</span>
+            </div>
+          </DropdownItem>
+        )
+      })}
     </Dropdown>
   )
 }
