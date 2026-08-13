@@ -80,8 +80,8 @@ const KIND_LABELS: Record<ReferenceKind, string> = {
 const ACCEPT_VIDEO_MODE =
   'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
 
-/** Seedance 图生视频模式：首帧 / 首尾帧 / 多模态参考。 */
-export type FrameMode = 'first' | 'first_last' | 'reference'
+/** Seedance 视频生成模式：文生视频 / 首帧 / 首尾帧 / 多模态参考。 */
+export type FrameMode = 'text' | 'first' | 'first_last' | 'reference'
 
 /**
  * 各图生视频帧模式对参考图片数量的要求（required 为提交任务所需张数）。
@@ -96,6 +96,7 @@ const FRAME_MODES: {
   required: number
   slots?: string[]
 }[] = [
+  { mode: 'text', label: '文生视频', hint: '无需上传图片，直接输入文字描述生成视频', maxImages: 0, required: 0 },
   { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧', maxImages: 1, required: 1, slots: ['首帧'] },
   {
     mode: 'first_last',
@@ -174,7 +175,7 @@ export function GenerationInputBar({
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
-  const frameMode = (params.frame_mode as FrameMode) ?? 'first'
+  const frameMode = (params.frame_mode as FrameMode) ?? 'text'
   const isSeedance = isSeedanceProvider(providerSlug)
 
   // 切回图片模式时移除视频/音频参考（图片模式不支持多模态参考）。
@@ -185,16 +186,21 @@ export function GenerationInputBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-  // Seedance 首尾帧/参考图模式下仅保留图片参考，视频/音频不适用。
+  // Seedance 帧模式：文生视频清空参考素材；首帧/首尾帧仅保留图片参考，视频/音频不适用。
   useEffect(() => {
-    if (mode === 'video' && isSeedance && frameMode !== 'reference') {
+    if (mode !== 'video' || !isSeedance) return
+    if (frameMode === 'text') {
+      if (refAssets.length > 0) onRefAssetsChange([])
+      return
+    }
+    if (frameMode !== 'reference') {
       const cleaned = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
       if (cleaned.length !== refAssets.length) {
         onRefAssetsChange(cleaned)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, frameMode, isSeedance])
+  }, [mode, frameMode, isSeedance, refAssets])
 
   // 首帧/首尾帧模式限制图片数量（首帧 1 张、首尾帧 2 张），超出部分按上传顺序裁剪并提醒。
   useEffect(() => {
@@ -207,6 +213,20 @@ export function GenerationInputBar({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, frameMode, isSeedance, refAssets])
+
+  // 视频模式智能默认：未上传图片时自动按文生视频（text）生成，无需手动选择；
+  // 上传图片后自动切到首帧（first）以使用该图片。仅当当前为 text 时才自动切到 first，
+  // 避免覆盖用户显式选择的 reference / first_last 模式。
+  useEffect(() => {
+    if (mode !== 'video' || !isSeedance) return
+    const hasImage = refAssets.some((a) => (a.kind ?? 'image') === 'image')
+    if (!hasImage && frameMode !== 'text') {
+      updateFrameMode('text')
+    } else if (hasImage && frameMode === 'text') {
+      updateFrameMode('first')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isSeedance, refAssets])
 
   /** 识别文件类型；不支持的类型返回 null。 */
   function kindOfFile(file: File): ReferenceKind | null {
@@ -381,7 +401,7 @@ export function GenerationInputBar({
                   />
                 ))}
               </div>
-            ) : (
+            ) : frameMode === 'text' ? null : (
               <ReferenceSlot
                 previewUrl={null}
                 onPick={() => fileInputRef.current?.click()}

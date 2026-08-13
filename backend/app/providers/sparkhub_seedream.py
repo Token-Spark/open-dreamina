@@ -44,16 +44,6 @@ def _aspect_ratio_from_size(width: int, height: int) -> str:
     return min(candidates, key=lambda c: abs(ratio - c[0]))[1]
 
 
-def _resolution_from_size(width: int, height: int) -> str:
-    """按长边像素映射 Spark Hub 分辨率档位（2K/3K/4K；默认 2K）。"""
-    long_side = max(width or 0, height or 0)
-    if long_side >= 4096:
-        return "4K"
-    if long_side >= 3072:
-        return "3K"
-    return "2K"
-
-
 class SparkHubSeedreamProvider(SparkHubBaseProvider):
     SUPPORTED_TYPES = ["text2img", "img2img"]
 
@@ -67,10 +57,11 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
             "api_name": api_name,
             "prompt": prompt,
             "aspect_ratio": _aspect_ratio_from_size(width, height),
-            "resolution": _resolution_from_size(width, height),
+            # Spark Hub Seedream 的 resolution 固定为 1440p；2K/3K/4K 档位走 kwargs.size
+            "resolution": "1440p",
         }
-        # kwargs.size 支持 2K/3K/4K 或自定义宽高（如 "768x1024"）
-        size = kwargs.get("size")
+        # 前端分辨率档位（1K/2K/3K/4K）或自定义宽高映射到 kwargs.size
+        size = kwargs.get("size") or kwargs.get("resolution")
         if size:
             pl["kwargs"] = {"size": str(size)}
         return pl

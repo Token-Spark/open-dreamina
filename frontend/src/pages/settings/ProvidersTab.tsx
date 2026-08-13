@@ -154,6 +154,7 @@ function ServiceCard({
 }) {
   const { service, provider, isCustom } = data
   const configured = !!provider
+  const active = !!provider && provider.is_active
   const name = service?.name ?? provider?.name ?? '未知服务'
   const vendor = service?.vendor ?? '自定义'
   const description = service?.description ?? '用户自定义的服务提供商'
@@ -162,7 +163,7 @@ function ServiceCard({
   const docsUrl = service?.docsUrl
 
   return (
-    <Card className={cn('flex flex-col p-4 transition-colors', configured && 'border-success/30')}>
+    <Card className={cn('flex flex-col p-4 transition-colors', active && 'border-success/30')}>
       {/* 头部：厂商 + 状态 */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -172,7 +173,7 @@ function ServiceCard({
           ))}
           {isCustom && <Badge>自定义</Badge>}
         </div>
-        <StatusBadge configured={configured} />
+        <StatusBadge active={active} />
       </div>
 
       {/* 名称 + 描述 */}
@@ -242,8 +243,8 @@ function ServiceCard({
   )
 }
 
-function StatusBadge({ configured }: { configured: boolean }) {
-  if (!configured) return <Badge variant="outline">未激活</Badge>
+function StatusBadge({ active }: { active: boolean }) {
+  if (!active) return <Badge variant="outline">未激活</Badge>
   return <Badge variant="success"><CheckCircle2 className="h-3 w-3" />已激活</Badge>
 }
 

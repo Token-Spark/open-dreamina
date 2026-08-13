@@ -205,7 +205,7 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         if model_id:
             kwargs["model_id"] = model_id
         # 透传常用参数
-        for k in ("negative_prompt", "width", "height", "steps", "guidance_scale", "seed", "duration", "strength"):
+        for k in ("negative_prompt", "width", "height", "steps", "guidance_scale", "seed", "duration", "strength", "resolution"):
             if k in params:
                 kwargs[k] = params[k]
         # 断点续查：上一轮失败后落库的 submit_id 透传给 provider，避免重新 submit 重复扣费
