@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react'
 import { ExternalLink, Plus, Pencil, Trash2, CheckCircle2, PlusCircle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useDeleteProvider, useProviders } from '@/hooks/useProviders'
+import { useDeleteProvider, useProviders, useUpdateProvider } from '@/hooks/useProviders'
 import { getDreaminaCliStatus } from '@/api/system'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -42,6 +42,7 @@ interface ServiceCardData {
 export function ProvidersTab() {
   const { data: providers, isLoading } = useProviders()
   const deleteProvider = useDeleteProvider()
+  const updateProvider = useUpdateProvider()
 
   // 即梦 CLI 环境状态（worker 节点）：未就绪时在顶部展示安装/登录引导
   const { data: cliStatus } = useQuery({
@@ -93,6 +94,16 @@ export function ProvidersTab() {
       onError: (e) => toast(toApiError(e).message, 'error'),
     })
   }
+  // 默认（目录）服务禁止删除，仅允许停用（is_active = false）
+  function handleDeactivate(p: Provider) {
+    updateProvider.mutate(
+      { id: p.id, payload: { is_active: false } },
+      {
+        onSuccess: () => toast('已停用', 'success'),
+        onError: (e) => toast(toApiError(e).message, 'error'),
+      },
+    )
+  }
 
   if (isLoading) {
     return <p className="py-12 text-center text-sm text-fg-muted">加载中…</p>
@@ -111,6 +122,7 @@ export function ProvidersTab() {
             onActivate={() => c.service && openActivate(c.service)}
             onEdit={() => c.provider && openEdit(c.service, c.provider)}
             onDelete={() => c.provider && handleDelete(c.provider)}
+            onDeactivate={() => c.provider && handleDeactivate(c.provider)}
           />
         ))}
         {/* 添加自定义服务卡片 */}
@@ -132,11 +144,13 @@ function ServiceCard({
   onActivate,
   onEdit,
   onDelete,
+  onDeactivate,
 }: {
   data: ServiceCardData
   onActivate: () => void
   onEdit: () => void
   onDelete: () => void
+  onDeactivate: () => void
 }) {
   const { service, provider, isCustom } = data
   const configured = !!provider
@@ -211,9 +225,15 @@ function ServiceCard({
                 <Pencil className="h-3.5 w-3.5" />
                 编辑
               </Button>
-              <Button variant="ghost" size="icon" onClick={onDelete} aria-label="删除">
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {isCustom ? (
+                <Button variant="ghost" size="icon" onClick={onDelete} aria-label="删除">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={onDeactivate}>
+                  停用
+                </Button>
+              )}
             </div>
           </>
         )}

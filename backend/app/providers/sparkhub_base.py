@@ -224,20 +224,19 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         raise NotImplementedError
 
     async def test_connection(self) -> bool:
-        """探测连通性：GET 一个不存在的任务，通过业务码判断 key 是否有效。
+        """探测连通性：真实发起一次最小文本任务，通过创建结果判断 key 是否有效。
 
-        - 401/403/413：key 无效或账号被停用，判定失败。
-        - 其它（含 404）：说明鉴权通过、服务可达，判定成功。
+        使用文本模型 doubao_seed_2_1_turbo（成本极低）POST /task/create_task。
+        鉴权在创建任务时校验：Key 无效 / 账号停用 / 未开通等会抛出带修复建议的
+        ProviderError；能成功拿到 task_id 即说明 API Key 有效、服务可达。
+        仅创建任务、不轮询到出图，避免无谓消耗。
         """
         if not self.api_key:
             raise ProviderError("Spark Hub API Key 未配置，请在设置页填写")
-        sentinel = "__probe__"
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                f"{self.base_url}{_QUERY_PATH.format(task_id=sentinel)}",
-                headers=self._headers(),
-            )
-        if resp.status_code >= 500 or isinstance(resp.status_code, int) and resp.status_code in (401, 403, 413):
-            raise ProviderError(f"Spark Hub 返回 {resp.status_code}: {resp.text[:200]}")
-        # 其余（200 / 404 等）视为 API Key 有效、服务可达
+        payload = {
+            "api_name": "doubao_seed_2_1_turbo",
+            "prompt": "ping",
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            await self._submit(client, payload)
         return True
