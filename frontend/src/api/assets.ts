@@ -16,6 +16,9 @@ import { apiClient, type Paginated } from './client'
 
 export type AssetType = 'image' | 'video' | 'audio'
 
+/** Seedance 参考素材审核状态（Spark Hub seedance_asset_audit）。 */
+export type AssetAuditStatus = 'pending' | 'active' | 'failed'
+
 export interface Asset {
   id: string
   task_id: string | null
@@ -29,6 +32,11 @@ export interface Asset {
   duration: number | null
   tags: string[]
   is_favorite: boolean
+  /** Seedance 参考素材审核状态；null 表示未提交审核。 */
+  audit_status: AssetAuditStatus | null
+  audit_asset_id: string | null
+  audit_asset_url: string | null
+  audit_error: string | null
   created_at: string
 }
 
@@ -99,4 +107,24 @@ export function assetFileUrl(assetId: string): string {
 
 export function assetThumbnailUrl(assetId: string): string {
   return `/api/v1/assets/${assetId}/thumbnail`
+}
+
+/**
+ * 提交 Seedance 参考素材审核（Spark Hub seedance_asset_audit/submit）。
+ * 仅 Spark Hub Seedance 生视频需要；提交后素材进入 pending 审核中状态。
+ */
+export async function submitAssetAudit(assetId: string, provider: string): Promise<Asset> {
+  const { data } = await apiClient.post<Asset>(`/assets/${assetId}/audit`, { provider })
+  return data
+}
+
+/**
+ * 查询 Seedance 参考素材审核状态（Spark Hub seedance_asset_audit/status）。
+ * 素材处于 pending 时后端会主动向 Spark Hub 查询一次并刷新本地状态。
+ */
+export async function getAssetAudit(assetId: string, provider: string): Promise<Asset> {
+  const { data } = await apiClient.get<Asset>(`/assets/${assetId}/audit`, {
+    params: { provider },
+  })
+  return data
 }

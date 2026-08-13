@@ -19,7 +19,6 @@ import {
   ChevronDown,
   ImageIcon,
   MonitorPlay,
-  Type,
   Clock,
   Film,
 } from 'lucide-react'
@@ -28,7 +27,7 @@ import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
 import { ReferenceSlot, type ReferenceKind } from '@/components/ReferenceSlot'
 import { ModelPicker } from '@/components/ModelPicker'
 import { SizePicker } from '@/components/SizePicker'
-import { uploadAsset, assetFileUrl } from '@/api/assets'
+import { uploadAsset, assetFileUrl, submitAssetAudit, getAssetAudit } from '@/api/assets'
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
@@ -46,6 +45,10 @@ export interface ReferenceAsset {
   previewUrl: string
   /** 素材类型；旧数据缺省按图片处理。 */
   kind?: ReferenceKind
+  /** Seedance 参考素材审核状态（仅 Spark Hub Seedance 需要）；undefined 表示未提交审核。 */
+  auditStatus?: 'pending' | 'active' | 'failed'
+  /** 审核失败原因。 */
+  auditError?: string | null
 }
 
 /**
@@ -80,13 +83,32 @@ const KIND_LABELS: Record<ReferenceKind, string> = {
 const ACCEPT_VIDEO_MODE =
   'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
 
-/** Seedance 视频生成模式：文生视频 / 首帧 / 首尾帧 / 多模态参考。 */
-export type FrameMode = 'text' | 'first' | 'first_last' | 'reference'
+/**
+ * Seedance 视频生成帧模式（需求1：文生视频与参考图合二为一）。
+ * auto 为合并模式：无参考图时按文生视频生成，上传图片后自动按参考图模式生成；
+ * 提交时由 effectiveFrameMode 解析为后端接受的 text / reference。
+ */
+export type FrameMode = 'auto' | 'first' | 'first_last'
+
+/** 解析后的后端帧模式（text / reference 仅作为 auto 的解析结果，不直接存储）。 */
+export type EffectiveFrameMode = 'text' | 'first' | 'first_last' | 'reference'
+
+/** 合并模式解析：无参考图 → 文生视频（text）；有参考图 → 多模态参考（reference）。 */
+export function effectiveFrameMode(frameMode: FrameMode, hasImage: boolean): EffectiveFrameMode {
+  if (frameMode === 'auto') return hasImage ? 'reference' : 'text'
+  return frameMode
+}
+
+/** 归一化历史/外部传入的 frame_mode：旧数据中的 text / reference 均映射为合并模式 auto。 */
+export function normalizeFrameMode(v: unknown): FrameMode {
+  return v === 'first' || v === 'first_last' ? v : 'auto'
+}
 
 /**
- * 各图生视频帧模式对参考图片数量的要求（required 为提交任务所需张数）。
+ * 各帧模式对参考图片数量的要求（required 为提交任务所需张数）。
  * slots 为固定图片格子的角色标注（首帧/尾帧），用于在输入区渲染指定数量的上传格子；
- * reference 模式走多模态参考，不设固定格子，上限沿用 MAX_REF_IMAGES。
+ * auto（合并模式，含参考图状态）走多模态参考，不设固定格子，上限沿用 MAX_REF_IMAGES。
+ * allowMultimodal 表示是否允许图片之外的视频/音频参考。
  */
 const FRAME_MODES: {
   mode: FrameMode
@@ -94,19 +116,27 @@ const FRAME_MODES: {
   hint: string
   maxImages: number
   required: number
+  allowMultimodal: boolean
   slots?: string[]
 }[] = [
-  { mode: 'text', label: '文生视频', hint: '无需上传图片，直接输入文字描述生成视频', maxImages: 0, required: 0 },
-  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧', maxImages: 1, required: 1, slots: ['首帧'] },
+  {
+    mode: 'auto',
+    label: '文生视频/参考图',
+    hint: '无需图片可直接生成，上传图片自动转为参考图',
+    maxImages: MAX_REF_IMAGES,
+    required: 0,
+    allowMultimodal: true,
+  },
+  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧', maxImages: 1, required: 1, allowMultimodal: false, slots: ['首帧'] },
   {
     mode: 'first_last',
     label: '首尾帧',
     hint: '上传 2 张图片，分别作为首帧与尾帧',
     maxImages: 2,
     required: 2,
+    allowMultimodal: false,
     slots: ['首帧', '尾帧'],
   },
-  { mode: 'reference', label: '参考图', hint: '上传 1~9 张图片作为多模态参考', maxImages: MAX_REF_IMAGES, required: 1 },
 ]
 
 /** 当前帧模式配置；非 Seedance 视频/图片模式返回 null（走通用多模态限制）。 */
@@ -125,6 +155,14 @@ export function isSeedanceProvider(slug: string): boolean {
   // dreamina-cli 是遗留 slug，后端实际使用 DreaminaSeedanceProvider（Seedance 系列），
   // 见 backend/app/providers/factory.py 中 "dreamina-cli" 注册项。
   return s.includes('seedance') || s === 'dreamina-cli'
+}
+
+/**
+ * 判断是否为 Spark Hub Seedance 中转（唯一需要参考素材审核的 provider）。
+ * 参考素材需先通过 seedance_asset_audit 审核，审核通过后才能用于视频生成。
+ */
+export function isSparkHubSeedance(slug: string): boolean {
+  return slug === 'sparkhub-seedance'
 }
 
 export interface GenerationInputBarProps {
@@ -154,9 +192,7 @@ export function GenerationInputBar({
   mode,
   onModeChange,
   prompt,
-  negativePrompt,
   onPromptChange,
-  onNegativeChange,
   providerSlug,
   modelId,
   onProviderChange,
@@ -169,13 +205,17 @@ export function GenerationInputBar({
   submitting,
   atConcurrencyLimit,
 }: GenerationInputBarProps) {
-  const [negativeOpen, setNegativeOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // 镜像 refAssets，供异步审核轮询读取最新列表，避免闭包捕获过期状态。
+  const refAssetsRef = useRef(refAssets)
+  useEffect(() => {
+    refAssetsRef.current = refAssets
+  }, [refAssets])
 
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
-  const frameMode = (params.frame_mode as FrameMode) ?? 'text'
+  const frameMode = normalizeFrameMode(params.frame_mode)
   const isSeedance = isSeedanceProvider(providerSlug)
 
   // 切回图片模式时移除视频/音频参考（图片模式不支持多模态参考）。
@@ -186,18 +226,18 @@ export function GenerationInputBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-  // Seedance 帧模式：文生视频清空参考素材；首帧/首尾帧仅保留图片参考，视频/音频不适用。
+  // Seedance 帧模式：合并模式（auto）无参考图时即文生视频，清空参考素材；
+  // 首帧/首尾帧仅保留图片参考，视频/音频不适用。
   useEffect(() => {
     if (mode !== 'video' || !isSeedance) return
-    if (frameMode === 'text') {
-      if (refAssets.length > 0) onRefAssetsChange([])
+    const hasImage = refAssets.some((a) => (a.kind ?? 'image') === 'image')
+    if (frameMode === 'auto') {
+      if (!hasImage && refAssets.length > 0) onRefAssetsChange([])
       return
     }
-    if (frameMode !== 'reference') {
-      const cleaned = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
-      if (cleaned.length !== refAssets.length) {
-        onRefAssetsChange(cleaned)
-      }
+    const cleaned = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
+    if (cleaned.length !== refAssets.length) {
+      onRefAssetsChange(cleaned)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, frameMode, isSeedance, refAssets])
@@ -214,16 +254,13 @@ export function GenerationInputBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, frameMode, isSeedance, refAssets])
 
-  // 视频模式智能默认：未上传图片时自动按文生视频（text）生成，无需手动选择；
-  // 上传图片后自动切到首帧（first）以使用该图片。仅当当前为 text 时才自动切到 first，
-  // 避免覆盖用户显式选择的 reference / first_last 模式。
+  // 视频模式智能默认：未上传图片时自动回落到合并模式（文生视频）；
+  // 上传图片后合并模式由 effectiveFrameMode 自动解析为参考图，无需改写 frame_mode。
   useEffect(() => {
     if (mode !== 'video' || !isSeedance) return
     const hasImage = refAssets.some((a) => (a.kind ?? 'image') === 'image')
-    if (!hasImage && frameMode !== 'text') {
-      updateFrameMode('text')
-    } else if (hasImage && frameMode === 'text') {
-      updateFrameMode('first')
+    if (!hasImage && frameMode !== 'auto') {
+      updateFrameMode('auto')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, isSeedance, refAssets])
@@ -235,6 +272,50 @@ export function GenerationInputBar({
     if (file.type.startsWith('video/') || VIDEO_EXTS.includes(ext)) return 'video'
     if (file.type.startsWith('audio/') || AUDIO_EXTS.includes(ext)) return 'audio'
     return null
+  }
+
+  /** 更新单个参考素材的审核状态（基于 ref 镜像，避免闭包过期）。 */
+  function patchAudit(assetId: string, patch: Partial<ReferenceAsset>) {
+    const next = refAssetsRef.current.map((r) =>
+      r.assetId === assetId ? { ...r, ...patch } : r,
+    )
+    refAssetsRef.current = next
+    onRefAssetsChange(next)
+  }
+
+  /** 轮询 Spark Hub Seedance 参考素材审核状态，pending 时定时重查直到终态。 */
+  async function pollAudit(assetId: string) {
+    try {
+      const asset = await getAssetAudit(assetId, providerSlug)
+      const status = asset.audit_status
+      patchAudit(assetId, {
+        auditStatus: status ?? undefined,
+        auditError: asset.audit_error,
+      })
+      if (status === 'pending') {
+        window.setTimeout(() => pollAudit(assetId), 3000)
+      }
+    } catch {
+      // 轮询失败（如网络抖动）静默忽略，下次上传/刷新时重新查询
+    }
+  }
+
+  /** 提交 Spark Hub Seedance 参考素材审核，并异步轮询进度。 */
+  async function startAudit(assetId: string) {
+    patchAudit(assetId, { auditStatus: 'pending', auditError: null })
+    try {
+      const asset = await submitAssetAudit(assetId, providerSlug)
+      patchAudit(assetId, {
+        auditStatus: asset.audit_status ?? 'pending',
+        auditError: asset.audit_error,
+      })
+      if (asset.audit_status === 'pending') {
+        window.setTimeout(() => pollAudit(assetId), 3000)
+      }
+    } catch (e) {
+      patchAudit(assetId, { auditStatus: 'failed', auditError: toApiError(e).message })
+      toast(toApiError(e).message, 'error')
+    }
   }
 
   // 串行上传多个素材，逐个追加到参考列表（避免并发状态竞争）。
@@ -262,7 +343,7 @@ export function GenerationInputBar({
       }
       // Seedance 首帧/首尾帧模式仅接受图片参考，并按帧模式限制图片数量
       const spec = frameModeSpec(mode, isSeedance, frameMode)
-      if (spec && spec.mode !== 'reference') {
+      if (spec && !spec.allowMultimodal) {
         if (kind !== 'image') {
           toast(`${spec.label}模式仅支持上传图片参考`, 'error')
           continue
@@ -272,6 +353,11 @@ export function GenerationInputBar({
           toast(`${spec.label}模式最多上传 ${spec.maxImages} 张参考图`, 'error')
           continue
         }
+      }
+      // 合并模式：无参考图时即文生视频，视频/音频参考需先有参考图才作为参考图模式使用
+      if (spec?.mode === 'auto' && kind !== 'image' && !next.some((a) => (a.kind ?? 'image') === 'image')) {
+        toast('请先上传参考图，再上传视频/音频参考', 'error')
+        continue
       }
       const cap = KIND_CAPS[kind]
       if (next.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
@@ -287,8 +373,17 @@ export function GenerationInputBar({
       }
       try {
         const asset = await uploadAsset(file)
-        next.push({ assetId: asset.id, previewUrl: assetFileUrl(asset.id), kind })
-        added.push({ assetId: asset.id, previewUrl: assetFileUrl(asset.id), kind })
+        const ref: ReferenceAsset = {
+          assetId: asset.id,
+          previewUrl: assetFileUrl(asset.id),
+          kind,
+        }
+        next.push(ref)
+        added.push(ref)
+        // Spark Hub Seedance：参考素材需先审核，上传后自动提审并异步轮询进度
+        if (isSparkHubSeedance(providerSlug)) {
+          startAudit(asset.id)
+        }
       } catch (e) {
         toast(toApiError(e).message, 'error')
       }
@@ -377,6 +472,8 @@ export function GenerationInputBar({
                     key={ref.assetId}
                     previewUrl={ref.previewUrl}
                     kind={ref.kind ?? 'image'}
+                    auditStatus={ref.auditStatus}
+                    auditError={ref.auditError}
                     onPick={() => {}}
                     onClear={() => removeRef(i)}
                   />
@@ -396,12 +493,14 @@ export function GenerationInputBar({
                     key={label}
                     label={label}
                     previewUrl={frameImages[i]?.previewUrl ?? null}
+                    auditStatus={frameImages[i]?.auditStatus}
+                    auditError={frameImages[i]?.auditError}
                     onPick={() => fileInputRef.current?.click()}
                     onClear={() => removeFrameImage(i)}
                   />
                 ))}
               </div>
-            ) : frameMode === 'text' ? null : (
+            ) : (
               <ReferenceSlot
                 previewUrl={null}
                 onPick={() => fileInputRef.current?.click()}
@@ -437,21 +536,11 @@ export function GenerationInputBar({
                   e.target.value = ''
                 }}
               />
-              {negativeOpen && (
-                <input
-                  type="text"
-                  value={negativePrompt}
-                  onChange={(e) => onNegativeChange(e.target.value)}
-                  disabled={submitting}
-                  placeholder="不希望出现的内容，如：模糊、低质量、变形…"
-                  className="w-full rounded-btn border border-border bg-bg-tertiary px-3 py-2 text-sm text-fg-primary placeholder:text-fg-muted focus-visible:outline-none focus-visible:border-fg-muted"
-                />
-              )}
             </div>
           </div>
 
           {/* 底部工具栏 */}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2 pr-32">
             <ModeDropdown mode={mode} onChange={onModeChange} disabled={submitting} placement="top" />
             <ModelPicker
               mode={mode}
@@ -477,23 +566,12 @@ export function GenerationInputBar({
               <FrameModePicker frameMode={frameMode} onChange={updateFrameMode} disabled={submitting} />
             )}
 
-            <button
-              type="button"
-              onClick={() => setNegativeOpen((v) => !v)}
-              className={cn(
-                'flex h-9 items-center gap-1 rounded-btn border border-border px-3 text-sm transition-colors',
-                negativeOpen
-                  ? 'border-fg-muted text-fg-primary'
-                  : 'text-fg-secondary hover:text-fg-primary',
-              )}
+            <Button
+              size="md"
+              onClick={onGenerate}
+              disabled={submitting || atConcurrencyLimit}
+              className="absolute bottom-4 right-4"
             >
-              <Type className="h-4 w-4" />
-              负面词
-            </button>
-
-            <div className="flex-1" />
-
-            <Button size="md" onClick={onGenerate} disabled={submitting || atConcurrencyLimit}>
               <Wand2 className="h-4 w-4" />
               {submitting ? '提交中…' : atConcurrencyLimit ? '并发已满' : '生成'}
             </Button>
@@ -576,7 +654,7 @@ function DurationPicker({
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur()
         }}
-        className="w-12 bg-transparent text-fg-primary focus-visible:outline-none disabled:opacity-50"
+        className="w-10 bg-transparent text-fg-primary focus-visible:outline-none disabled:opacity-50"
       />
       <span className="text-fg-muted">秒</span>
     </div>

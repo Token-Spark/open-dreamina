@@ -123,6 +123,11 @@ def _run_lightweight_migrations() -> None:
     _ensure_column("tasks", "conversation_id", "TEXT")
     # 任务消耗 token 数（需求：任务中心展示模型与 token 信息）
     _ensure_column("tasks", "tokens_used", "INTEGER")
+    # Seedance 参考素材审核字段（Spark Hub seedance_asset_audit）
+    _ensure_column("assets", "audit_status", "TEXT")
+    _ensure_column("assets", "audit_asset_id", "TEXT")
+    _ensure_column("assets", "audit_asset_url", "TEXT")
+    _ensure_column("assets", "audit_error", "TEXT")
 
 
 def init_db() -> None:

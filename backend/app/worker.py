@@ -34,6 +34,7 @@ from .config import settings
 from .database import db_session
 from .models import ApiProvider, Asset, Task
 from .providers import ProviderError, get_provider
+from .providers.sparkhub_base import SparkHubBaseProvider
 from .services import task_service
 from .services.asset_service import (
     create_asset_record,
@@ -65,6 +66,11 @@ celery_app.conf.update(
         "daily-db-backup": {
             "task": "app.worker.backup_database_task",
             "schedule": crontab(hour=3, minute=0),
+        },
+        # 定期清理 worker 中断后遗留的 running 孤儿任务，避免任务永久卡在"生成中"
+        "recover-stale-tasks": {
+            "task": "app.worker.recover_stale_tasks",
+            "schedule": crontab(minute="*/5"),
         },
     },
 )
@@ -124,6 +130,28 @@ def _persist_submit_id(task_id: str, submit_id: str) -> None:
         task.params_json = json.dumps(params, ensure_ascii=False)
 
 
+# 上游状态 → 本地进度/文案映射（Spark Hub query_task 的 data.status）。
+# 上游不提供百分比进度，这里把状态迁移映射为进度台阶，避免前端进度条长时间不动被误判为卡死。
+_SPARKHUB_STATUS_PROGRESS: dict[str, tuple[int, str]] = {
+    "queued": (40, "上游排队中…"),
+    "running": (55, "上游生成中…"),
+}
+
+
+def _on_sparkhub_status(task_id: str, status: str, elapsed_s: float) -> None:
+    """Spark Hub 状态变更回调：把上游进度台阶推送到 Redis/DB，供 SSE 与轮询读取。
+
+    status/elapsed 由 provider 的 _poll 在状态首次变化时回调（同步、异常已由 provider 兜底）。
+    """
+    mapping = _SPARKHUB_STATUS_PROGRESS.get(status)
+    if mapping is None:
+        return
+    pct, base_msg = mapping
+    message = f"{base_msg}（已等待 {int(elapsed_s)}s）"
+    task_service.set_progress(task_id, "running", pct, message)
+    _update_task(task_id, progress=pct)
+
+
 def _extract_tokens(metadata: dict[str, Any]) -> int | None:
     """从 Provider 返回的 metadata 中提取 token 用量。
 
@@ -165,6 +193,36 @@ def _read_input_asset_bytes_list(asset_ids: list[str]) -> list[bytes]:
     return out
 
 
+def _build_sparkhub_seedance_ref_kwargs(
+    db, raw_ids: list[str], frame_mode: str | None
+) -> dict[str, Any]:
+    """为 Spark Hub Seedance 图生视频构造参考素材 URL kwargs（审核后 asset:// 地址）。
+
+    Spark Hub Seedance 的参考素材需先通过 seedance_asset_audit 审核，审核通过后
+    使用返回的 asset:// 地址放入 first_image_url / last_image_url / image_urls。
+    未审核或审核未通过的素材直接报错，避免上游拒绝。
+    """
+    assets = [db.get(Asset, aid) for aid in raw_ids]
+    assets = [a for a in assets if a is not None]
+    if not assets:
+        return {}
+    for a in assets:
+        if a.audit_status != "active" or not a.audit_asset_url:
+            raise ProviderError(
+                f"参考素材 {a.id} 尚未通过审核（status={a.audit_status or 'none'}），"
+                "请等待审核通过后再生成"
+            )
+    urls = [a.audit_asset_url for a in assets]
+    if frame_mode == "first_last":
+        if len(urls) < 2:
+            raise ProviderError("首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前不足")
+        return {"first_image_url": urls[0], "last_image_url": urls[1]}
+    if frame_mode == "reference":
+        return {"image_urls": urls}
+    # first / 默认：首帧
+    return {"first_image_url": urls[0]}
+
+
 @celery_app.task(name="app.worker.run_generation_task", bind=True)
 def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
     """执行生成任务。"""
@@ -191,6 +249,10 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             return {"task_id": task_id, "status": "cancelled"}
 
         provider, slug = _load_provider_for_task_via_db(task_id)
+
+        # Spark Hub 异步任务：把上游状态迁移回调注入 provider，实时推送进度台阶给前端
+        if isinstance(provider, SparkHubBaseProvider):
+            provider.on_status = lambda s, e: _on_sparkhub_status(task_id, s, e)
 
         # 2. generating 30%
         task_service.set_progress(task_id, "running", 30, "正在生成中…")
@@ -238,18 +300,34 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             elif task_type == "text2video":
                 result = loop.run_until_complete(provider.text_to_video(prompt=prompt, **_filter_kwargs(provider.text_to_video, kwargs)))
             elif task_type == "img2video":
-                first_bytes = image_bytes_list[0] if image_bytes_list else None
-                if first_bytes is None:
-                    raise ProviderError("图生视频缺少输入图片")
-                if kwargs.get("frame_mode") == "first_last":
-                    if len(image_bytes_list) < 2:
-                        raise ProviderError(
-                            "首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前不足"
+                if slug == "sparkhub-seedance":
+                    # Spark Hub Seedance：参考素材需先审核，使用审核后的 asset:// 地址
+                    # 作为 first_image_url / last_image_url / image_urls，而非本地字节。
+                    with db_session() as db:
+                        ref_kwargs = _build_sparkhub_seedance_ref_kwargs(
+                            db, raw_ids, kwargs.get("frame_mode")
                         )
-                    kwargs["last_image_bytes"] = image_bytes_list[1]
-                elif kwargs.get("frame_mode") == "reference":
-                    kwargs["reference_image_bytes_list"] = image_bytes_list
-                result = loop.run_until_complete(provider.image_to_video(image_bytes=first_bytes, prompt=prompt, **_filter_kwargs(provider.image_to_video, kwargs)))
+                    kwargs.update(ref_kwargs)
+                    result = loop.run_until_complete(
+                        provider.image_to_video(
+                            image_bytes=b"",
+                            prompt=prompt,
+                            **_filter_kwargs(provider.image_to_video, kwargs),
+                        )
+                    )
+                else:
+                    first_bytes = image_bytes_list[0] if image_bytes_list else None
+                    if first_bytes is None:
+                        raise ProviderError("图生视频缺少输入图片")
+                    if kwargs.get("frame_mode") == "first_last":
+                        if len(image_bytes_list) < 2:
+                            raise ProviderError(
+                                "首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前不足"
+                            )
+                        kwargs["last_image_bytes"] = image_bytes_list[1]
+                    elif kwargs.get("frame_mode") == "reference":
+                        kwargs["reference_image_bytes_list"] = image_bytes_list
+                    result = loop.run_until_complete(provider.image_to_video(image_bytes=first_bytes, prompt=prompt, **_filter_kwargs(provider.image_to_video, kwargs)))
             else:
                 raise ProviderError(f"未知任务类型: {task_type}")
         finally:
@@ -388,6 +466,23 @@ def backup_database_task() -> dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@celery_app.task(name="app.worker.recover_stale_tasks")
+def recover_stale_tasks() -> dict[str, Any]:
+    """清理 worker 中断后遗留的 running 孤儿任务（标记为 failed）。
+
+    由 celery-beat 每 5 分钟触发一次；worker 启动时也会立即执行一次，
+    确保重启后能马上恢复上次中断遗留的任务。
+    """
+    try:
+        count = task_service.recover_stale_tasks()
+        if count:
+            logger.info("Recovered %s stale task(s) stuck in running", count)
+        return {"recovered": count}
+    except Exception:
+        logger.exception("recover_stale_tasks failed")
+        return {"recovered": 0, "error": "recovery failed"}
+
+
 # ============================================================
 # 即梦 CLI 引导任务（必须在 worker 节点执行：生成任务在 worker 内调用 CLI）
 # ============================================================
@@ -436,6 +531,14 @@ def _dreamina_cli_bootstrap(sender=None, **kwargs) -> None:  # noqa: ANN001
 
     自动安装失败最多重试 3 次（Redis 计数），避免网络异常时无限循环。
     """
+    # 先恢复上次中断遗留的 running 孤儿任务，避免重启后任务仍卡在"生成中"
+    try:
+        recovered = task_service.recover_stale_tasks()
+        if recovered:
+            logger.info("[恢复] worker 启动时恢复 %s 个卡在 running 的孤儿任务", recovered)
+    except Exception:
+        logger.exception("[恢复] worker 启动时恢复孤儿任务失败（不影响 worker 正常工作）")
+
     try:
         from .services import dreamina_cli_service as dcs
 

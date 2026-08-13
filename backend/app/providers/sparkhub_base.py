@@ -23,12 +23,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from abc import ABC
 from typing import Any, Callable
 
 import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
+
+logger = logging.getLogger(__name__)
 
 # Spark Hub 统一异步任务接口路径
 _CREATE_PATH = "/task/create_task"
@@ -92,8 +95,10 @@ class SparkHubBaseProvider(BaseProvider, ABC):
     _POLL_INTERVAL = 5.0
     _POLL_TIMEOUT = 600.0  # 单次生成最长等待（秒）：10 分钟
 
-    # 终态判定：轮询返回体中判为成功的关键字；失败/其它视为失败
-    _SUCCESS_STATUS = "succeeded"
+    # 终态判定：轮询返回体中判为成功的状态集合；失败/其它视为失败。
+    # 实测 Spark Hub 生视频/生图成功终态为 "completed"（query_task 的 data.status），
+    # 兼容旧写法 "succeeded"/"success"，避免状态不匹配导致轮询永不结束、前端无限等待。
+    _SUCCESS_STATUSES = {"succeeded", "completed", "success"}
     _TERMINAL_FAILED = {"failed", "cancelled", "expired"}
 
     def __init__(
@@ -105,6 +110,9 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.config = config or {}
+        # 上游状态变更回调 (status, elapsed_s)，由 worker 注入以把上游进度推给前端；
+        # 同步函数，回调异常不应影响主流程（_poll 内已兜底）。
+        self.on_status: Callable[[str, float], None] | None = None
 
     # ---------- HTTP / 业务错误码 ----------
 
@@ -151,6 +159,7 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         """轮询任务直到终态；返回终态响应体。"""
         url = f"{self.base_url}{_QUERY_PATH.format(task_id=task_id)}"
         elapsed = 0.0
+        last_status = ""
         while elapsed < self._POLL_TIMEOUT:
             resp = await self._request_with_retry(
                 client, "GET", url, provider_name="Spark Hub", headers=self._headers(),
@@ -159,7 +168,15 @@ class SparkHubBaseProvider(BaseProvider, ABC):
             self._raise_business_error(data, "查询任务")
             status = _find(data, "status", "state", "task_status")
             status = str(status).lower() if status is not None else ""
-            if status == self._SUCCESS_STATUS:
+            # 状态发生变化时回调（用于把上游 queued/running 等进度推给前端，避免进度条长时间不动）
+            if status and status != last_status:
+                last_status = status
+                if self.on_status is not None:
+                    try:
+                        self.on_status(status, elapsed)
+                    except Exception:
+                        logger.warning("Spark Hub 进度回调失败（不影响任务轮询）", exc_info=True)
+            if status in self._SUCCESS_STATUSES:
                 return data
             if status in self._TERMINAL_FAILED:
                 err = _find(data, "error", "message", "fail_reason")

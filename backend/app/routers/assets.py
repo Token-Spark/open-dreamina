@@ -26,7 +26,9 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Asset
+from ..providers import ProviderError
 from ..schemas import (
+    AssetAuditRequest,
     AssetListResponse,
     AssetResponse,
     AssetUpdate,
@@ -34,6 +36,7 @@ from ..schemas import (
     BatchDeleteResponse,
     MessageResponse,
 )
+from ..services.asset_audit_service import check_asset_audit, submit_asset_audit
 from ..services.asset_service import create_asset_record, delete_asset_files, resolve_asset_path
 from ..utils.file_utils import save_uploaded_file, make_thumbnail, _guess_asset_type
 
@@ -54,6 +57,10 @@ def _to_response(asset: Asset) -> AssetResponse:
         duration=asset.duration,
         tags=json.loads(asset.tags_json or "[]"),
         is_favorite=bool(asset.is_favorite),
+        audit_status=asset.audit_status,
+        audit_asset_id=asset.audit_asset_id,
+        audit_asset_url=asset.audit_asset_url,
+        audit_error=asset.audit_error,
         created_at=asset.created_at,
         file_url=f"/api/v1/assets/{asset.id}/file",
         thumbnail_url=(
@@ -138,6 +145,47 @@ def get_asset(asset_id: str, db: Session = Depends(get_db)) -> AssetResponse:
     asset = db.get(Asset, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"资产 {asset_id} 不存在"})
+    return _to_response(asset)
+
+
+@router.post("/{asset_id}/audit", response_model=AssetResponse)
+async def audit_asset(
+    asset_id: str,
+    payload: AssetAuditRequest,
+    db: Session = Depends(get_db),
+) -> AssetResponse:
+    """提交 Seedance 参考素材审核（Spark Hub seedance_asset_audit/submit）。
+
+    仅 Spark Hub Seedance 生视频需要；提交后素材进入 pending 审核中状态。
+    """
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"资产 {asset_id} 不存在"})
+    try:
+        asset = await submit_asset_audit(db, asset, payload.provider)
+    except ProviderError as e:
+        raise HTTPException(status_code=400, detail={"code": "audit_failed", "message": str(e)})
+    return _to_response(asset)
+
+
+@router.get("/{asset_id}/audit", response_model=AssetResponse)
+async def get_asset_audit(
+    asset_id: str,
+    provider: str = Query(..., description="Spark Hub Seedance Provider slug"),
+    db: Session = Depends(get_db),
+) -> AssetResponse:
+    """查询 Seedance 参考素材审核状态（Spark Hub seedance_asset_audit/status）。
+
+    素材处于 pending 时主动向 Spark Hub 查询一次并刷新本地状态，供前端异步轮询。
+    """
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"资产 {asset_id} 不存在"})
+    if asset.audit_status == "pending":
+        try:
+            asset = await check_asset_audit(db, asset, provider)
+        except ProviderError as e:
+            raise HTTPException(status_code=400, detail={"code": "audit_check_failed", "message": str(e)})
     return _to_response(asset)
 
 

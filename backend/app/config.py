@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     assets_dir: str = "./data/assets"
     backup_dir: str = "./data/backups"
 
+    # 素材审核：Spark Hub 需要可公网访问的素材 URL（形如 http://host/api/v1/assets/{id}/file）。
+    # 部署时需配置为外部可访问的地址，否则无法提交 Seedance 参考素材审核。
+    public_base_url: str = ""
+
     # 加密（必须显式配置，无默认值；deploy 脚本会自动生成随机值写入 .env）
     # 未设置时启动即报错，避免使用弱默认值导致 API Key 加密形同虚设
     encryption_key: str
@@ -45,8 +49,12 @@ class Settings(BaseSettings):
     )
 
     # 任务队列
-    task_time_limit: int = 600
-    task_soft_time_limit: int = 540
+    # 注意：Spark Hub 生视频为异步任务，单次轮询最长等待 _POLL_TIMEOUT=600s，
+    # 加上结果下载/落盘，总耗时可能超过 600s。因此软/硬超时必须显著大于 600s，
+    # 否则长视频生成会被 Celery 以 SoftTimeLimitExceeded 杀掉（表现为"一直生成中"后失败）。
+    # 软超时 1200s（20 分钟），硬超时需大于软超时。
+    task_time_limit: int = 1260
+    task_soft_time_limit: int = 1200
     max_concurrent_tasks: int = 2
 
     # SSE

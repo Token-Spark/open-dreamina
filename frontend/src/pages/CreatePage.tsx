@@ -29,9 +29,11 @@ import { TopicPanel } from '@/components/TopicPanel'
 import { GenMessageCard } from '@/components/GenMessageCard'
 import {
   GenerationInputBar,
+  effectiveFrameMode,
   frameModeSpec,
   isSeedanceProvider,
-  type FrameMode,
+  isSparkHubSeedance,
+  normalizeFrameMode,
   type ReferenceAsset,
 } from '@/components/GenerationInputBar'
 import { ImageLightbox } from '@/components/ImageLightbox'
@@ -190,24 +192,39 @@ export function CreatePage() {
     if (!providerSlug) return toast('请先在设置中启用一个服务提供商', 'error')
     if (!requestPrompt.trim()) return toast('请输入提示词', 'error')
     const hasRef = requestRefAssets.length > 0
+    const hasImage = requestRefAssets.some((a) => (a.kind ?? 'image') === 'image')
     const requestType = deriveTaskType(requestMode, hasRef)
     if (!hasRef && (requestType === 'img2img' || requestType === 'img2video')) {
       return toast('请上传参考图', 'error')
     }
     // Seedance 首帧需 1 张、首尾帧需 2 张参考图；不足时阻止提交并提醒。
-    const frameSpec = frameModeSpec(
-      requestMode,
-      isSeedanceProvider(providerSlug),
-      (requestParams.frame_mode as FrameMode) ?? 'first',
-    )
+    // 合并模式（auto）required=0：无图即文生视频，有图即参考图，无需额外校验。
+    const frameMode = normalizeFrameMode(requestParams.frame_mode)
+    const frameSpec = frameModeSpec(requestMode, isSeedanceProvider(providerSlug), frameMode)
     if (frameSpec) {
       const imageCount = requestRefAssets.filter((a) => (a.kind ?? 'image') === 'image').length
       if (imageCount < frameSpec.required) {
         return toast(`${frameSpec.label}模式需上传 ${frameSpec.required} 张参考图`, 'error')
       }
     }
+    // Spark Hub Seedance：参考素材需先通过审核才能用于视频生成，未通过时阻止提交。
+    if (isSparkHubSeedance(providerSlug) && hasRef) {
+      const unaudited = requestRefAssets.filter((a) => a.auditStatus !== 'active')
+      if (unaudited.length) {
+        const pending = unaudited.some((a) => a.auditStatus === 'pending')
+        return toast(
+          pending ? '参考素材正在审核中，请等待审核通过后再生成' : '参考素材未通过审核，无法生成',
+          'error',
+        )
+      }
+    }
     if (!currentTopicId) return toast('对话未就绪，请稍候', 'error')
 
+    // 合并模式解析为后端接受的 text / reference，其余帧模式原样透传；
+    // 仅 Seedance 系列使用 frame_mode，非 Seedance 保持原样提交。
+    const sendParams = isSeedanceProvider(providerSlug)
+      ? { ...requestParams, frame_mode: effectiveFrameMode(frameMode, hasImage) }
+      : requestParams
     const requestRefAssetIds = requestRefAssets.map((a) => a.assetId)
 
     setSubmitting(true)
@@ -218,7 +235,7 @@ export function CreatePage() {
         model_id: requestModelId || undefined,
         prompt: requestPrompt,
         negative_prompt: requestNegative || undefined,
-        params: requestParams as Record<string, unknown>,
+        params: sendParams as Record<string, unknown>,
         input_asset_id: requestRefAssetIds[0] ?? undefined,
         input_asset_ids: hasRef ? requestRefAssetIds : undefined,
         conversation_id: currentTopicId,
@@ -237,7 +254,7 @@ export function CreatePage() {
         message: null,
         resultUrl: task.result_url,
         thumbnailUrl: task.thumbnail_url,
-        params: requestParams as Record<string, unknown>,
+        params: sendParams as Record<string, unknown>,
         provider: providerSlug,
         modelId: requestModelId || null,
         inputAssetIds: requestRefAssetIds,
@@ -290,14 +307,19 @@ export function CreatePage() {
     setNegativePrompt(message.negativePrompt)
     if (message.provider) setProviderSlug(message.provider)
     if (message.modelId) setModelId(message.modelId)
-    // 复用参考素材：回填 assetId 与预览地址列表；从后端资产记录恢复类型（图片/视频/音频），
-    // 查询失败时缺省按图片处理（兼容旧任务）。
-    const kinds = await Promise.all(
+    // 复用参考素材：回填 assetId 与预览地址列表；从后端资产记录恢复类型（图片/视频/音频）
+    // 与 Seedance 审核状态，查询失败时缺省按图片处理（兼容旧任务）。
+    const metas = await Promise.all(
       message.inputAssetIds.map(async (assetId) => {
         try {
-          return (await getAsset(assetId)).type
+          const a = await getAsset(assetId)
+          return {
+            kind: a.type,
+            auditStatus: a.audit_status ?? undefined,
+            auditError: a.audit_error,
+          }
         } catch {
-          return 'image' as const
+          return { kind: 'image' as const, auditStatus: undefined, auditError: null }
         }
       }),
     )
@@ -305,7 +327,9 @@ export function CreatePage() {
       message.inputAssetIds.map((assetId, i) => ({
         assetId,
         previewUrl: message.inputAssetUrls[i] ?? assetFileUrl(assetId),
-        kind: kinds[i] ?? 'image',
+        kind: metas[i].kind,
+        auditStatus: metas[i].auditStatus,
+        auditError: metas[i].auditError,
       })),
     )
   }

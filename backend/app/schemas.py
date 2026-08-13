@@ -122,6 +122,11 @@ class AssetUpdate(BaseModel):
     is_favorite: Optional[bool] = None
 
 
+class AssetAuditRequest(BaseModel):
+    """提交 Seedance 参考素材审核：指定使用的 Provider slug（Spark Hub Seedance）。"""
+    provider: str
+
+
 class AssetResponse(BaseModel):
     id: str
     task_id: Optional[str] = None
@@ -135,6 +140,11 @@ class AssetResponse(BaseModel):
     duration: Optional[float] = None
     tags: list[str] = Field(default_factory=list)
     is_favorite: bool = False
+    # Seedance 参考素材审核状态（Spark Hub seedance_asset_audit）
+    audit_status: Optional[str] = None  # pending|active|failed
+    audit_asset_id: Optional[str] = None
+    audit_asset_url: Optional[str] = None  # 审核通过后的 asset:// 地址
+    audit_error: Optional[str] = None
     created_at: Optional[str] = None
     # 便捷链接
     file_url: Optional[str] = None

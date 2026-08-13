@@ -100,6 +100,12 @@ class Asset(Base):
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)
     tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     is_favorite: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Seedance 参考素材审核（Spark Hub seedance_asset_audit）：
+    # audit_status: pending|active|failed；audit_asset_url 为审核通过后的 asset:// 地址。
+    audit_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    audit_asset_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    audit_asset_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    audit_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
 
     task: Mapped[Task | None] = relationship("Task", back_populates="assets")
