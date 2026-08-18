@@ -112,19 +112,27 @@ export function assetThumbnailUrl(assetId: string): string {
 /**
  * 提交 Seedance 参考素材审核（Spark Hub seedance_asset_audit/submit）。
  * 仅 Spark Hub Seedance 生视频需要；提交后素材进入 pending 审核中状态。
+ *
+ * 后端需先把素材上传到七牛云（大视频耗时较长），再向 Spark Hub 提审（后端侧
+ * 已有 60s 超时），因此覆盖默认 30s 超时，避免大文件场景下前端先于后端超时。
  */
 export async function submitAssetAudit(assetId: string, provider: string): Promise<Asset> {
-  const { data } = await apiClient.post<Asset>(`/assets/${assetId}/audit`, { provider })
+  const { data } = await apiClient.post<Asset>(`/assets/${assetId}/audit`, { provider }, {
+    timeout: 120_000,
+  })
   return data
 }
 
 /**
  * 查询 Seedance 参考素材审核状态（Spark Hub seedance_asset_audit/status）。
  * 素材处于 pending 时后端会主动向 Spark Hub 查询一次并刷新本地状态。
+ *
+ * 后端向 Spark Hub 查询有 60s 超时，覆盖默认 30s 超时以匹配后端等待时间。
  */
 export async function getAssetAudit(assetId: string, provider: string): Promise<Asset> {
   const { data } = await apiClient.get<Asset>(`/assets/${assetId}/audit`, {
     params: { provider },
+    timeout: 90_000,
   })
   return data
 }

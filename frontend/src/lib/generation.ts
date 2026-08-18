@@ -226,7 +226,7 @@ export type AspectRatio =
   | '9:16'
 
 export type ImageResolution = '1K' | '1.5K' | '2K' | '3K' | '4K'
-export type VideoResolution = '480p' | '720p' | '1080p'
+export type VideoResolution = '480p' | '720p' | '1080p' | '2160p'
 export type Resolution = ImageResolution | VideoResolution
 
 export interface AspectRatioDef {
@@ -286,7 +286,38 @@ export const RESOLUTIONS_BY_MODE: Record<ContentMode, ResolutionDef[]> = {
     { value: '480p', label: '标清 480p' },
     { value: '720p', label: '高清 720p' },
     { value: '1080p', label: '超清 1080p' },
+    { value: '2160p', label: '4K 2160p' },
   ],
+}
+
+/**
+ * 视频模型支持的分辨率因模型而异（数据来源：spark-hub router.md 第 9.3 节）：
+ * - Seedance 2.0（标准版）：480p / 720p / 1080p / 2160p
+ * - Seedance 2.0 Fast / Mini：仅 480p / 720p
+ * - Seedance 2.5：仅 480p / 720p
+ */
+export function videoResolutionsForModel(modelId: string): ResolutionDef[] {
+  const id = modelId.toLowerCase()
+  const isFastOrMini = id.includes('fast') || id.includes('mini')
+  const is25 = id.includes('2_5') || id.includes('2-5') || id.includes('2.5')
+  const isFullSeedance2 =
+    !isFastOrMini &&
+    !is25 &&
+    (id.includes('seedance_2') || id.includes('seedance-2') || id.includes('seedance2.0'))
+
+  if (isFullSeedance2) {
+    return [
+      { value: '480p', label: '标清 480p' },
+      { value: '720p', label: '高清 720p' },
+      { value: '1080p', label: '超清 1080p' },
+      { value: '2160p', label: '4K 2160p' },
+    ]
+  }
+  // Fast / Mini / 2.5 及未知视频模型仅支持 480p / 720p
+  return [
+    { value: '480p', label: '标清 480p' },
+    { value: '720p', label: '高清 720p' },
+  ]
 }
 
 /** 默认比例：图片 1:1 正方形；视频 16:9 横屏（与 Seedance API 默认 ratio 一致）。 */
@@ -365,6 +396,14 @@ const VIDEO_SIZE_TABLE: Record<VideoResolution, Partial<Record<AspectRatio, { wi
     '3:4': { width: 1248, height: 1664 },
     '9:16': { width: 1088, height: 1920 },
     '21:9': { width: 2176, height: 928 },
+  },
+  '2160p': {
+    '16:9': { width: 3840, height: 2176 },
+    '4:3': { width: 3328, height: 2496 },
+    '1:1': { width: 2880, height: 2880 },
+    '3:4': { width: 2496, height: 3328 },
+    '9:16': { width: 2176, height: 3840 },
+    '21:9': { width: 4352, height: 1856 },
   },
 }
 

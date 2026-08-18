@@ -1,0 +1,52 @@
+# 开发模式覆盖配置 —— 实现前后端代码动态热加载
+#
+# 用法：
+#   ./dev.sh                     # 一键启动开发环境
+#   或手动：
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# 特性：
+#   - 前端：Vite dev server + HMR 热更新，源码挂载即时生效
+#   - 后端：uvicorn --reload，Python 代码改动自动重载
+#   - Celery：watchmedo 监听文件变化，自动重启 worker / beat
+services:
+  frontend:
+    # 使用开发专用 Dockerfile（Vite dev server 替代 Nginx）
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    # !override 替换生产端口映射（10131:80 → 10131:10131）
+    ports: !override
+      - "10131:10131"
+    volumes:
+      # 挂载源码目录，修改即时触发 HMR
+      - ./frontend:/app:cached
+      # 匿名卷持久化 node_modules，不被宿主机挂载覆盖
+      - /app/node_modules
+    environment:
+      - VITE_DEV_HOST=0.0.0.0
+      - VITE_PROXY_TARGET=http://backend:10130
+      # Docker Desktop 卷挂载不支持原生 inotify，需启用轮询监听
+      - VITE_USE_POLLING=true
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    volumes:
+      # 追加源码挂载，修改 backend/app 下代码无需重新 build
+      - ./backend/app:/app/app:cached
+    # --reload 让 API 代码改动自动热加载
+    command: uvicorn app.main:app --host 0.0.0.0 --port 10130 --reload --reload-dir /app/app
+
+  celery-worker:
+    volumes:
+      - ./backend/app:/app/app:cached
+    # watchmedo 监听 .py 文件变化，自动重启 celery worker
+    command: sh -c "mkdir -p /app/data/dreamina-home && exec watchmedo auto-restart --directory=/app/app --pattern='*.py' --recursive -- celery -A app.worker worker --loglevel=info --concurrency=2"
+
+  celery-beat:
+    volumes:
+      - ./backend/app:/app/app:cached
+    # watchmedo 监听 .py 文件变化，自动重启 celery beat
+    command: watchmedo auto-restart --directory=/app/app --pattern='*.py' --recursive -- celery -A app.worker beat --loglevel=info

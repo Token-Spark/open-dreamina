@@ -108,8 +108,6 @@ export function CreatePage() {
   const currentTopicId = useConversationStore((s) => s.currentTopicId)
   const messages = useConversationStore((s) => s.messages)
   const initConversations = useConversationStore((s) => s.init)
-  const setCurrentTopic = useConversationStore((s) => s.setCurrentTopic)
-  const addTopic = useConversationStore((s) => s.addTopic)
   const addMessage = useConversationStore((s) => s.addMessage)
   const updateMessage = useConversationStore((s) => s.updateMessage)
   const activeTasks = useTaskStore((s) => s.active)
@@ -247,8 +245,10 @@ export function CreatePage() {
       }
     }
     // Spark Hub Seedance：参考素材需先通过审核才能用于视频生成，未通过时阻止提交。
+    // 音频参考无需审核，不参与校验。
     if (isSparkHubSeedance(providerSlug) && hasRef) {
-      const unaudited = requestRefAssets.filter((a) => a.auditStatus !== 'active')
+      const auditable = requestRefAssets.filter((a) => (a.kind ?? 'image') !== 'audio')
+      const unaudited = auditable.filter((a) => a.auditStatus !== 'active')
       if (unaudited.length) {
         const pending = unaudited.some((a) => a.auditStatus === 'pending')
         return toast(
@@ -398,14 +398,6 @@ export function CreatePage() {
     setLightboxOpen(true)
   }
 
-  async function startNewTopic() {
-    const id = await addTopic()
-    setCurrentTopic(id)
-    setPrompt('')
-    setNegativePrompt('')
-    setRefAssets([])
-  }
-
   if (!currentTopic) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-fg-muted">
@@ -442,20 +434,13 @@ export function CreatePage() {
                 ))}
               </div>
             )}
-            <button
-              type="button"
-              onClick={startNewTopic}
-              className="rounded-btn border border-border bg-bg-secondary px-3 py-1.5 text-xs text-fg-secondary transition-colors hover:bg-bg-tertiary hover:text-fg-primary"
-            >
-              新对话
-            </button>
           </div>
         </header>
 
         {/* Conversation feed */}
         <div ref={feedRef} className="flex-1 overflow-auto p-4 scrollbar-thin">
           <div className="mx-auto max-w-4xl space-y-6">
-            {messages.length === 0 && <EmptyFeed onStart={startNewTopic} />}
+            {messages.length === 0 && <EmptyFeed />}
             {messages.map((message) => (
               <GenMessageCard
                 key={message.id}
@@ -509,18 +494,11 @@ export function CreatePage() {
   )
 }
 
-function EmptyFeed({ onStart }: { onStart: () => void }) {
+function EmptyFeed() {
   return (
     <div className="flex h-full min-h-[40vh] flex-col items-center justify-center rounded-card border border-dashed border-border text-center">
       <p className="text-sm text-fg-secondary">从下方输入提示词开始创作</p>
       <p className="mt-1 text-xs text-fg-muted">对话与生成记录会自动持久保存</p>
-      <button
-        type="button"
-        onClick={onStart}
-        className="mt-4 rounded-btn bg-bg-tertiary px-4 py-2 text-xs text-fg-secondary transition-colors hover:text-fg-primary"
-      >
-        开启新对话
-      </button>
     </div>
   )
 }

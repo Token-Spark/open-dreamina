@@ -198,29 +198,55 @@ def _build_sparkhub_seedance_ref_kwargs(
 ) -> dict[str, Any]:
     """为 Spark Hub Seedance 图生视频构造参考素材 URL kwargs（审核后 asset:// 地址）。
 
-    Spark Hub Seedance 的参考素材需先通过 seedance_asset_audit 审核，审核通过后
-    使用返回的 asset:// 地址放入 first_image_url / last_image_url / image_urls。
-    未审核或审核未通过的素材直接报错，避免上游拒绝。
+    按素材类型分别路由到上游 API 对应字段：
+    - 图片：first/first_last → first_image_url/last_image_url；reference/text → image_urls
+    - 视频：video_urls（使用审核后的 asset:// 地址）
+    - 音频：audio_urls（需公网 URL；暂未接入，跳过）
+
+    图片/视频参考素材需先通过 seedance_asset_audit 审核，未审核或审核未通过的直接报错，
+    避免上游拒绝。
     """
     assets = [db.get(Asset, aid) for aid in raw_ids]
     assets = [a for a in assets if a is not None]
     if not assets:
         return {}
+    # 校验：图片/视频必须审核通过（音频无需审核，跳过校验）
     for a in assets:
+        if a.type == "audio":
+            continue
         if a.audit_status != "active" or not a.audit_asset_url:
             raise ProviderError(
                 f"参考素材 {a.id} 尚未通过审核（status={a.audit_status or 'none'}），"
                 "请等待审核通过后再生成"
             )
-    urls = [a.audit_asset_url for a in assets]
-    if frame_mode == "first_last":
-        if len(urls) < 2:
-            raise ProviderError("首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前不足")
-        return {"first_image_url": urls[0], "last_image_url": urls[1]}
-    if frame_mode == "reference":
-        return {"image_urls": urls}
-    # first / 默认：首帧
-    return {"first_image_url": urls[0]}
+
+    kwargs_out: dict[str, Any] = {}
+    # 按素材类型分流：视频 → video_urls，图片按帧模式分发
+    image_urls = [
+        a.audit_asset_url for a in assets
+        if a.type not in ("video", "audio") and a.audit_asset_url
+    ]
+    video_urls = [
+        a.audit_asset_url for a in assets
+        if a.type == "video" and a.audit_asset_url
+    ]
+
+    if video_urls:
+        kwargs_out["video_urls"] = video_urls
+
+    if image_urls:
+        if frame_mode == "first_last":
+            if len(image_urls) < 2:
+                raise ProviderError("首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前不足")
+            kwargs_out["first_image_url"] = image_urls[0]
+            kwargs_out["last_image_url"] = image_urls[1]
+        elif frame_mode == "first":
+            kwargs_out["first_image_url"] = image_urls[0]
+        else:
+            # reference / text / auto / 默认：多模态参考图
+            kwargs_out["image_urls"] = image_urls
+
+    return kwargs_out
 
 
 @celery_app.task(name="app.worker.run_generation_task", bind=True)

@@ -12,3 +12,4 @@ python-dotenv
 cryptography
 python-multipart
 qiniu
+watchdog

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Check, ImagePlus, Loader2, Music, Video, X } from 'lucide-react'
+import { Check, Loader2, Music, Plus, Video, X } from 'lucide-react'
 
 /** 参考素材类型：图片 / 视频 / 音频（视频模式支持多模态参考，见火山方舟视频生成 API）。 */
 export type ReferenceKind = 'image' | 'video' | 'audio'
@@ -114,7 +114,7 @@ export function ReferenceSlot({
       className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-btn border border-dashed border-border text-fg-muted transition-colors hover:border-fg-muted hover:text-fg-secondary"
       aria-label={label ? `上传${label}` : '上传参考素材'}
     >
-      <ImagePlus className="h-5 w-5" />
+      <Plus className="h-5 w-5" />
     </button>
   )
 

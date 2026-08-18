@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import {
   ASPECT_RATIOS_BY_MODE,
   RESOLUTIONS_BY_MODE,
+  videoResolutionsForModel,
   sizeFromRatioResolution,
   type AspectRatio,
   type ContentMode,
@@ -26,6 +27,8 @@ import {
 
 export interface SizePickerProps {
   mode: ContentMode
+  /** 视频模式下用于按模型过滤可用分辨率（不同 Seedance 变体支持不同分辨率）。 */
+  modelId?: string
   aspectRatio: AspectRatio
   resolution: Resolution
   onChange: (ratio: AspectRatio, resolution: Resolution) => void
@@ -35,6 +38,7 @@ export interface SizePickerProps {
 
 export function SizePicker({
   mode,
+  modelId,
   aspectRatio,
   resolution,
   onChange,
@@ -42,7 +46,10 @@ export function SizePicker({
   placement = 'bottom',
 }: SizePickerProps) {
   const ratios = ASPECT_RATIOS_BY_MODE[mode]
-  const resolutions = RESOLUTIONS_BY_MODE[mode]
+  // 视频模式按模型过滤分辨率（不同 Seedance 变体支持不同分辨率）；
+  // 图片模式或缺失 modelId 时回退到模式默认列表。
+  const resolutions =
+    mode === 'video' && modelId ? videoResolutionsForModel(modelId) : RESOLUTIONS_BY_MODE[mode]
   // 当前状态若不属于该模式（如切换 mode 时残留），回退到模式默认
   const ratioDef = ratios.find((r) => r.value === aspectRatio) ?? ratios[0]
   const resDef = resolutions.find((r) => r.value === resolution) ?? resolutions[Math.min(1, resolutions.length - 1)]

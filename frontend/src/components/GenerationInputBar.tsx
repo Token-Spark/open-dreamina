@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as React from 'react'
 import {
   Wand2,
@@ -22,6 +22,8 @@ import {
   MonitorPlay,
   Clock,
   Film,
+  Music,
+  Video,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
@@ -32,6 +34,7 @@ import { uploadAsset, assetFileUrl, submitAssetAudit, getAssetAudit } from '@/ap
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
+  videoResolutionsForModel,
   type ContentMode,
   type AspectRatio,
   type Resolution,
@@ -216,6 +219,132 @@ export function GenerationInputBar({
     refAssetsRef.current = refAssets
   }, [refAssets])
 
+  // @ 引用：在提示词中键入 @ 触发悬浮选择器，引用已上传参考素材作为生成提示词。
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const mentionRef = useRef<HTMLDivElement>(null)
+  const [mention, setMention] = useState<{
+    open: boolean
+    /** @ 字符在提示词中的起始下标，选中后用于替换 @ 及其后已输入的查询文本。 */
+    start: number
+    /** @ 之后已输入的文本，用于过滤候选项。 */
+    query: string
+    /** 当前键盘高亮的候选项下标。 */
+    activeIndex: number
+  }>({ open: false, start: -1, query: '', activeIndex: 0 })
+
+  /** 候选项：按当前模式过滤的参考素材，编号按类型分别从 1 递增（图1/视频1/音频1…）。 */
+  const mentionItems = useMemo(() => {
+    if (!mention.open) return [] as {
+      asset: ReferenceAsset
+      kind: ReferenceKind
+      token: string
+      label: string
+    }[]
+    const counts: Record<ReferenceKind, number> = { image: 0, video: 0, audio: 0 }
+    const items = refAssets
+      .filter((a) => (mode === 'image' ? (a.kind ?? 'image') === 'image' : true))
+      .map((a) => {
+        const kind = a.kind ?? 'image'
+        counts[kind] += 1
+        const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
+        return {
+          asset: a,
+          kind,
+          token: `@${short}${counts[kind]}`,
+          label: `${KIND_LABELS[kind]} ${counts[kind]}`,
+        }
+      })
+    if (!mention.query) return items
+    const q = mention.query.toLowerCase()
+    return items.filter(
+      (it) => it.token.toLowerCase().includes(q) || it.label.toLowerCase().includes(q),
+    )
+  }, [mention.open, mention.query, refAssets, mode])
+
+  // 点击浮层外部关闭引用选择器
+  useEffect(() => {
+    if (!mention.open) return
+    function onClick(e: MouseEvent) {
+      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
+        setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [mention.open])
+
+  // 候选项变化时重置高亮，避免越界
+  useEffect(() => {
+    setMention((m) => (m.activeIndex === 0 ? m : { ...m, activeIndex: 0 }))
+  }, [mentionItems])
+
+  /**
+   * 扫描光标前的文本，判断是否处于 @ 触发态：
+   * 找到位于行首或空白之后的 @，且从 @ 到光标之间不含空白。
+   */
+  function detectMention(value: string, pos: number): { start: number; query: string } | null {
+    const before = value.slice(0, pos)
+    for (let i = before.length - 1; i >= 0; i--) {
+      const ch = before[i]
+      if (ch === '@') {
+        const prev = before[i - 1]
+        if (i === 0 || /\s/.test(prev ?? '')) {
+          return { start: i, query: before.slice(i + 1) }
+        }
+        return null
+      }
+      if (/\s/.test(ch)) return null
+    }
+    return null
+  }
+
+  function handlePromptInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value
+    const pos = e.target.selectionStart ?? value.length
+    onPromptChange(value)
+    const detected = detectMention(value, pos)
+    if (detected) {
+      setMention({ open: true, start: detected.start, query: detected.query, activeIndex: 0 })
+    } else if (mention.open) {
+      setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+    }
+  }
+
+  function handlePromptKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!mention.open || mentionItems.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setMention((m) => ({ ...m, activeIndex: (m.activeIndex + 1) % mentionItems.length }))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setMention((m) => ({
+        ...m,
+        activeIndex: (m.activeIndex - 1 + mentionItems.length) % mentionItems.length,
+      }))
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      insertMention(mentionItems[mention.activeIndex])
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+    }
+  }
+
+  /** 将引用 token 插入到 @ 起始处，替换 @ 及其后已输入的查询文本，并追加一个空格。 */
+  function insertMention(item: (typeof mentionItems)[number]) {
+    const textarea = textareaRef.current
+    const pos = textarea?.selectionStart ?? prompt.length
+    const token = item.token + ' '
+    const newValue = prompt.slice(0, mention.start) + token + prompt.slice(pos)
+    onPromptChange(newValue)
+    const newPos = mention.start + token.length
+    setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+    requestAnimationFrame(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(newPos, newPos)
+    })
+  }
+
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
@@ -230,15 +359,11 @@ export function GenerationInputBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-  // Seedance 帧模式：合并模式（auto）无参考图时即文生视频，清空参考素材；
+  // Seedance 帧模式：合并模式（auto）允许图片/视频/音频任意组合参考，无需因缺少参考图而清空；
   // 首帧/首尾帧仅保留图片参考，视频/音频不适用。
   useEffect(() => {
     if (mode !== 'video' || !isSeedance) return
-    const hasImage = refAssets.some((a) => (a.kind ?? 'image') === 'image')
-    if (frameMode === 'auto') {
-      if (!hasImage && refAssets.length > 0) onRefAssetsChange([])
-      return
-    }
+    if (frameMode === 'auto') return
     const cleaned = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
     if (cleaned.length !== refAssets.length) {
       onRefAssetsChange(cleaned)
@@ -268,6 +393,16 @@ export function GenerationInputBar({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, isSeedance, refAssets])
+
+  // 视频模式：模型切换后，若当前分辨率不被新模型支持，自动回落到 720p（所有视频模型通用）。
+  useEffect(() => {
+    if (mode !== 'video') return
+    const supported = videoResolutionsForModel(modelId).map((r) => r.value)
+    if (!supported.includes(resolution as Resolution)) {
+      updateRatioResolution(aspectRatio, '720p')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, mode])
 
   /** 识别文件类型；不支持的类型返回 null。 */
   function kindOfFile(file: File): ReferenceKind | null {
@@ -304,9 +439,9 @@ export function GenerationInputBar({
     }
   }
 
-  /** 提交 Spark Hub Seedance 参考素材审核，并异步轮询进度。 */
+  /** 提交 Spark Hub Seedance 参考素材审核，并异步轮询进度。
+   *  审核初始状态（pending）已在上传时预设到素材对象中，这里直接发起提审。 */
   async function startAudit(assetId: string) {
-    patchAudit(assetId, { auditStatus: 'pending', auditError: null })
     try {
       const asset = await submitAssetAudit(assetId, providerSlug)
       patchAudit(assetId, {
@@ -358,11 +493,6 @@ export function GenerationInputBar({
           continue
         }
       }
-      // 合并模式：无参考图时即文生视频，视频/音频参考需先有参考图才作为参考图模式使用
-      if (spec?.mode === 'auto' && kind !== 'image' && !next.some((a) => (a.kind ?? 'image') === 'image')) {
-        toast('请先上传参考图，再上传视频/音频参考', 'error')
-        continue
-      }
       const cap = KIND_CAPS[kind]
       if (next.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
         toast(`${KIND_LABELS[kind]}最多 ${cap} 个`, 'error')
@@ -377,23 +507,24 @@ export function GenerationInputBar({
       }
       try {
         const asset = await uploadAsset(file)
+        // 音频参考无需审核；图片/视频在 Spark Hub Seedance 下需审核，上传时立即标记为审核中。
+        const needsAudit = isSparkHubSeedance(providerSlug) && kind !== 'audio'
         const ref: ReferenceAsset = {
           assetId: asset.id,
           previewUrl: assetFileUrl(asset.id),
           kind,
+          auditStatus: needsAudit ? 'pending' : undefined,
         }
         next.push(ref)
         added.push(ref)
-        // Spark Hub Seedance：参考素材需先审核，上传后自动提审并异步轮询进度
-        if (isSparkHubSeedance(providerSlug)) {
-          startAudit(asset.id)
-        }
       } catch (e) {
         toast(toApiError(e).message, 'error')
       }
     }
     if (added.length) {
       onRefAssetsChange(next)
+      // 仅对需要审核的图片/视频素材提审；审核状态已在上面预设为 pending，提交后立即展示。
+      added.filter((r) => r.auditStatus === 'pending').forEach((r) => startAudit(r.assetId))
       toast(`已上传 ${added.length} 个参考素材`, 'success')
     }
   }
@@ -511,17 +642,73 @@ export function GenerationInputBar({
                 onClear={() => {}}
               />
             )}
-            <div className="flex flex-1 flex-col gap-2">
+            <div className="relative flex flex-1 flex-col gap-2">
+              {/* @ 引用悬浮选择器：在提示词中键入 @ 时弹出，选择已上传参考素材作为生成提示词 */}
+              {mention.open && (
+                <div
+                  ref={mentionRef}
+                  className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-card border border-border bg-bg-secondary p-1 shadow-xl"
+                >
+                  {refAssets.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-fg-muted">请先上传参考素材</div>
+                  ) : mentionItems.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-fg-muted">无匹配的参考素材</div>
+                  ) : (
+                    <>
+                      <div className="px-2 pb-1 pt-1 text-[11px] text-fg-muted">
+                        选择要引用的参考素材
+                      </div>
+                      <div className="flex max-h-60 flex-col gap-0.5 overflow-auto scrollbar-thin">
+                        {mentionItems.map((item, i) => (
+                          <button
+                            key={item.asset.assetId}
+                            type="button"
+                            onClick={() => insertMention(item)}
+                            className={cn(
+                              'flex items-center gap-2 rounded-btn px-2 py-1.5 text-sm transition-colors',
+                              i === mention.activeIndex
+                                ? 'bg-accent text-bg-primary'
+                                : 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
+                            )}
+                          >
+                            <span className="h-6 w-6 shrink-0 overflow-hidden rounded border border-border">
+                              {item.kind === 'image' ? (
+                                <img
+                                  src={item.asset.previewUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : item.kind === 'video' ? (
+                                <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
+                                  <Video className="h-3.5 w-3.5" />
+                                </span>
+                              ) : (
+                                <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
+                                  <Music className="h-3.5 w-3.5" />
+                                </span>
+                              )}
+                            </span>
+                            <span>{item.label}</span>
+                            <span className="ml-auto text-xs text-fg-muted">{item.token}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <textarea
+                ref={textareaRef}
                 value={prompt}
-                onChange={(e) => onPromptChange(e.target.value)}
+                onChange={handlePromptInputChange}
+                onKeyDown={handlePromptKeyDown}
                 disabled={submitting}
                 placeholder={
                   mode === 'video'
                     ? isSeedance
-                      ? `${refHint()}，输入文字描述你想生成的视频。`
-                      : '上传参考图/视频/音频、输入文字或 @主体，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
-                    : '上传参考图、输入文字或 @主体，描述你想生成的图片。支持上传多张参考图融合生成。'
+                      ? `${refHint()}。支持上传图片、视频、音频作为参考素材（参考视频/音频单个时长 2-15 秒，各最多 3 个）。输入文字或 @ 引用素材，描述你想生成的视频。`
+                      : '上传参考图/视频/音频、输入文字或 @ 引用素材，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
+                    : '上传参考图、输入文字或 @ 引用素材，描述你想生成的图片。支持上传多张参考图融合生成。'
                 }
                 rows={3}
                 className={cn(
@@ -557,6 +744,7 @@ export function GenerationInputBar({
             />
             <SizePicker
               mode={mode}
+              modelId={modelId}
               aspectRatio={aspectRatio}
               resolution={resolution}
               onChange={updateRatioResolution}
