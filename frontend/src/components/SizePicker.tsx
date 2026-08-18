@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils'
 import {
   ASPECT_RATIOS_BY_MODE,
   RESOLUTIONS_BY_MODE,
+  imageResolutionsForModel,
+  isDreaminaSeedreamCli,
   videoResolutionsForModel,
   sizeFromRatioResolution,
   type AspectRatio,
@@ -29,6 +31,8 @@ export interface SizePickerProps {
   mode: ContentMode
   /** 视频模式下用于按模型过滤可用分辨率（不同 Seedance 变体支持不同分辨率）。 */
   modelId?: string
+  /** 即梦 CLI 图片模式下按模型过滤分辨率（不同 Seedream 版本支持档位不同）。 */
+  providerSlug?: string
   aspectRatio: AspectRatio
   resolution: Resolution
   onChange: (ratio: AspectRatio, resolution: Resolution) => void
@@ -39,6 +43,7 @@ export interface SizePickerProps {
 export function SizePicker({
   mode,
   modelId,
+  providerSlug,
   aspectRatio,
   resolution,
   onChange,
@@ -47,9 +52,14 @@ export function SizePicker({
 }: SizePickerProps) {
   const ratios = ASPECT_RATIOS_BY_MODE[mode]
   // 视频模式按模型过滤分辨率（不同 Seedance 变体支持不同分辨率）；
-  // 图片模式或缺失 modelId 时回退到模式默认列表。
+  // 即梦 CLI 图片模式按模型过滤（3.x 支持 1K/2K，4.x/5.0 支持 2K/4K）；
+  // 其余情况回退到模式默认列表。
   const resolutions =
-    mode === 'video' && modelId ? videoResolutionsForModel(modelId) : RESOLUTIONS_BY_MODE[mode]
+    mode === 'video' && modelId
+      ? videoResolutionsForModel(modelId)
+      : mode === 'image' && providerSlug && modelId && isDreaminaSeedreamCli(providerSlug)
+        ? imageResolutionsForModel(modelId)
+        : RESOLUTIONS_BY_MODE[mode]
   // 当前状态若不属于该模式（如切换 mode 时残留），回退到模式默认
   const ratioDef = ratios.find((r) => r.value === aspectRatio) ?? ratios[0]
   const resDef = resolutions.find((r) => r.value === resolution) ?? resolutions[Math.min(1, resolutions.length - 1)]

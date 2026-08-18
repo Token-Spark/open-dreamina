@@ -34,6 +34,8 @@ import { uploadAsset, assetFileUrl, submitAssetAudit, getAssetAudit } from '@/ap
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
+  imageResolutionsForModel,
+  isDreaminaSeedreamCli,
   videoResolutionsForModel,
   type ContentMode,
   type AspectRatio,
@@ -311,6 +313,15 @@ export function GenerationInputBar({
   }
 
   function handlePromptKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // ⌘/Ctrl + Enter：提交生成（与底部生成按钮逻辑保持一致）
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      if (!submitting && !atConcurrencyLimit) {
+        onGenerate()
+      }
+      return
+    }
+
     if (!mention.open || mentionItems.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -403,6 +414,16 @@ export function GenerationInputBar({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, mode])
+
+  // 即梦 CLI 图片模式：模型切换后，若当前分辨率不被新模型支持，自动回落到该模型支持的档位。
+  useEffect(() => {
+    if (mode !== 'image' || !isDreaminaSeedreamCli(providerSlug)) return
+    const supported = imageResolutionsForModel(modelId).map((r) => r.value)
+    if (!supported.includes(resolution as Resolution)) {
+      updateRatioResolution(aspectRatio, supported[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, mode, providerSlug])
 
   /** 识别文件类型；不支持的类型返回 null。 */
   function kindOfFile(file: File): ReferenceKind | null {
@@ -745,6 +766,7 @@ export function GenerationInputBar({
             <SizePicker
               mode={mode}
               modelId={modelId}
+              providerSlug={providerSlug}
               aspectRatio={aspectRatio}
               resolution={resolution}
               onChange={updateRatioResolution}

@@ -119,14 +119,43 @@ def _ratio_from_size(width: int, height: int) -> str:
     return f"{best[0]}:{best[1]}"
 
 
-def _image_resolution_type(width: int, height: int) -> str:
-    """由宽高推导 CLI --resolution_type：按最长边映射到 1080p / 2k / 4k。"""
+# 各图片模型版本支持的 --resolution_type 档位（CLI 严格校验，来源：即梦 CLI 体验指南）。
+# 3.x 支持 1k/2k；4.x / 5.0 支持 2k/4k。未列出的版本保守按 {1k, 2k} 处理。
+_IMAGE_RESOLUTION_SUPPORT: dict[str, set[str]] = {
+    "3.0": {"1k", "2k"},
+    "3.1": {"1k", "2k"},
+    "4.0": {"2k", "4k"},
+    "5.0": {"2k", "4k"},
+    "5.0Pro": {"2k", "4k"},
+    "5.0lite": {"2k", "4k"},
+}
+# 所有图片模型都支持的通用默认档位（请求档位不被模型支持时回退到它）
+_DEFAULT_IMAGE_RESOLUTION = "2k"
+
+
+def _image_resolution_type(
+    model_version: str,
+    width: int,
+    height: int,
+    resolution: str | None = None,
+) -> str:
+    """推导 CLI --resolution_type，只返回该模型支持的档位（绝不发送非法值）。
+
+    即梦 CLI 的 text2image / image2image 对 --resolution_type 严格校验，
+    且不同模型版本支持的档位不同（如 3.x 支持 1k/2k，4.x/5.0 支持 2k/4k）。
+    - 优先按前端档位（1K/2K/4K）映射；
+    - 无档位时按最长边近似（<=1536 归 1k，其余归 2k）；
+    - 请求档位不在模型支持集合时，回退到通用默认档位 2k，避免 invalid param 报错。
+    """
+    supported = _IMAGE_RESOLUTION_SUPPORT.get(model_version, {"1k", "2k"})
+    if resolution:
+        tier = str(resolution).lower()
+        if tier in supported:
+            return tier
+        return _DEFAULT_IMAGE_RESOLUTION
     m = max(int(width), int(height))
-    if m <= 1280:
-        return "1080p"
-    if m <= 2200:
-        return "2k"
-    return "4k"
+    requested = "1k" if m <= 1536 else "2k"
+    return requested if requested in supported else _DEFAULT_IMAGE_RESOLUTION
 
 
 # 声明式错误模式表：(正则, 类别, 修复建议)。匹配 stdout+stderr 合并文本。
@@ -566,12 +595,16 @@ class DreaminaSeedreamProvider(DreaminaCliBaseProvider):
         prompt = kwargs.get("prompt", "")
         if prompt:
             args.append(f"--prompt={prompt}")
-        args.append(f"--model_version={self._resolve_model(kwargs)}")
+        model_version = self._resolve_model(kwargs)
+        args.append(f"--model_version={model_version}")
 
         width, height = kwargs.get("width"), kwargs.get("height")
         if width is not None and height is not None:
             args.append(f"--ratio={_ratio_from_size(width, height)}")
-            args.append(f"--resolution_type={_image_resolution_type(width, height)}")
+            rt = _image_resolution_type(
+                model_version, width, height, kwargs.get("resolution")
+            )
+            args.append(f"--resolution_type={rt}")
         return args
 
     async def text_to_image(

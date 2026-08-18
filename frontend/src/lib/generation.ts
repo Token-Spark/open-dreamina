@@ -320,6 +320,31 @@ export function videoResolutionsForModel(modelId: string): ResolutionDef[] {
   ]
 }
 
+/** 是否为即梦 CLI 的 Seedream 图片 Provider（slug 固定为 dreamina-seedream）。 */
+export function isDreaminaSeedreamCli(slug: string): boolean {
+  return slug === 'dreamina-seedream'
+}
+
+/**
+ * 即梦 CLI 图片模型支持的分辨率档位（来源：即梦 CLI 体验指南 / CLI 校验）。
+ * 仅当使用 dreamina-seedream Provider 时生效：
+ * - 即梦 3.x 支持 1K / 2K；
+ * - Seedream 5.0 / 即梦 4.x 支持 2K / 4K。
+ */
+export function imageResolutionsForModel(modelId: string): ResolutionDef[] {
+  const id = modelId.toLowerCase()
+  if (id.includes('jimeng3') || id.includes('3.0')) {
+    return [
+      { value: '1K', label: '标清 1K' },
+      { value: '2K', label: '高清 2K' },
+    ]
+  }
+  return [
+    { value: '2K', label: '高清 2K' },
+    { value: '4K', label: '超清 4K' },
+  ]
+}
+
 /** 默认比例：图片 1:1 正方形；视频 16:9 横屏（与 Seedance API 默认 ratio 一致）。 */
 export function defaultAspectRatioForMode(mode: ContentMode): AspectRatio {
   return mode === 'image' ? '1:1' : '16:9'
