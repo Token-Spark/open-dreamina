@@ -147,8 +147,8 @@ def _on_sparkhub_status(task_id: str, status: str, elapsed_s: float) -> None:
     if mapping is None:
         return
     pct, base_msg = mapping
-    message = f"{base_msg}（已等待 {int(elapsed_s)}s）"
-    task_service.set_progress(task_id, "running", pct, message)
+    # 只推状态文案，已等待时长由前端基于 createdAt 本地实时计时（避免后端回调冻结）
+    task_service.set_progress(task_id, "running", pct, base_msg)
     _update_task(task_id, progress=pct)
 
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Pencil, ImagePlus } from 'lucide-react'
 import { useTaskSSE } from '@/hooks/useTaskSSE'
 import { useConversationStore, type GenMessage } from '@/stores/conversationStore'
@@ -88,6 +88,16 @@ function ResultCard({
   const running = message.status === 'running'
   const resultType = message.type === 'text2img' || message.type === 'img2img' ? 'image' : 'video'
 
+  // 本地实时计时：基于 createdAt 每秒刷新已等待时长，避免后端状态回调冻结时间戳
+  const [elapsedSec, setElapsedSec] = useState(0)
+  useEffect(() => {
+    if (!running) return
+    const tick = () => setElapsedSec(Math.max(0, Math.floor((Date.now() - message.createdAt) / 1000)))
+    tick()
+    const timer = setInterval(tick, 1000)
+    return () => clearInterval(timer)
+  }, [running, message.createdAt])
+
   return (
     <div className="rounded-card border border-border bg-bg-secondary p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -104,7 +114,7 @@ function ResultCard({
         <div className="space-y-1.5">
           <Progress value={message.progress} glow />
           <div className="flex items-center justify-between text-xs text-fg-muted">
-            <span>{message.message ?? '生成中…'}</span>
+            <span>生成中…{elapsedSec > 0 ? `（已等待 ${elapsedSec}s）` : ''}</span>
             <span>{message.progress}%</span>
           </div>
         </div>

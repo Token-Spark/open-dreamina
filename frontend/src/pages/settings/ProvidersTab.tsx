@@ -104,6 +104,16 @@ export function ProvidersTab() {
       },
     )
   }
+  // 重新激活已存在的但已停用的 provider
+  function handleReactivate(p: Provider) {
+    updateProvider.mutate(
+      { id: p.id, payload: { is_active: true } },
+      {
+        onSuccess: () => toast('已激活', 'success'),
+        onError: (e) => toast(toApiError(e).message, 'error'),
+      },
+    )
+  }
 
   if (isLoading) {
     return <p className="py-12 text-center text-sm text-fg-muted">加载中…</p>
@@ -120,6 +130,7 @@ export function ProvidersTab() {
             key={c.service?.slug ?? c.provider?.id ?? 'unknown'}
             data={c}
             onActivate={() => c.service && openActivate(c.service)}
+            onReactivate={() => c.provider && handleReactivate(c.provider)}
             onEdit={() => c.provider && openEdit(c.service, c.provider)}
             onDelete={() => c.provider && handleDelete(c.provider)}
             onDeactivate={() => c.provider && handleDeactivate(c.provider)}
@@ -142,12 +153,14 @@ export function ProvidersTab() {
 function ServiceCard({
   data,
   onActivate,
+  onReactivate,
   onEdit,
   onDelete,
   onDeactivate,
 }: {
   data: ServiceCardData
   onActivate: () => void
+  onReactivate: () => void
   onEdit: () => void
   onDelete: () => void
   onDeactivate: () => void
@@ -219,7 +232,7 @@ function ServiceCard({
             <PlusCircle className="h-3.5 w-3.5" />
             激活
           </Button>
-        ) : (
+        ) : active ? (
           <>
             <div className="ml-auto flex items-center gap-1">
               <Button variant="outline" size="sm" onClick={onEdit}>
@@ -235,6 +248,18 @@ function ServiceCard({
                   停用
                 </Button>
               )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="ml-auto flex items-center gap-1">
+              <Button variant="outline" size="sm" onClick={onEdit}>
+                <Pencil className="h-3.5 w-3.5" />
+                编辑
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onReactivate}>
+                激活
+              </Button>
             </div>
           </>
         )}

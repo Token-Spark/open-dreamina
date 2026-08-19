@@ -108,7 +108,7 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         config: dict[str, Any] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        self.api_key = api_key.strip() if api_key else ""
         self.config = config or {}
         # 上游状态变更回调 (status, elapsed_s)，由 worker 注入以把上游进度推给前端；
         # 同步函数，回调异常不应影响主流程（_poll 内已兜底）。
