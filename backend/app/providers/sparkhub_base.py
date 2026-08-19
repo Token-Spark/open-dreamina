@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from abc import ABC
 from typing import Any, Callable
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 # Spark Hub 统一异步任务接口路径
 _CREATE_PATH = "/task/create_task"
 _QUERY_PATH = "/task/query_task/{task_id}"
+_ORIGINAL_PATH = "/task/original_response/{task_id}"
 
 # 业务错误码 → 修复建议（数据驱动，P0.3；码表见 API 文档「错误码对照表」）。
 _ERROR_HINTS: dict[int, str] = {
@@ -65,6 +67,66 @@ def _find(data: dict[str, Any], *keys: str) -> Any:
                 if found is not None:
                     return found
     return None
+
+
+# 终态失败原因候选字段：query_task 的失败描述命名不一，且顶层常存在空串
+# 占位（如 `"error": ""`），若按原 _find 顺序取首个命中会把真实原因吞掉。
+_FAILURE_KEYS = ("message", "error", "error_msg", "err_msg", "fail_reason", "error_code")
+
+
+def _find_nonempty(data: dict[str, Any], *keys: str) -> Any:
+    """深度优先取首个「非空」命中的字段值（跳过 None/空串/纯空白）。"""
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        if key in data:
+            val = data[key]
+            if val is not None and str(val).strip():
+                return val
+        for v in data.values():
+            if isinstance(v, dict):
+                found = _find_nonempty(v, key)
+                if found is not None:
+                    return found
+    return None
+
+
+def _collect_error_parts(payload: dict[str, Any]) -> list[str]:
+    """递归收集形如 {"code": ..., "message": ...} 的错误对象文本（原始响应用）。"""
+    parts: list[str] = []
+    stack: list[Any] = list(payload.values()) if isinstance(payload, dict) else []
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            err = node.get("error")
+            if isinstance(err, dict):
+                seg = " ".join(
+                    str(v) for v in (err.get("code"), err.get("message")) if v and str(v).strip()
+                )
+                if seg.strip() and seg not in parts:
+                    parts.append(seg.strip())
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+    return parts
+
+
+# 已知的内容安全失败码片段 → 修复建议（命中即附加，便于用户自助调整）。
+_SENSITIVE_CODE_HINTS: tuple[tuple[str, str], ...] = (
+    (
+        "OutputVideoSensitiveContentDetected",
+        "生成结果触发上游内容安全检测（疑似版权/敏感内容限制），"
+        "请调整画面内容（避免歌曲演唱、真人肖像、品牌标识等）后重新生成",
+    ),
+    ("SensitiveContentDetection", "生成结果触发上游内容安全检测，请调整提示词后重新生成"),
+)
+
+
+def _content_hint(reason: str) -> str:
+    for code, hint in _SENSITIVE_CODE_HINTS:
+        if code in reason:
+            return hint
+    return ""
 
 
 def _detect_mime(data: bytes) -> str:
@@ -179,10 +241,15 @@ class SparkHubBaseProvider(BaseProvider, ABC):
             if status in self._SUCCESS_STATUSES:
                 return data
             if status in self._TERMINAL_FAILED:
-                err = _find(data, "error", "message", "fail_reason")
+                # 记录完整终态响应，便于事后排查（失败原因常藏在嵌套字段）
+                logger.warning(
+                    "Spark Hub 任务终态失败: task_id=%s status=%s body=%s",
+                    task_id, status, json.dumps(data, ensure_ascii=False)[:2000],
+                )
+                err = await self._failure_detail(client, data, task_id)
                 raise ProviderError(
                     f"Spark Hub 任务 {task_id} 未成功（status={status}）"
-                    f"{('：' + str(err)) if err else ''}",
+                    f"{('：' + err) if err else ''}",
                     submit_id=task_id,
                 )
             if not status:
@@ -197,6 +264,39 @@ class SparkHubBaseProvider(BaseProvider, ABC):
             "重试将从已有 submit_id 断点续查，不会重复扣费",
             submit_id=task_id,
         )
+
+    async def _failure_detail(self, client: httpx.AsyncClient, polled: dict[str, Any], task_id: str) -> str:
+        """聚合终态失败的完整原因（可为空串）。
+
+        优先级：query_task 响应里的失败描述 → 上游原始响应（original_response）
+        中的底层模型错误（error.code + error.message）→ 空串。
+        命中已知内容安全错误码时附加修复建议。
+        """
+        reason = ""
+        # 1) 查询响应里的失败描述：跳过空串占位（顶层常为 "error": ""），
+        #    避免 _find 按顺序取到空值而吞掉嵌套的真实 message。
+        for key in _FAILURE_KEYS:
+            val = _find_nonempty(polled, key)
+            if val:
+                reason = str(val).strip()
+                break
+        # 2) 兜底：查询上游原始响应，取底层模型的结构化错误（更精确）。
+        if not reason:
+            try:
+                url = f"{self.base_url}{_ORIGINAL_PATH.format(task_id=task_id)}"
+                resp = await self._request_with_retry(
+                    client, "GET", url, provider_name="Spark Hub 原始响应", headers=self._headers(),
+                )
+                parts = _collect_error_parts(resp.json())
+                if parts:
+                    reason = "；".join(parts)
+            except Exception:
+                logger.debug("Spark Hub 获取原始失败响应失败（不影响终态判定）", exc_info=True)
+        if reason:
+            hint = _content_hint(reason)
+            if hint:
+                reason = f"{reason}。{hint}"
+        return reason
 
     async def _download(self, url: str) -> bytes:
         """下载结果字节（CDN 链接，瞬时故障自动重试）。"""

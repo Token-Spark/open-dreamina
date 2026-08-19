@@ -110,12 +110,13 @@ export function CreatePage() {
   const initConversations = useConversationStore((s) => s.init)
   const addMessage = useConversationStore((s) => s.addMessage)
   const updateMessage = useConversationStore((s) => s.updateMessage)
-  const activeTasks = useTaskStore((s) => s.active)
   const addActive = useTaskStore((s) => s.addActive)
 
   const location = useLocation()
   const appliedTemplateRef = useRef<string | null>(null)
   const feedRef = useRef<HTMLDivElement>(null)
+  // 用户是否贴底：仅在此状态下自动跟随新内容，避免向上查看历史时被拉回底部
+  const pinnedToBottomRef = useRef(true)
   // "重新编辑"时复用原任务参数，跳过 mode 变化触发的默认参数重置
   const editParamsRef = useRef<Record<string, number | string> | null>(null)
 
@@ -197,12 +198,13 @@ export function CreatePage() {
     }
   }, [mode, providerSlug, providers, refAssets, modelId])
 
-  // Auto-scroll to bottom when new messages or progress updates happen.
+  // 仅在用户已贴底时自动滚动到最新内容；向上查看历史时不打断。
+  // 移除 activeTasks 依赖：进度更新高频变化，不应强制滚动。
   useEffect(() => {
-    if (feedRef.current) {
+    if (feedRef.current && pinnedToBottomRef.current) {
       feedRef.current.scrollTop = feedRef.current.scrollHeight
     }
-  }, [messages.length, activeTasks])
+  }, [messages.length])
 
   // 统计在途（非终态）任务数，与后端并发上限对比决定是否允许新提交。
   const activeCount = useMemo(
@@ -325,6 +327,8 @@ export function CreatePage() {
         message: null,
         resultUrl: task.result_url,
         thumbnailUrl: task.thumbnail_url,
+        // 重置计时基准：重试等同于一轮全新提交，已等待时长应从 0 重新累计
+        createdAt: Date.now(),
       })
     } catch (e) {
       toast(toApiError(e).message, 'error')
@@ -438,7 +442,15 @@ export function CreatePage() {
         </header>
 
         {/* Conversation feed */}
-        <div ref={feedRef} className="flex-1 overflow-auto p-4 scrollbar-thin">
+        <div
+          ref={feedRef}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            pinnedToBottomRef.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 80
+          }}
+          className="flex-1 overflow-auto p-4 scrollbar-thin"
+        >
           <div className="mx-auto max-w-4xl space-y-6">
             {messages.length === 0 && <EmptyFeed />}
             {messages.map((message) => (
