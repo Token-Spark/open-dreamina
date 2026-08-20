@@ -20,6 +20,7 @@ SSE 端点从 Redis 高频读取，DB 作为兜底。
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -139,11 +140,13 @@ def task_progress_payload(task_id: str, status: str, progress: int, message: str
     return payload
 
 
-def completed_payload(task_id: str, asset_id: str | None) -> dict[str, Any]:
+def completed_payload(task_id: str, asset_ids: list[str] | None) -> dict[str, Any]:
     payload: dict[str, Any] = {"task_id": task_id, "status": "completed"}
-    if asset_id:
-        payload["result_url"] = f"/api/v1/assets/{asset_id}/file"
-        payload["thumbnail_url"] = f"/api/v1/assets/{asset_id}/thumbnail"
+    if asset_ids:
+        payload["result_urls"] = [f"/api/v1/assets/{aid}/file" for aid in asset_ids]
+        payload["thumbnail_urls"] = [f"/api/v1/assets/{aid}/thumbnail" for aid in asset_ids]
+        payload["result_url"] = payload["result_urls"][0]
+        payload["thumbnail_url"] = payload["thumbnail_urls"][0]
     return payload
 
 
@@ -182,22 +185,31 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
 
     cutoff = datetime.now() - timedelta(seconds=max_running_seconds)
     recovered = 0
-    with db_session() as db:
-        tasks = db.query(Task).filter(Task.status == "running").all()
-        for t in tasks:
-            if not t.started_at:
-                continue
-            try:
-                started_dt = datetime.strptime(t.started_at, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                continue
-            if started_dt >= cutoff:
-                continue
-            t.status = "failed"
-            t.error_msg = (
-                f"任务执行超时（运行超过 {max_running_seconds // 60} 分钟仍未完成），"
-                "可能因 worker 中断导致，已自动标记为失败，请重试"
-            )
-            t.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            recovered += 1
+    # SQLite 在 Docker Desktop 挂载卷上偶发瞬时 disk I/O error（WAL 同步延迟），
+    # 重试几次避免恢复机制因瞬时故障失效、任务永久卡在 running。
+    for attempt in range(3):
+        try:
+            with db_session() as db:
+                tasks = db.query(Task).filter(Task.status == "running").all()
+                for t in tasks:
+                    if not t.started_at:
+                        continue
+                    try:
+                        started_dt = datetime.strptime(t.started_at, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        continue
+                    if started_dt >= cutoff:
+                        continue
+                    t.status = "failed"
+                    t.error_msg = (
+                        f"任务执行超时（运行超过 {max_running_seconds // 60} 分钟仍未完成），"
+                        "可能因 worker 中断导致，已自动标记为失败，请重试"
+                    )
+                    t.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    recovered += 1
+            break
+        except Exception:
+            if attempt == 2:
+                raise
+            time.sleep(1.5 * (attempt + 1))
     return recovered

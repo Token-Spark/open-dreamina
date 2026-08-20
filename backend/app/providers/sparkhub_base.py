@@ -314,7 +314,10 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         pick_urls: Callable[[dict[str, Any]], list[str]],
         mime_type: str,
     ) -> GenerationResult:
-        """提交任务并等待结果，构造 GenerationResult。"""
+        """提交任务并等待结果，构造 GenerationResult。
+
+        下载全部结果 URL（生图多图时返回多张；生视频通常仅 1 个 URL）。
+        """
         async with httpx.AsyncClient(timeout=120) as client:
             task_id = await self._submit(client, payload)
             polled = await self._poll(client, task_id)
@@ -322,11 +325,15 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         urls = pick_urls(polled)
         if not urls:
             raise ProviderError(f"Spark Hub 任务 {task_id} 成功但未返回结果 URL：{polled}")
-        file_bytes = await self._download(urls[0])
+        files: list[tuple[bytes, str]] = []
+        for url in urls:
+            file_bytes = await self._download(url)
+            files.append((file_bytes, mime_type))
         return GenerationResult(
-            file_bytes=file_bytes,
+            file_bytes=files[0][0],
             mime_type=mime_type,
             metadata={"model": payload.get("api_name", ""), "task_id": task_id, "urls": urls},
+            files=files,
         )
 
     # ---------- 抽象方法由子类实现 ----------

@@ -25,7 +25,7 @@ interface GenMessageCardProps {
   topicId: string
   message: GenMessage
   onRetry: (message: GenMessage) => void
-  onOpenLightbox: (message: GenMessage) => void
+  onOpenLightbox: (message: GenMessage, url?: string) => void
   onEdit: (message: GenMessage) => void
 }
 
@@ -45,8 +45,9 @@ export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEd
       message: data.message,
       resultUrl: data.resultUrl,
       thumbnailUrl: data.thumbnailUrl,
+      resultUrls: data.resultUrls.length ? data.resultUrls : message.resultUrls,
     })
-  }, [status, progress, error, data.resultUrl, data.thumbnailUrl, data.message, topicId, message.id, message.status, updateMessage])
+  }, [status, progress, error, data.resultUrl, data.thumbnailUrl, data.resultUrls, data.message, topicId, message.id, message.status, updateMessage])
 
   return (
     <div className="animate-slide-up">
@@ -65,7 +66,7 @@ export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEd
           <ResultCard
             message={message}
             onRetry={() => onRetry(message)}
-            onOpenLightbox={() => onOpenLightbox(message)}
+            onOpenLightbox={(url) => onOpenLightbox(message, url)}
             onEdit={() => onEdit(message)}
           />
         </div>
@@ -82,7 +83,7 @@ function ResultCard({
 }: {
   message: GenMessage
   onRetry: () => void
-  onOpenLightbox: () => void
+  onOpenLightbox: (url?: string) => void
   onEdit: () => void
 }) {
   const running = message.status === 'running'
@@ -151,18 +152,40 @@ function ResultCard({
 
       {message.status === 'completed' && message.resultUrl && (
         <div className="space-y-2">
-          <div
-            className="cursor-pointer overflow-hidden rounded-btn border border-border bg-transparent"
-            onClick={onOpenLightbox}
-          >
-            {resultType === 'image' ? (
-              <img src={message.resultUrl} alt="生成结果" className="max-h-[50vh] w-full object-contain" />
-            ) : (
-              <video src={message.resultUrl} controls className="max-h-[50vh] w-full" />
-            )}
-          </div>
+          {resultType === 'image' && message.resultUrls.length > 1 ? (
+            <div className="grid grid-cols-2 gap-2">
+              {message.resultUrls.map((url, i) => (
+                <div
+                  key={url}
+                  className="cursor-pointer overflow-hidden rounded-btn border border-border bg-transparent"
+                  onClick={() => onOpenLightbox(url)}
+                >
+                  <img
+                    src={url}
+                    alt={`生成结果 ${i + 1}`}
+                    className="aspect-square w-full object-cover"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              className="cursor-pointer overflow-hidden rounded-btn border border-border bg-transparent"
+              onClick={() => onOpenLightbox()}
+            >
+              {resultType === 'image' ? (
+                <img src={message.resultUrl} alt="生成结果" className="max-h-[50vh] w-full object-contain" />
+              ) : (
+                <video src={message.resultUrl} controls className="max-h-[50vh] w-full" />
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-fg-muted">点击可放大查看</span>
+            <span className="text-xs text-fg-muted">
+              {resultType === 'image' && message.resultUrls.length > 1
+                ? `共 ${message.resultUrls.length} 张，点击可放大查看`
+                : '点击可放大查看'}
+            </span>
             <Button variant="secondary" size="sm" onClick={onEdit}>
               <Pencil className="h-3.5 w-3.5" />
               重新编辑

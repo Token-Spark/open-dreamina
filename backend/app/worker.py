@@ -293,7 +293,7 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         if model_id:
             kwargs["model_id"] = model_id
         # 透传常用参数
-        for k in ("negative_prompt", "width", "height", "steps", "guidance_scale", "seed", "duration", "strength", "resolution"):
+        for k in ("negative_prompt", "width", "height", "steps", "guidance_scale", "seed", "duration", "strength", "resolution", "count"):
             if k in params:
                 kwargs[k] = params[k]
         # 断点续查：上一轮失败后落库的 submit_id 透传给 provider，避免重新 submit 重复扣费
@@ -368,25 +368,41 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             task_service.clear_progress(task_id)
             return {"task_id": task_id, "status": "cancelled"}
 
-        # 保存文件
+        # 保存文件（支持多图：Provider 返回多张时逐张落盘并各建一条资产记录）
         from .utils.file_utils import save_generated_file
-        saved = save_generated_file(result.file_bytes, result.mime_type)
+        files = result.files or [(result.file_bytes, result.mime_type)]
+        asset_ids: list[str] = []
+        first_saved = None
+        first_thumb_rel = None
+        for file_bytes, mime_type in files:
+            saved = save_generated_file(file_bytes, mime_type)
 
-        # 生成缩略图
-        asset_type = "image" if result.mime_type.startswith("image/") else "video"
-        thumb_rel = generate_thumbnail_for(saved, asset_type)
+            # 生成缩略图
+            asset_type = "image" if mime_type.startswith("image/") else "video"
+            thumb_rel = generate_thumbnail_for(saved, asset_type)
+            if first_saved is None:
+                first_saved = saved
+                first_thumb_rel = thumb_rel
 
-        # 写资产记录
+            # 写资产记录
+            with db_session() as db:
+                asset = create_asset_record(
+                    db=db,
+                    saved=saved,
+                    task_id=task_id,
+                    asset_type=asset_type,
+                    thumbnail_rel=thumb_rel,
+                    tags=[],
+                )
+                asset_ids.append(asset.id)
+
+        # 把有序结果资产 ID 合并进 params 落库，供任务详情/SSE 派生 result_urls（不覆盖其它参数）
         with db_session() as db:
-            asset = create_asset_record(
-                db=db,
-                saved=saved,
-                task_id=task_id,
-                asset_type=asset_type,
-                thumbnail_rel=thumb_rel,
-                tags=[],
-            )
-            asset_id = asset.id
+            task = db.get(Task, task_id)
+            if task:
+                task_params: dict[str, Any] = json.loads(task.params_json or "{}")
+                task_params["result_asset_ids"] = asset_ids
+                task.params_json = json.dumps(task_params, ensure_ascii=False)
 
         # 从 Provider 元数据提取 token 用量与费用，回填任务记录（需求：任务中心展示 token 信息）
         tokens_used = _extract_tokens(result.metadata)
@@ -401,8 +417,8 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             task_id,
             status="completed",
             progress=100,
-            result_path=saved.relative_path,
-            thumbnail_path=thumb_rel,
+            result_path=first_saved.relative_path,
+            thumbnail_path=first_thumb_rel,
             tokens_used=tokens_used,
             api_cost=api_cost,
             completed=True,
@@ -413,8 +429,8 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         return {
             "task_id": task_id,
             "status": "completed",
-            "asset_id": asset_id,
-            "result_path": saved.relative_path,
+            "asset_ids": asset_ids,
+            "result_path": first_saved.relative_path,
             "tokens_used": tokens_used,
         }
 

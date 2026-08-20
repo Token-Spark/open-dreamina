@@ -41,6 +41,8 @@ class GenerationResult:
     file_bytes: bytes
     mime_type: str  # image/png, video/mp4 ...
     metadata: dict[str, Any] = field(default_factory=dict)
+    # 多图生成：每项为 (bytes, mime_type)。为空时回退到 file_bytes/mime_type 单文件。
+    files: list[tuple[bytes, str]] = field(default_factory=list)
 
 
 class BaseProvider(ABC):

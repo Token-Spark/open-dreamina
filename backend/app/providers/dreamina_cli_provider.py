@@ -420,8 +420,14 @@ class DreaminaCliBaseProvider(BaseProvider):
         """根据产物文件后缀推断 MIME；子类可覆盖兜底值。"""
         raise NotImplementedError
 
-    async def _download_result(self, submit_id: str, tmpdir: str) -> tuple[bytes, str, dict[str, Any]]:
-        """下载结果到 tmpdir，读取产物字节、MIME 与结果元数据。"""
+    async def _download_result(
+        self, submit_id: str, tmpdir: str
+    ) -> tuple[list[tuple[bytes, str]], dict[str, Any]]:
+        """下载结果到 tmpdir，读取所有产物字节列表、MIME 与结果元数据。
+
+        返回 (files, metadata)，files 是 [(bytes, mime_type)] 列表。
+        支持多图：CLI 的 result_json.images 可含多张产物。
+        """
         data = await self._query_once(submit_id, download_dir=tmpdir)
         if data.get("gen_status") != _STATUS_SUCCESS:
             raise ProviderError(
@@ -432,13 +438,15 @@ class DreaminaCliBaseProvider(BaseProvider):
         items = result.get(self._RESULT_ITEMS_KEY) or []
         if not items:
             raise ProviderError(f"即梦任务 {submit_id} 成功但未返回生成结果", submit_id=submit_id)
-        file_path = items[0].get("path")
-        if not file_path or not os.path.isfile(file_path):
-            raise ProviderError(
-                f"即梦任务 {submit_id} 结果文件未下载到本地：{self._snippet(json.dumps(items, ensure_ascii=False))}",
-                submit_id=submit_id,
-            )
-        file_bytes = Path(file_path).read_bytes()
+        files: list[tuple[bytes, str]] = []
+        for item in items:
+            file_path = item.get("path")
+            if not file_path or not os.path.isfile(file_path):
+                raise ProviderError(
+                    f"即梦任务 {submit_id} 结果文件未下载到本地：{self._snippet(json.dumps(items, ensure_ascii=False))}",
+                    submit_id=submit_id,
+                )
+            files.append((Path(file_path).read_bytes(), self._default_mime(file_path)))
 
         metadata: dict[str, Any] = {"task_id": submit_id}
         model_id = self._model_label()
@@ -450,7 +458,7 @@ class DreaminaCliBaseProvider(BaseProvider):
         credit = data.get("credit_count")
         if isinstance(credit, (int, float)) and credit >= 0:
             metadata["tokens_used"] = int(credit)
-        return file_bytes, self._default_mime(file_path), metadata
+        return files, metadata
 
     # ---- 主流程 ----
     def _build_submit_args(self, kwargs: dict[str, Any], input_paths: list[str]) -> list[str]:
@@ -476,9 +484,14 @@ class DreaminaCliBaseProvider(BaseProvider):
                 submit_id = await self._submit(submit_args)
 
             await self._poll(submit_id)
-            file_bytes, mime_type, metadata = await self._download_result(submit_id, tmpdir)
+            files, metadata = await self._download_result(submit_id, tmpdir)
 
-        return GenerationResult(file_bytes=file_bytes, mime_type=mime_type, metadata=metadata)
+        return GenerationResult(
+            file_bytes=files[0][0],
+            mime_type=files[0][1],
+            metadata=metadata,
+            files=files,
+        )
 
     # ---- BaseProvider 接口 ----
     async def test_connection(self) -> bool:
@@ -597,6 +610,10 @@ class DreaminaSeedreamProvider(DreaminaCliBaseProvider):
             args.append(f"--prompt={prompt}")
         model_version = self._resolve_model(kwargs)
         args.append(f"--model_version={model_version}")
+
+        count = int(kwargs.get("count") or 1)
+        if count > 1:
+            args.append(f"--n={count}")
 
         width, height = kwargs.get("width"), kwargs.get("height")
         if width is not None and height is not None:

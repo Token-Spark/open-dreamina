@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -56,31 +57,45 @@ class StabilityProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", "stable-image-core")
-        url = f"{self.base_url}/v2beta/stable-image/generate/{model_id}"
-        files = {
-            "prompt": (None, prompt),
-            "output_format": (None, "png"),
-        }
-        if negative_prompt:
-            files["negative_prompt"] = (None, negative_prompt)
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await self._request_with_retry(
-                client,
-                "POST",
-                url,
-                provider_name="Stability",
-                headers=self._headers(),
-                files=files,
-            )
-        data = resp.json()
-        import base64 as _b64
-        img_b64 = data.get("image")
-        if not img_b64:
-            raise ProviderError("Stability 响应中未找到 image 字段")
+        count = max(1, int(kwargs.get("count") or 1))
+
+        # Stability API 每次请求返回单张图片，count > 1 时并发请求
+        async def _single_request() -> bytes:
+            url = f"{self.base_url}/v2beta/stable-image/generate/{model_id}"
+            files = {
+                "prompt": (None, prompt),
+                "output_format": (None, "png"),
+            }
+            if negative_prompt:
+                files["negative_prompt"] = (None, negative_prompt)
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await self._request_with_retry(
+                    client,
+                    "POST",
+                    url,
+                    provider_name="Stability",
+                    headers=self._headers(),
+                    files=files,
+                )
+            import base64 as _b64
+            data = resp.json()
+            img_b64 = data.get("image")
+            if not img_b64:
+                raise ProviderError("Stability 响应中未找到 image 字段")
+            return _b64.b64decode(img_b64)
+
+        if count == 1:
+            img_bytes = await _single_request()
+            files_list = [(img_bytes, "image/png")]
+        else:
+            results = await asyncio.gather(*[_single_request() for _ in range(count)])
+            files_list = [(b, "image/png") for b in results]
+
         return GenerationResult(
-            file_bytes=_b64.b64decode(img_b64),
-            mime_type="image/png",
+            file_bytes=files_list[0][0],
+            mime_type=files_list[0][1],
             metadata={"model": model_id},
+            files=files_list,
         )
 
     async def image_to_image(

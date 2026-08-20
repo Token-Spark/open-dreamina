@@ -23,6 +23,8 @@ import { useTaskStore } from '@/stores/taskStore'
 export interface SSEData {
   resultUrl: string | null
   thumbnailUrl: string | null
+  resultUrls: string[]
+  thumbnailUrls: string[]
   message: string | null
 }
 
@@ -43,6 +45,8 @@ interface SSEPayload {
   error?: string
   result_url?: string
   thumbnail_url?: string
+  result_urls?: string[]
+  thumbnail_urls?: string[]
 }
 
 const TERMINAL: TaskStatus[] = ['completed', 'failed', 'cancelled']
@@ -63,6 +67,8 @@ export function useTaskSSE(
   const [data, setData] = useState<SSEData>({
     resultUrl: null,
     thumbnailUrl: null,
+    resultUrls: [],
+    thumbnailUrls: [],
     message: null,
   })
 
@@ -91,6 +97,12 @@ export function useTaskSSE(
       }
       if (payload.thumbnail_url) {
         setData((d) => ({ ...d, thumbnailUrl: payload.thumbnail_url ?? null }))
+      }
+      if (Array.isArray(payload.result_urls)) {
+        setData((d) => ({ ...d, resultUrls: payload.result_urls ?? [] }))
+      }
+      if (Array.isArray(payload.thumbnail_urls)) {
+        setData((d) => ({ ...d, thumbnailUrls: payload.thumbnail_urls ?? [] }))
       }
       // Mirror into the global store for the TaskBar.
       patchActive(taskId, {
@@ -144,6 +156,8 @@ export function useTaskSSE(
           error: task.error_msg ?? undefined,
           result_url: task.result_url ?? undefined,
           thumbnail_url: task.thumbnail_url ?? undefined,
+          result_urls: task.result_urls,
+          thumbnail_urls: task.thumbnail_urls,
         })
         if (TERMINAL.includes(task.status)) {
           scheduleTerminalCleanup(task.status)
@@ -185,6 +199,8 @@ export function useTaskSSE(
               error: task.error_msg ?? undefined,
               result_url: task.result_url ?? undefined,
               thumbnail_url: task.thumbnail_url ?? undefined,
+              result_urls: task.result_urls,
+              thumbnail_urls: task.thumbnail_urls,
             })
             if (TERMINAL.includes(task.status)) scheduleTerminalCleanup(task.status)
           })

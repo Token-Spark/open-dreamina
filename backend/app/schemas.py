@@ -68,6 +68,9 @@ class TaskResponse(BaseModel):
     thumbnail_path: Optional[str] = None
     result_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
+    # 多图生成：全部结果访问地址（单图时仅 1 项，与 result_url 首项一致）
+    result_urls: list[str] = Field(default_factory=list)
+    thumbnail_urls: list[str] = Field(default_factory=list)
     error_msg: Optional[str] = None
     api_cost: Optional[float] = None
     # 该任务消耗的 token 数（由 Provider 元数据回填，可能为 None）

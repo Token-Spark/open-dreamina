@@ -359,6 +359,7 @@ export function GenerationInputBar({
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
+  const count = (params.count as number) ?? 1
   const frameMode = normalizeFrameMode(params.frame_mode)
   const isSeedance = isSeedanceProvider(providerSlug)
 
@@ -587,6 +588,10 @@ export function GenerationInputBar({
     onParamsChange({ ...params, duration: next })
   }
 
+  function updateCount(next: number) {
+    onParamsChange({ ...params, count: next })
+  }
+
   function updateFrameMode(next: FrameMode) {
     onParamsChange({ ...params, frame_mode: next })
   }
@@ -773,6 +778,9 @@ export function GenerationInputBar({
               disabled={submitting}
               placement="top"
             />
+            {mode === 'image' && (
+              <CountPicker count={count} onChange={updateCount} disabled={submitting} />
+            )}
             {mode === 'video' && (
               <DurationPicker duration={duration} onChange={updateDuration} disabled={submitting} />
             )}
@@ -871,6 +879,44 @@ function DurationPicker({
         className="w-10 bg-transparent text-fg-primary focus-visible:outline-none disabled:opacity-50"
       />
       <span className="text-fg-muted">秒</span>
+    </div>
+  )
+}
+
+function CountPicker({
+  count,
+  onChange,
+  disabled,
+}: {
+  count: number
+  onChange: (count: number) => void
+  disabled?: boolean
+}) {
+  const MIN = 1
+  const MAX = 4
+  return (
+    <div className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary">
+      <Images className="h-4 w-4" />
+      <button
+        type="button"
+        disabled={disabled || count <= MIN}
+        onClick={() => onChange(Math.max(MIN, count - 1))}
+        className="flex h-5 w-5 items-center justify-center rounded-btn text-fg-secondary transition-colors hover:bg-bg-tertiary disabled:opacity-40"
+        aria-label="减少数量"
+      >
+        −
+      </button>
+      <span className="w-4 text-center tabular-nums text-fg-primary">{count}</span>
+      <button
+        type="button"
+        disabled={disabled || count >= MAX}
+        onClick={() => onChange(Math.min(MAX, count + 1))}
+        className="flex h-5 w-5 items-center justify-center rounded-btn text-fg-secondary transition-colors hover:bg-bg-tertiary disabled:opacity-40"
+        aria-label="增加数量"
+      >
+        +
+      </button>
+      <span className="text-fg-muted">张</span>
     </div>
   )
 }

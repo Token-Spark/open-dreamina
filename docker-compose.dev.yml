@@ -48,5 +48,7 @@ services:
   celery-beat:
     volumes:
       - ./backend/app:/app/app:cached
-    # watchmedo 监听 .py 文件变化，自动重启 celery beat
-    command: watchmedo auto-restart --directory=/app/app --pattern='*.py' --recursive -- celery -A app.worker beat --loglevel=info
+    # beat 仅负责按计划派发定时任务（recover_stale_tasks / 备份），不执行任务代码，
+    # 无需热重载。watchmedo 在 Docker Desktop 挂载卷上会因文件同步事件频繁误触发重启，
+    # 导致 recover_stale_tasks 无法按时派发、孤儿任务永久卡在 running，故不使用 watchmedo。
+    command: celery -A app.worker beat --loglevel=info

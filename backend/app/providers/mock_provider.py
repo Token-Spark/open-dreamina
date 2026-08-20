@@ -61,21 +61,26 @@ class MockProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         await asyncio.sleep(0.2)
-        img_bytes = render_placeholder_image(
-            prompt=prompt or "(empty)",
-            width=width,
-            height=height,
-        )
+        count = max(1, int(kwargs.get("count") or 1))
+        files: list[tuple[bytes, str]] = []
+        for i in range(count):
+            img_bytes = render_placeholder_image(
+                prompt=f"{prompt or '(empty)'} #{i + 1}",
+                width=width,
+                height=height,
+            )
+            files.append((img_bytes, "image/png"))
         return GenerationResult(
-            file_bytes=img_bytes,
+            file_bytes=files[0][0],
             mime_type="image/png",
             metadata={
                 "provider": "mock",
                 "model": kwargs.get("model_id", "mock-1"),
                 "width": width,
                 "height": height,
-                "tokens_used": _estimate_mock_tokens(prompt, width, height, steps),
+                "tokens_used": _estimate_mock_tokens(prompt, width, height, steps) * count,
             },
+            files=files,
         )
 
     async def image_to_image(
@@ -89,13 +94,17 @@ class MockProvider(BaseProvider):
         width = int(kwargs.get("width", 1024))
         height = int(kwargs.get("height", 1024))
         steps = int(kwargs.get("steps", 30))
-        img_bytes = render_placeholder_image(
-            prompt=f"[img2img] {prompt or '(empty)'}",
-            width=width,
-            height=height,
-        )
+        count = max(1, int(kwargs.get("count") or 1))
+        files: list[tuple[bytes, str]] = []
+        for i in range(count):
+            img_bytes = render_placeholder_image(
+                prompt=f"[img2img] {prompt or '(empty)'} #{i + 1}",
+                width=width,
+                height=height,
+            )
+            files.append((img_bytes, "image/png"))
         return GenerationResult(
-            file_bytes=img_bytes,
+            file_bytes=files[0][0],
             mime_type="image/png",
             metadata={
                 "provider": "mock",
@@ -104,8 +113,9 @@ class MockProvider(BaseProvider):
                 "strength": strength,
                 "width": width,
                 "height": height,
-                "tokens_used": _estimate_mock_tokens(prompt, width, height, steps),
+                "tokens_used": _estimate_mock_tokens(prompt, width, height, steps) * count,
             },
+            files=files,
         )
 
     async def text_to_video(

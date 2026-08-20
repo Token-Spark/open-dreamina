@@ -82,12 +82,13 @@ class SeedreamProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", "doubao-seedream-5-0-pro-260628")
+        count = max(1, int(kwargs.get("count") or 1))
         url = f"{self.base_url}/images/generations"
         payload = {
             "model": model_id,
             "prompt": prompt,
             "size": f"{width}x{height}",
-            "n": 1,
+            "n": count,
             "response_format": "b64_json",
         }
         async with httpx.AsyncClient(timeout=120) as client:
@@ -103,31 +104,34 @@ class SeedreamProvider(BaseProvider):
         items = data.get("data") or []
         if not items:
             raise ProviderError(f"Seedream 响应中未找到 data: {data}")
-        item = items[0]
-        b64_json = item.get("b64_json")
-        if b64_json:
-            import base64 as _b64
-            file_bytes = _b64.b64decode(b64_json)
-            mime_type = "image/png"
-        else:
-            # 部分网关/mock 不返回 b64_json，仅返回可下载的 url（且 host 常是 localhost）
-            image_url = item.get("url")
-            if not image_url:
-                raise ProviderError(f"Seedream 响应中既无 b64_json 也无 url: {data}")
-            async with httpx.AsyncClient(timeout=120) as client:
-                dl = await self._request_with_retry(
-                    client,
-                    "GET",
-                    self._resolve_url(image_url),
-                    provider_name="Seedream 图片下载",
-                )
-            file_bytes = dl.content
-            mime_type = _detect_mime(file_bytes)
+        files: list[tuple[bytes, str]] = []
+        for item in items:
+            b64_json = item.get("b64_json")
+            if b64_json:
+                import base64 as _b64
+                file_bytes = _b64.b64decode(b64_json)
+                mime_type = "image/png"
+            else:
+                # 部分网关/mock 不返回 b64_json，仅返回可下载的 url（且 host 常是 localhost）
+                image_url = item.get("url")
+                if not image_url:
+                    raise ProviderError(f"Seedream 响应中既无 b64_json 也无 url: {data}")
+                async with httpx.AsyncClient(timeout=120) as client:
+                    dl = await self._request_with_retry(
+                        client,
+                        "GET",
+                        self._resolve_url(image_url),
+                        provider_name="Seedream 图片下载",
+                    )
+                file_bytes = dl.content
+                mime_type = _detect_mime(file_bytes)
+            files.append((file_bytes, mime_type))
         metadata: dict[str, Any] = {"model": model_id}
         return GenerationResult(
-            file_bytes=file_bytes,
-            mime_type=mime_type,
+            file_bytes=files[0][0],
+            mime_type=files[0][1],
             metadata=metadata,
+            files=files,
         )
 
     async def image_to_image(

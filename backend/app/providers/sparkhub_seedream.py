@@ -64,6 +64,10 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
         size = kwargs.get("size") or kwargs.get("resolution")
         if size:
             pl["kwargs"] = {"size": str(size)}
+        # 多图生成数量（上游支持时生效；Pro 模型仅单图，忽略该参数）
+        count = int(kwargs.get("count") or 1)
+        if count > 1:
+            pl.setdefault("kwargs", {})["count"] = count
         return pl
 
     def _extract_result_urls(self, polled: dict[str, Any]) -> list[str]:
@@ -86,11 +90,15 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
         steps: int = 30,
         **kwargs: Any,
     ) -> GenerationResult:
+        # width/height 是命名参数，不会进入 **kwargs；显式转发以免 _build_create_payload 读不到
+        kwargs["width"] = width
+        kwargs["height"] = height
         payload = self._build_create_payload(prompt, kwargs)
         result = await self._run_task(payload, self._extract_result_urls, self._result_mime())
-        # 用真实字节嗅探更准确的 MIME（jpeg/png）
+        # 用真实字节嗅探更准确的 MIME（jpeg/png），并同步到多图 files
         from .sparkhub_base import _detect_mime
         result.mime_type = _detect_mime(result.file_bytes)
+        result.files = [(b, _detect_mime(b)) for b, _ in result.files]
         return result
 
     async def image_to_image(

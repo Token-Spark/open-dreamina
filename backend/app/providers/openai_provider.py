@@ -63,11 +63,12 @@ class OpenAIProvider(BaseProvider):
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", MODEL_GPT_IMAGE_2)
         size = self._size_str(width, height)
+        count = max(1, int(kwargs.get("count") or 1))
         url = f"{self.base_url}/images/generations"
         payload = {
             "model": model_id,
             "prompt": prompt,
-            "n": 1,
+            "n": count,
             "size": size,
             "response_format": "b64_json",
         }
@@ -85,16 +86,25 @@ class OpenAIProvider(BaseProvider):
         if not items or "b64_json" not in items[0]:
             raise ProviderError("OpenAI 响应中未找到 b64_json")
         import base64 as _b64
+
         # GPT Image 系列在 usage 中返回 token 用量；部分兼容网关可能省略
         usage = data.get("usage") or {}
         total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
         metadata: dict[str, Any] = {"model": model_id}
         if isinstance(total_tokens, (int, float)) and total_tokens >= 0:
             metadata["tokens_used"] = int(total_tokens)
+
+        files: list[tuple[bytes, str]] = []
+        for item in items:
+            b64 = item.get("b64_json")
+            if b64:
+                files.append((_b64.b64decode(b64), "image/png"))
+
         return GenerationResult(
-            file_bytes=_b64.b64decode(items[0]["b64_json"]),
-            mime_type="image/png",
+            file_bytes=files[0][0],
+            mime_type=files[0][1],
             metadata=metadata,
+            files=files,
         )
 
     async def image_to_image(

@@ -295,6 +295,7 @@ export function CreatePage() {
         message: null,
         resultUrl: task.result_url,
         thumbnailUrl: task.thumbnail_url,
+        resultUrls: task.result_urls?.length ? task.result_urls : task.result_url ? [task.result_url] : [],
         params: sendParams as Record<string, unknown>,
         provider: providerSlug,
         modelId: requestModelId || null,
@@ -327,6 +328,7 @@ export function CreatePage() {
         message: null,
         resultUrl: task.result_url,
         thumbnailUrl: task.thumbnail_url,
+        resultUrls: task.result_urls?.length ? task.result_urls : task.result_url ? [task.result_url] : [],
         // 重置计时基准：重试等同于一轮全新提交，已等待时长应从 0 重新累计
         createdAt: Date.now(),
       })
@@ -392,10 +394,11 @@ export function CreatePage() {
     toast('已应用模板', 'success')
   }
 
-  function openLightbox(message: GenMessage) {
-    if (!message.resultUrl) return
+  function openLightbox(message: GenMessage, url?: string) {
+    const target = url ?? message.resultUrl
+    if (!target) return
     setLightboxMessage({
-      url: message.resultUrl,
+      url: target,
       type: message.type === 'text2img' || message.type === 'img2img' ? 'image' : 'video',
       meta: message.params,
     })

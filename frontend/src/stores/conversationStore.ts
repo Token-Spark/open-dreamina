@@ -35,6 +35,8 @@ export interface GenMessage {
   message: string | null
   resultUrl: string | null
   thumbnailUrl: string | null
+  /** 多图生成：全部结果访问地址（单图时仅 1 项）。 */
+  resultUrls: string[]
   params: Record<string, unknown>
   provider: string
   modelId: string | null
@@ -69,6 +71,7 @@ export function taskToMessage(task: Task): GenMessage {
     message: null,
     resultUrl: task.result_url,
     thumbnailUrl: task.thumbnail_url,
+    resultUrls: task.result_urls?.length ? task.result_urls : task.result_url ? [task.result_url] : [],
     params,
     provider: task.provider,
     modelId: task.model_id,

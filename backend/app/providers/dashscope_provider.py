@@ -53,13 +53,14 @@ class DashScopeProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", "wanx-v1")
+        count = max(1, int(kwargs.get("count") or 1))
         url = f"{self.base_url}/api/v1/services/aigc/text2image/image-synthesis"
         payload = {
             "model": model_id,
             "input": {"prompt": prompt},
             "parameters": {
                 "size": f"{width}*{height}",
-                "n": 1,
+                "n": count,
             },
         }
         if negative_prompt:
@@ -79,16 +80,25 @@ class DashScopeProvider(BaseProvider):
         results = (data.get("output") or {}).get("results") or []
         if not results:
             raise ProviderError("DashScope 未返回结果（可能为异步任务，需扩展轮询）")
-        image_url = results[0].get("url")
-        if not image_url:
-            raise ProviderError("DashScope 响应中未找到 image url")
+
+        # 下载所有返回的图片
+        files: list[tuple[bytes, str]] = []
         async with httpx.AsyncClient(timeout=60) as client:
-            img_resp = await self._request_with_retry(
-                client,
-                "GET",
-                image_url,
-                provider_name="DashScope 结果图片下载",
-            )
+            for r in results:
+                image_url = r.get("url")
+                if not image_url:
+                    continue
+                img_resp = await self._request_with_retry(
+                    client,
+                    "GET",
+                    image_url,
+                    provider_name="DashScope 结果图片下载",
+                )
+                files.append((img_resp.content, "image/png"))
+
+        if not files:
+            raise ProviderError("DashScope 响应中未找到可下载的 image url")
+
         # 通义万相响应 usage 中含 input_tokens/output_tokens（计费维度），合并为 tokens_used
         usage = data.get("usage") or {}
         input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else 0
@@ -100,9 +110,10 @@ class DashScopeProvider(BaseProvider):
         if tokens_used is not None and tokens_used >= 0:
             metadata["tokens_used"] = tokens_used
         return GenerationResult(
-            file_bytes=img_resp.content,
-            mime_type="image/png",
+            file_bytes=files[0][0],
+            mime_type=files[0][1],
             metadata=metadata,
+            files=files,
         )
 
     async def image_to_image(

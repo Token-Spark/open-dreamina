@@ -38,6 +38,9 @@ export interface Task {
   thumbnail_path: string | null
   result_url: string | null
   thumbnail_url: string | null
+  /** 多图生成：全部结果访问地址（单图时仅 1 项）。 */
+  result_urls: string[]
+  thumbnail_urls: string[]
   error_msg: string | null
   api_cost: number | null
   /** 该任务消耗的 token 数（可能为 null，表示 Provider 未返回） */

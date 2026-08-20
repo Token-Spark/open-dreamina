@@ -175,12 +175,14 @@ export const DURATION_OPTIONS = [
 /** 参数 schema 按任务类型定义；驱动动态参数面板。 */
 export const PARAM_FIELDS: Record<TaskType, ParamField[]> = {
   text2img: [
+    { key: 'count', label: '生成数量', kind: 'number', min: 1, max: 4, step: 1, default: 1 },
     { key: 'width', label: '宽度', kind: 'select', options: SIZE_OPTIONS, default: 1024 },
     { key: 'height', label: '高度', kind: 'select', options: SIZE_OPTIONS, default: 1024 },
     { key: 'steps', label: '采样步数', kind: 'number', min: 1, max: 80, step: 1, default: 30 },
     { key: 'guidance', label: '提示词权重', kind: 'number', min: 1, max: 20, step: 0.5, default: 7 },
   ],
   img2img: [
+    { key: 'count', label: '生成数量', kind: 'number', min: 1, max: 4, step: 1, default: 1 },
     { key: 'width', label: '宽度', kind: 'select', options: SIZE_OPTIONS, default: 1024 },
     { key: 'height', label: '高度', kind: 'select', options: SIZE_OPTIONS, default: 1024 },
     { key: 'steps', label: '采样步数', kind: 'number', min: 1, max: 80, step: 1, default: 30 },

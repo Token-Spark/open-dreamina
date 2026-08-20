@@ -43,11 +43,18 @@ from ..worker import run_generation_task
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-def _to_response(task: Task, asset_id: str | None = None) -> TaskResponse:
-    result_url = thumbnail_url = None
-    if asset_id:
-        result_url = f"/api/v1/assets/{asset_id}/file"
-        thumbnail_url = f"/api/v1/assets/{asset_id}/thumbnail"
+def _to_response(task: Task, asset_ids: list[str] | None = None) -> TaskResponse:
+    # 优先使用 worker 落库的有序结果资产 id（多图保序）；旧任务回退到查询到的单个资产。
+    params = task_service.safe_json_loads(task.params_json, {})
+    stored_ids = params.get("result_asset_ids")
+    if isinstance(stored_ids, list) and stored_ids:
+        ids = [str(a) for a in stored_ids]
+    else:
+        ids = asset_ids or []
+    result_urls = [f"/api/v1/assets/{aid}/file" for aid in ids]
+    thumbnail_urls = [f"/api/v1/assets/{aid}/thumbnail" for aid in ids]
+    result_url = result_urls[0] if result_urls else None
+    thumbnail_url = thumbnail_urls[0] if thumbnail_urls else None
     # 参考图访问地址：直接由 input_asset_id 派生（与 result_url 同一模式，无需额外查询）
     input_asset_url = (
         f"/api/v1/assets/{task.input_asset_id}/file" if task.input_asset_id else None
@@ -60,13 +67,15 @@ def _to_response(task: Task, asset_id: str | None = None) -> TaskResponse:
         provider=task.provider,
         model_id=task.model_id,
         prompt=task.prompt,
-        params=task_service.safe_json_loads(task.params_json, {}),
+        params=params,
         input_asset_id=task.input_asset_id,
         input_asset_url=input_asset_url,
         result_path=task.result_path,
         thumbnail_path=task.thumbnail_path,
         result_url=result_url,
         thumbnail_url=thumbnail_url,
+        result_urls=result_urls,
+        thumbnail_urls=thumbnail_urls,
         error_msg=task.error_msg,
         api_cost=task.api_cost,
         tokens_used=task.tokens_used,
@@ -78,13 +87,17 @@ def _to_response(task: Task, asset_id: str | None = None) -> TaskResponse:
     )
 
 
-def _asset_id_map(db: Session, task_ids: list[str]) -> dict[str, str]:
-    """批量查询 task_id -> asset_id 映射，避免 N+1 查询。"""
+def _asset_id_map(db: Session, task_ids: list[str]) -> dict[str, list[str]]:
+    """批量查询 task_id -> 有序 asset_id 列表，避免 N+1 查询。"""
     if not task_ids:
         return {}
     from ..models import Asset
     rows = db.query(Asset.id, Asset.task_id).filter(Asset.task_id.in_(task_ids)).all()
-    return {tid: aid for aid, tid in rows if tid}
+    out: dict[str, list[str]] = {}
+    for aid, tid in rows:
+        if tid:
+            out.setdefault(tid, []).append(aid)
+    return out
 
 
 @router.post("", response_model=TaskCreateResponse, status_code=201)
@@ -286,18 +299,24 @@ async def stream_task(task_id: str, request: Request, db: Session = Depends(get_
 
 def _terminal_event(task_id: str, status: str, task: Task, message: str | None) -> str:
     if status == "completed":
-        # 查询关联资产 id
-        asset_id = None
+        # 查询关联资产 id（优先读 worker 落库的有序结果 id，保序）
+        asset_ids: list[str] = []
         try:
             from ..models import Asset
             from ..database import SessionLocal
             with SessionLocal() as s:
-                a = s.query(Asset).filter(Asset.task_id == task_id).first()
-                if a:
-                    asset_id = a.id
+                fresh = s.get(Task, task_id)
+                if fresh:
+                    p = task_service.safe_json_loads(fresh.params_json, {})
+                    stored = p.get("result_asset_ids")
+                    if isinstance(stored, list) and stored:
+                        asset_ids = [str(a) for a in stored]
+                if not asset_ids:
+                    rows = s.query(Asset.id).filter(Asset.task_id == task_id).all()
+                    asset_ids = [r[0] for r in rows]
         except Exception:
             pass
-        return format_event("completed", task_service.completed_payload(task_id, asset_id))
+        return format_event("completed", task_service.completed_payload(task_id, asset_ids))
     if status == "failed":
         # message 可能为 None（Redis 已清理走 DB 兜底路径），回查 DB 取最新 error_msg
         err = message
