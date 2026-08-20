@@ -120,14 +120,15 @@ def _ratio_from_size(width: int, height: int) -> str:
 
 
 # 各图片模型版本支持的 --resolution_type 档位（CLI 严格校验，来源：即梦 CLI 体验指南）。
-# 3.x 支持 1k/2k；4.x / 5.0 支持 2k/4k。未列出的版本保守按 {1k, 2k} 处理。
+# 3.x 支持 1k/2k；4.x / 5.0 支持 2k/4k；5.0lite 支持 2k/3k/4k。
+# 未列出的版本保守按 {1k, 2k} 处理。
 _IMAGE_RESOLUTION_SUPPORT: dict[str, set[str]] = {
     "3.0": {"1k", "2k"},
     "3.1": {"1k", "2k"},
     "4.0": {"2k", "4k"},
     "5.0": {"2k", "4k"},
     "5.0Pro": {"2k", "4k"},
-    "5.0lite": {"2k", "4k"},
+    "5.0lite": {"2k", "3k", "4k"},
 }
 # 所有图片模型都支持的通用默认档位（请求档位不被模型支持时回退到它）
 _DEFAULT_IMAGE_RESOLUTION = "2k"
@@ -142,8 +143,8 @@ def _image_resolution_type(
     """推导 CLI --resolution_type，只返回该模型支持的档位（绝不发送非法值）。
 
     即梦 CLI 的 text2image / image2image 对 --resolution_type 严格校验，
-    且不同模型版本支持的档位不同（如 3.x 支持 1k/2k，4.x/5.0 支持 2k/4k）。
-    - 优先按前端档位（1K/2K/4K）映射；
+    且不同模型版本支持的档位不同（如 3.x 支持 1k/2k，4.x/5.0 支持 2k/4k，5.0lite 支持 2k/3k/4k）。
+    - 优先按前端档位（1K/2K/3K/4K）映射；
     - 无档位时按最长边近似（<=1536 归 1k，其余归 2k）；
     - 请求档位不在模型支持集合时，回退到通用默认档位 2k，避免 invalid param 报错。
     """

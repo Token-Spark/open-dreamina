@@ -328,9 +328,17 @@ export function isDreaminaSeedreamCli(slug: string): boolean {
 }
 
 /**
- * 即梦 CLI 图片模型支持的分辨率档位（来源：即梦 CLI 体验指南 / CLI 校验）。
- * 仅当使用 dreamina-seedream Provider 时生效：
+ * 是否为任意 Seedream 图片 Provider（API 直连 / CLI / Spark Hub 中转）。
+ * 这些 Provider 的分辨率档位随模型不同而变化，需按模型过滤可选分辨率。
+ */
+export function isSeedreamImageProvider(slug: string): boolean {
+  return slug === 'dreamina-seedream' || slug === 'seedream' || slug === 'sparkhub-seedream'
+}
+
+/**
+ * Seedream 图片模型支持的分辨率档位（来源：即梦 CLI 体验指南 / Volcengine API 文档）。
  * - 即梦 3.x 支持 1K / 2K；
+ * - Seedream 5.0 Lite 支持 2K / 3K / 4K（不支持 1K）；
  * - Seedream 5.0 / 即梦 4.x 支持 2K / 4K。
  */
 export function imageResolutionsForModel(modelId: string): ResolutionDef[] {
@@ -339,6 +347,14 @@ export function imageResolutionsForModel(modelId: string): ResolutionDef[] {
     return [
       { value: '1K', label: '标清 1K' },
       { value: '2K', label: '高清 2K' },
+    ]
+  }
+  // Seedream 5.0 Lite：支持 2K / 3K / 4K（不支持 1K）。
+  if (id.includes('lite')) {
+    return [
+      { value: '2K', label: '高清 2K' },
+      { value: '3K', label: '超清 3K' },
+      { value: '4K', label: '极清 4K' },
     ]
   }
   return [
@@ -358,9 +374,9 @@ export function defaultResolutionForMode(mode: ContentMode): Resolution {
 }
 
 /**
- * 图片生成像素表（基于 Seedream 5.0 lite 官方推荐宽高组合，全部按 64 对齐）。
+ * 图片生成像素表（基于 Seedream 5.0 lite 官方推荐宽高组合）。
  * 来源：https://www.volcengine.com/docs/82379/1541523
- * 1K / 4K 档位由同规则外推。
+ * 1K / 3K / 4K 档位由同规则外推，3K 由 2K / 4K 中间值插值。
  */
 const IMAGE_SIZE_TABLE: Partial<Record<ImageResolution, Partial<Record<AspectRatio, { width: number; height: number }>>>> = {
   '1K': {
@@ -382,6 +398,16 @@ const IMAGE_SIZE_TABLE: Partial<Record<ImageResolution, Partial<Record<AspectRat
     '3:2': { width: 2496, height: 1664 },
     '2:3': { width: 1664, height: 2496 },
     '21:9': { width: 3136, height: 1344 },
+  },
+  '3K': {
+    '1:1': { width: 3072, height: 3072 },
+    '3:4': { width: 2592, height: 3456 },
+    '4:3': { width: 3456, height: 2592 },
+    '16:9': { width: 4272, height: 2400 },
+    '9:16': { width: 2400, height: 4272 },
+    '3:2': { width: 3744, height: 2496 },
+    '2:3': { width: 2496, height: 3744 },
+    '21:9': { width: 4704, height: 2016 },
   },
   '4K': {
     '1:1': { width: 4096, height: 4096 },

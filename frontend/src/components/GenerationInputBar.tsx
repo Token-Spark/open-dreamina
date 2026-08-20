@@ -35,7 +35,7 @@ import {
   CONTENT_MODES,
   sizeFromRatioResolution,
   imageResolutionsForModel,
-  isDreaminaSeedreamCli,
+  isSeedreamImageProvider,
   videoResolutionsForModel,
   type ContentMode,
   type AspectRatio,
@@ -416,9 +416,9 @@ export function GenerationInputBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, mode])
 
-  // 即梦 CLI 图片模式：模型切换后，若当前分辨率不被新模型支持，自动回落到该模型支持的档位。
+  // Seedream 图片模式：模型切换后，若当前分辨率不被新模型支持，自动回落到该模型支持的档位。
   useEffect(() => {
-    if (mode !== 'image' || !isDreaminaSeedreamCli(providerSlug)) return
+    if (mode !== 'image' || !isSeedreamImageProvider(providerSlug)) return
     const supported = imageResolutionsForModel(modelId).map((r) => r.value)
     if (!supported.includes(resolution as Resolution)) {
       updateRatioResolution(aspectRatio, supported[0])

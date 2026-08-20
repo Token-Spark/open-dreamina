@@ -19,7 +19,7 @@ import {
   ASPECT_RATIOS_BY_MODE,
   RESOLUTIONS_BY_MODE,
   imageResolutionsForModel,
-  isDreaminaSeedreamCli,
+  isSeedreamImageProvider,
   videoResolutionsForModel,
   sizeFromRatioResolution,
   type AspectRatio,
@@ -52,12 +52,12 @@ export function SizePicker({
 }: SizePickerProps) {
   const ratios = ASPECT_RATIOS_BY_MODE[mode]
   // 视频模式按模型过滤分辨率（不同 Seedance 变体支持不同分辨率）；
-  // 即梦 CLI 图片模式按模型过滤（3.x 支持 1K/2K，4.x/5.0 支持 2K/4K）；
+  // Seedream 图片模式按模型过滤（3.x 支持 1K/2K，4.x/5.0 支持 2K/4K，5.0 Lite 支持 2K/3K/4K）；
   // 其余情况回退到模式默认列表。
   const resolutions =
     mode === 'video' && modelId
       ? videoResolutionsForModel(modelId)
-      : mode === 'image' && providerSlug && modelId && isDreaminaSeedreamCli(providerSlug)
+      : mode === 'image' && providerSlug && modelId && isSeedreamImageProvider(providerSlug)
         ? imageResolutionsForModel(modelId)
         : RESOLUTIONS_BY_MODE[mode]
   // 当前状态若不属于该模式（如切换 mode 时残留），回退到模式默认
