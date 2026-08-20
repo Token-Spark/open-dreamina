@@ -57,11 +57,17 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
             "api_name": api_name,
             "prompt": prompt,
             "aspect_ratio": _aspect_ratio_from_size(width, height),
-            # Spark Hub Seedream 的 resolution 固定为 1440p；2K/3K/4K 档位走 kwargs.size
             "resolution": "1440p",
         }
-        # 前端分辨率档位（1K/2K/3K/4K）或自定义宽高映射到 kwargs.size
-        size = kwargs.get("size") or kwargs.get("resolution")
+        # 火山方舟 size 参数有两种互斥方式：
+        #   方式 1：分辨率档位（"2K"/"3K"/"4K"），由模型根据 prompt 判断宽高比
+        #   方式 2：明确像素值（"1728x2304"），确定性输出
+        # 当有明确 width/height 时必须用方式 2，否则方式 1 会让模型自行判断宽高比，
+        # 导致 aspect_ratio 参数被忽略（如 3:4 输出成正方形）。
+        if width > 0 and height > 0:
+            size = f"{width}x{height}"
+        else:
+            size = kwargs.get("size") or kwargs.get("resolution")
         if size:
             pl["kwargs"] = {"size": str(size)}
         # 多图生成数量（上游支持时生效；Pro 模型仅单图，忽略该参数）
