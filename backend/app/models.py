@@ -116,6 +116,49 @@ class Asset(Base):
     )
 
 
+class CreationAsset(Base):
+    """创作资产：人物/场景/道具等可复用素材，聚合图片、音色音频与文本设定。
+
+    - origin=local：本实例创建，可编辑/删除/同步；
+      origin=remote：从云端拉取的他人资产，本地只读，可另存为副本。
+    - owner_id 用于云同步权限隔离：云端对象 key 按创建者分目录，互不覆盖。
+    """
+
+    __tablename__ = "creation_assets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)  # character|scene|prop
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    image_asset_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    audio_asset_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    owner_id: Mapped[str] = mapped_column(String, nullable=False)
+    owner_name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    origin: Mapped[str] = mapped_column(String, nullable=False, default="local")  # local|remote
+    synced_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    # 乐观锁同步状态：上次推送/拉取时的云端版本与内容指纹快照。
+    # base_version=0 表示从未同步；指纹与当前内容不一致即「有未推送修改」。
+    base_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    base_fingerprint: Mapped[str] = mapped_column(String, nullable=False, default="")
+    # 上次同步所在的云端标签目录（项目），推送回写同一位置
+    cloud_tag: Mapped[str] = mapped_column(String, nullable=False, default="")
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    image_asset: Mapped[Asset | None] = relationship("Asset", foreign_keys=[image_asset_id])
+    audio_asset: Mapped[Asset | None] = relationship("Asset", foreign_keys=[audio_asset_id])
+
+    __table_args__ = (
+        Index("idx_creation_assets_category", "category"),
+        Index("idx_creation_assets_created", "created_at"),
+    )
+
+
 class ApiProvider(Base):
     __tablename__ = "api_providers"
 

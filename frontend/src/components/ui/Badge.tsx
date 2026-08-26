@@ -24,6 +24,7 @@ const badgeVariants = cva(
         default: 'border-border bg-bg-tertiary text-fg-secondary',
         success: 'border-success/30 bg-success/10 text-success',
         error: 'border-error/30 bg-error/10 text-error',
+        warning: 'border-warning/30 bg-warning/10 text-warning',
         outline: 'border-border bg-transparent text-fg-secondary',
       },
     },

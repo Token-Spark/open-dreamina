@@ -24,6 +24,7 @@ export default {
         accent: 'var(--accent)',
         success: 'var(--success)',
         error: 'var(--error)',
+        warning: 'var(--warning)',
         border: {
           DEFAULT: 'var(--border)',
         },

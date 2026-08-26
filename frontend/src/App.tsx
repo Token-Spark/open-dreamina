@@ -18,6 +18,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from '@/components/Layout'
 import { CreatePage } from '@/pages/CreatePage'
 import { AssetsPage } from '@/pages/AssetsPage'
+import { CreationAssetsPage } from '@/pages/CreationAssetsPage'
 import { TemplatesPage } from '@/pages/TemplatesPage'
 import { TasksPage } from '@/pages/TasksPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -52,6 +53,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<CreatePage />} />
             <Route path="/assets" element={<AssetsPage />} />
+            <Route path="/creation-assets" element={<CreationAssetsPage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/settings/providers" element={<SettingsPage />} />

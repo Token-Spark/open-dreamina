@@ -18,6 +18,7 @@
   --accent: #ffffff;
   --success: #22c55e;
   --error: #ef4444;
+  --warning: #f59e0b;
   --border: #2a2a2e;
   --glow-color: rgba(255, 255, 255, 0.35);
   --scrollbar-thumb: #2a2a2e;
@@ -36,6 +37,7 @@
   --accent: #0a0a0b;
   --success: #16a34a;
   --error: #dc2626;
+  --warning: #d97706;
   --border: #e4e4e7;
   --glow-color: rgba(10, 10, 11, 0.18);
   --scrollbar-thumb: #d4d4d8;
