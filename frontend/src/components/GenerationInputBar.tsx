@@ -24,12 +24,14 @@ import {
   Film,
   Music,
   Video,
+  Clapperboard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
 import { ReferenceSlot, type ReferenceKind } from '@/components/ReferenceSlot'
 import { ModelPicker } from '@/components/ModelPicker'
 import { SizePicker } from '@/components/SizePicker'
+import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
 import { uploadAsset, assetFileUrl, submitAssetAudit, getAssetAudit } from '@/api/assets'
 import {
   CONTENT_MODES,
@@ -41,7 +43,7 @@ import {
   type AspectRatio,
   type Resolution,
 } from '@/lib/generation'
-import { toast } from '@/stores/uiStore'
+import { toast, useUIStore } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { cn } from '@/lib/utils'
 
@@ -195,6 +197,8 @@ export interface GenerationInputBarProps {
   submitting: boolean
   /** 是否已达并发上限：达到时仅禁用生成按钮，输入区仍可编辑以准备下一条任务。 */
   atConcurrencyLimit: boolean
+  /** 3D 导演台 iframe 地址（空则不显示导演台入口）。 */
+  directorDeskUrl?: string
 }
 
 export function GenerationInputBar({
@@ -213,8 +217,12 @@ export function GenerationInputBar({
   onGenerate,
   submitting,
   atConcurrencyLimit,
+  directorDeskUrl,
 }: GenerationInputBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // 导演台弹窗开关 & 当前主题（传给 iframe）
+  const [directorOpen, setDirectorOpen] = useState(false)
+  const theme = useUIStore((s) => s.theme)
   // 镜像 refAssets，供异步审核轮询读取最新列表，避免闭包捕获过期状态。
   const refAssetsRef = useRef(refAssets)
   useEffect(() => {
@@ -551,6 +559,62 @@ export function GenerationInputBar({
     }
   }
 
+  /** 导演台采集回调：上传图片并按首帧/尾帧位置填入参考槽位。 */
+  async function handleDirectorImage(file: File, position?: 'first' | 'last') {
+    try {
+      const asset = await uploadAsset(file)
+      const needsAudit = isSparkHubSeedance(providerSlug)
+      const ref: ReferenceAsset = {
+        assetId: asset.id,
+        previewUrl: assetFileUrl(asset.id),
+        kind: 'image',
+        auditStatus: needsAudit ? 'pending' : undefined,
+      }
+
+      if (position === 'first' || position === 'last') {
+        // 管理 [首帧, 尾帧] 槽位：非图片参考保持不变
+        const others = refAssets.filter((a) => (a.kind ?? 'image') !== 'image')
+        let images = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
+        if (position === 'first') {
+          images = images.length > 0 ? [ref, ...images.slice(1)] : [ref]
+        } else if (images.length >= 2) {
+          images = [images[0], ref, ...images.slice(2)]
+        } else if (images.length === 1) {
+          images = [images[0], ref]
+        } else {
+          images = [ref]
+        }
+        onRefAssetsChange([...others, ...images])
+        // Seedance 自动切换帧模式
+        if (isSeedance) updateFrameMode(images.length >= 2 ? 'first_last' : 'first')
+      } else {
+        onRefAssetsChange([...refAssets, ref])
+      }
+
+      if (needsAudit) startAudit(ref.assetId)
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    }
+  }
+
+  /** 导演台采集回调：上传参考视频并追加。 */
+  async function handleDirectorVideo(file: File) {
+    try {
+      const asset = await uploadAsset(file)
+      const needsAudit = isSparkHubSeedance(providerSlug)
+      const ref: ReferenceAsset = {
+        assetId: asset.id,
+        previewUrl: assetFileUrl(asset.id),
+        kind: 'video',
+        auditStatus: needsAudit ? 'pending' : undefined,
+      }
+      onRefAssetsChange([...refAssets, ref])
+      if (needsAudit) startAudit(ref.assetId)
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    }
+  }
+
   function removeRef(index: number) {
     onRefAssetsChange(refAssets.filter((_, i) => i !== index))
   }
@@ -643,13 +707,13 @@ export function GenerationInputBar({
             </div>
           )}
 
-          {/* 输入区：参考图槽 + 提示词 */}
+          {/* 输入区：参考素材槽（含导演台）+ 提示词 */}
           <div className="flex gap-3">
-            {frameSlots ? (
-              // 首帧/首尾帧：渲染指定数量的角色格子；全部填满后不再显示上传按钮，
-              // 需先移除已有图片才能重新上传。
-              <div className="flex gap-2">
-                {frameSlots.map((label, i) => (
+            <div className="flex gap-2">
+              {frameSlots ? (
+                // 首帧/首尾帧：渲染指定数量的角色格子；全部填满后不再显示上传按钮，
+                // 需先移除已有图片才能重新上传。
+                frameSlots.map((label, i) => (
                   <ReferenceSlot
                     key={label}
                     label={label}
@@ -659,15 +723,31 @@ export function GenerationInputBar({
                     onPick={() => fileInputRef.current?.click()}
                     onClear={() => removeFrameImage(i)}
                   />
-                ))}
-              </div>
-            ) : (
-              <ReferenceSlot
-                previewUrl={null}
-                onPick={() => fileInputRef.current?.click()}
-                onClear={() => {}}
-              />
-            )}
+                ))
+              ) : (
+                <ReferenceSlot
+                  previewUrl={null}
+                  onPick={() => fileInputRef.current?.click()}
+                  onClear={() => {}}
+                />
+              )}
+              {/* 导演台：本质是一种参考素材来源，与参考槽位并排展示 */}
+              {mode === 'video' && directorDeskUrl && (
+                <div className="flex w-16 shrink-0 flex-col items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDirectorOpen(true)}
+                    disabled={submitting}
+                    title="打开 3D 导演台，采集运镜参考"
+                    aria-label="导演台"
+                    className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-btn border border-dashed border-border text-fg-muted transition-colors hover:border-fg-muted hover:text-fg-secondary disabled:opacity-50"
+                  >
+                    <Clapperboard className="h-5 w-5" />
+                  </button>
+                  <span className="text-xs text-fg-muted">导演台</span>
+                </div>
+              )}
+            </div>
             <div className="relative flex flex-1 flex-col gap-2">
               {/* @ 引用悬浮选择器：在提示词中键入 @ 时弹出，选择已上传参考素材作为生成提示词 */}
               {mention.open && (
@@ -800,6 +880,14 @@ export function GenerationInputBar({
           </div>
         </div>
       </div>
+      <DirectorDeskDialog
+        open={directorOpen}
+        onClose={() => setDirectorOpen(false)}
+        url={directorDeskUrl ?? ''}
+        theme={theme}
+        onCaptureImage={handleDirectorImage}
+        onCaptureVideo={handleDirectorVideo}
+      />
     </div>
   )
 }

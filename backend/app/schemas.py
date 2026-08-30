@@ -401,6 +401,8 @@ class SystemSettings(BaseModel):
     持久化于 settings 表；GET 缺省值由路由层从 config 合并。"""
     max_concurrent_tasks: int = Field(default=2, ge=1, le=8)
     default_provider: str = ""
+    # 3D 导演台 iframe 地址；由 .env / 环境变量提供默认值，可在 settings 表覆盖。
+    director_desk_url: str = ""
 
 
 class BackupResponse(BaseModel):

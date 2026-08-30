@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, Trash2, XCircle } from 'lucide-react'
 import {
@@ -73,6 +74,7 @@ export function TasksPage() {
   const [tab, setTab] = useState<Tab>('all')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const activeMap = useTaskStore((s) => s.active)
 
   const { data, isLoading } = useQuery({
@@ -165,7 +167,18 @@ export function TasksPage() {
                 const status: TaskStatus = live?.status ?? task.status
                 const progress = live?.progress ?? task.progress
                 return (
-                  <tr key={task.id} className="border-t border-border hover:bg-bg-secondary/60">
+                  <tr
+                    key={task.id}
+                    onClick={() => {
+                      if (task.conversation_id) {
+                        navigate('/', { state: { conversationId: task.conversation_id, taskId: task.id } })
+                      }
+                    }}
+                    className={cn(
+                      'border-t border-border hover:bg-bg-secondary/60',
+                      task.conversation_id && 'cursor-pointer',
+                    )}
+                  >
                     <td className="px-4 py-3 text-fg-primary">
                       {TASK_TYPE_LABEL[task.type]}
                     </td>
@@ -222,7 +235,10 @@ export function TasksPage() {
                       {formatDateTime(task.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                      <div
+                        className="flex items-center justify-end gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {isActiveStatus(status) && (
                           <Button variant="ghost" size="sm" onClick={() => handleCancel(task)}>
                             <XCircle className="h-3.5 w-3.5" />

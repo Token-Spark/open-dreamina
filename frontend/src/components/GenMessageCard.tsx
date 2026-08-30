@@ -50,7 +50,7 @@ export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEd
   }, [status, progress, error, data.resultUrl, data.thumbnailUrl, data.resultUrls, data.message, topicId, message.id, message.status, updateMessage])
 
   return (
-    <div className="animate-slide-up">
+    <div id={`msg-${message.id}`} className="animate-slide-up scroll-mt-4">
       <div className="mb-3 flex items-start gap-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-tertiary text-xs font-medium text-fg-secondary">
           U
@@ -100,7 +100,7 @@ function ResultCard({
   }, [running, message.createdAt])
 
   return (
-    <div className="rounded-card border border-border bg-bg-secondary p-4 space-y-3">
+    <div className="rounded-card bg-transparent p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {running && <Loader2 className="h-4 w-4 animate-spin text-fg-secondary" />}
@@ -157,20 +157,20 @@ function ResultCard({
               {message.resultUrls.map((url, i) => (
                 <div
                   key={url}
-                  className="cursor-pointer overflow-hidden rounded-btn border border-border bg-transparent"
+                  className="cursor-pointer overflow-hidden rounded-btn bg-transparent"
                   onClick={() => onOpenLightbox(url)}
                 >
                   <img
                     src={url}
                     alt={`生成结果 ${i + 1}`}
-                    className="aspect-square w-full object-cover"
+                    className="w-full object-contain"
                   />
                 </div>
               ))}
             </div>
           ) : (
             <div
-              className="cursor-pointer overflow-hidden rounded-btn border border-border bg-transparent"
+              className="cursor-pointer overflow-hidden rounded-btn bg-transparent"
               onClick={() => onOpenLightbox()}
             >
               {resultType === 'image' ? (

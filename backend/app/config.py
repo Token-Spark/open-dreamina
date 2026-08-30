@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     # SSE
     sse_heartbeat_interval: int = 15
 
+    # 3D 导演台：iframe 嵌入地址（二创协议见 docs/embed-contract.md）。
+    # 默认指向 GitHub Pages 在线版；离线/自托管时改为本地部署地址。
+    director_desk_url: str = "https://xiaozangao.github.io/3d-director-desk/"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors(cls, v):

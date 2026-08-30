@@ -45,11 +45,9 @@ export function TaskBar() {
 
         <div className="flex flex-1 items-center gap-3 overflow-x-auto scrollbar-thin">
           {active.map((t) => (
-            <button
+            <div
               key={t.task.id}
-              type="button"
-              onClick={() => navigate('/tasks')}
-              className="group flex w-56 shrink-0 items-center gap-2 rounded-btn border border-border bg-bg-tertiary px-2.5 py-1.5 text-left transition-colors hover:border-fg-muted"
+              className="group flex w-56 shrink-0 items-center gap-2 rounded-btn border border-border bg-bg-tertiary px-2.5 py-1.5 text-left"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
@@ -66,7 +64,7 @@ export function TaskBar() {
                   className="mt-1 h-1"
                 />
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
