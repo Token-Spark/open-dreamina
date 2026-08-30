@@ -17,12 +17,15 @@ import {
   createCreationAsset,
   createProject,
   deleteCreationAsset,
+  getAutoSyncConfig,
   getSyncConfig,
   listCreationAssetTags,
   listCreationAssets,
   listProjects,
   pullAssetsByTag,
+  runAutoSyncNow,
   syncAssetsByTag,
+  updateAutoSyncConfig,
   updateCreationAsset,
   updateOwnerName,
   type CreateCreationAssetPayload,
@@ -34,6 +37,7 @@ export const CREATION_ASSETS_KEY = ['creation-assets'] as const
 export const CREATION_ASSET_TAGS_KEY = ['creation-assets', 'tags'] as const
 export const SYNC_CONFIG_KEY = ['creation-assets', 'sync-config'] as const
 export const PROJECTS_KEY = ['creation-assets', 'projects'] as const
+export const AUTO_SYNC_CONFIG_KEY = ['creation-assets', 'auto-sync-config'] as const
 
 export function useCreationAssets(query: ListCreationAssetsQuery) {
   return useQuery({
@@ -132,6 +136,37 @@ export function useUpdateOwnerName() {
     mutationFn: (ownerName: string) => updateOwnerName(ownerName),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: SYNC_CONFIG_KEY })
+    },
+  })
+}
+
+// ---------------- 集中化自动同步 ----------------
+
+export function useAutoSyncConfig() {
+  return useQuery({
+    queryKey: AUTO_SYNC_CONFIG_KEY,
+    queryFn: getAutoSyncConfig,
+  })
+}
+
+export function useUpdateAutoSyncConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ enabled, tag }: { enabled: boolean; tag: string }) =>
+      updateAutoSyncConfig(enabled, tag),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: AUTO_SYNC_CONFIG_KEY })
+    },
+  })
+}
+
+export function useRunAutoSyncNow() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => runAutoSyncNow(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CREATION_ASSETS_KEY })
+      qc.invalidateQueries({ queryKey: AUTO_SYNC_CONFIG_KEY })
     },
   })
 }

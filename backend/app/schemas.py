@@ -216,6 +216,8 @@ class CreationAssetResponse(BaseModel):
     image_url: Optional[str] = None
     image_thumbnail_url: Optional[str] = None
     audio_url: Optional[str] = None
+    # 创建/编辑后即刻推送到云端的单资产同步结果（无推送则为 None）
+    sync_result: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 
@@ -258,6 +260,29 @@ class SyncResultItem(BaseModel):
 class SyncResultResponse(BaseModel):
     tag: str
     items: list[SyncResultItem]
+
+
+# ---------------- 集中化自动同步 ----------------
+
+class AutoSyncConfigResponse(BaseModel):
+    """自动同步配置状态：enabled + 绑定的项目 tag + 最近同步时间。"""
+    enabled: bool
+    tag: str
+    last_sync_at: str = ""
+
+
+class AutoSyncConfigUpdate(BaseModel):
+    """更新自动同步配置：开启时 tag 必填，关闭时 tag 可留空。"""
+    enabled: bool
+    tag: str = Field("", max_length=50)
+
+
+class AutoSyncResultResponse(BaseModel):
+    """手动触发一个自动同步周期的返回值。"""
+    tag: str
+    pushed: list[SyncResultItem]
+    pulled: list[SyncResultItem]
+    errors: list[str] = Field(default_factory=list)
 
 
 # ---------------- 团队项目（云端目录 + project.json） ----------------

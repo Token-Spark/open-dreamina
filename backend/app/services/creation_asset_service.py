@@ -50,11 +50,16 @@ from ..models import Asset, CreationAsset, Setting
 from ..providers import ProviderError
 from . import qiniu_service
 from .asset_service import create_asset_record, delete_asset_files, resolve_asset_path
-from ..utils.file_utils import make_thumbnail, save_uploaded_file
+from ..utils.file_utils import detect_mime_type, make_thumbnail, save_uploaded_file
 
 # owner_id / owner_name 持久化于 settings 表
 _OWNER_ID_KEY = "creation_asset_owner_id"
 _OWNER_NAME_KEY = "creation_asset_owner_name"
+
+# 集中化自动同步配置（同样持久化于 settings 表）
+_AUTO_SYNC_ENABLED_KEY = "creation_asset_auto_sync_enabled"
+_AUTO_SYNC_TAG_KEY = "creation_asset_auto_sync_tag"
+_LAST_AUTO_SYNC_KEY = "creation_asset_last_auto_sync"
 
 MANIFEST_VERSION = 2
 _SAFE_KEY_RE = re.compile(r"[^A-Za-z0-9_\-\u4e00-\u9fff]")
@@ -97,6 +102,85 @@ def update_owner_name(db: Session, owner_name: str) -> tuple[str, str]:
         db.add(Setting(key=_OWNER_NAME_KEY, value=owner_name))
     db.commit()
     return owner_id, owner_name
+
+
+# ---------------- 集中化自动同步配置 ----------------
+
+def get_auto_sync_config(db: Session) -> dict:
+    """读取自动同步配置：enabled + tag + last_sync_at。"""
+    items = {
+        s.key: s.value
+        for s in db.query(Setting).filter(
+            Setting.key.in_([_AUTO_SYNC_ENABLED_KEY, _AUTO_SYNC_TAG_KEY, _LAST_AUTO_SYNC_KEY])
+        ).all()
+    }
+    return {
+        "enabled": items.get(_AUTO_SYNC_ENABLED_KEY, "false").lower() == "true",
+        "tag": items.get(_AUTO_SYNC_TAG_KEY, ""),
+        "last_sync_at": items.get(_LAST_AUTO_SYNC_KEY, ""),
+    }
+
+
+def set_auto_sync_config(db: Session, enabled: bool, tag: str) -> dict:
+    """写入自动同步配置（幂等 upsert）。tag 为空时表示关闭自动同步。"""
+    tag = tag.strip() if tag else ""
+    # tag 非空时做 sanitize（存储 raw tag，使用时再 sanitize 为 key_tag）
+    pairs = {
+        _AUTO_SYNC_ENABLED_KEY: "true" if (enabled and tag) else "false",
+        _AUTO_SYNC_TAG_KEY: tag,
+    }
+    for key, value in pairs.items():
+        row = db.query(Setting).filter(Setting.key == key).first()
+        if row:
+            row.value = value
+        else:
+            db.add(Setting(key=key, value=value))
+    db.commit()
+    return get_auto_sync_config(db)
+
+
+def update_last_auto_sync(db: Session) -> None:
+    """记录最近一次自动同步时间。"""
+    now = _now_iso()
+    row = db.query(Setting).filter(Setting.key == _LAST_AUTO_SYNC_KEY).first()
+    if row:
+        row.value = now
+    else:
+        db.add(Setting(key=_LAST_AUTO_SYNC_KEY, value=now))
+    db.commit()
+
+
+def auto_sync_cycle(db: Session, tag: str) -> dict:
+    """集中化自动同步一个周期：先推送本地变更 → 再拉取远端更新。
+
+    用于 Celery 定时任务和前端手动触发。返回 push/pull 各自的汇总结果。
+    单条失败不阻断整体；冲突自动保两份（_pull_one 已有逻辑）。
+    """
+    results: dict[str, list[dict]] = {"pushed": [], "pulled": []}
+    errors: list[str] = []
+
+    # 推送本地变更（CAS 乐观锁，指纹未变则自动跳过）
+    try:
+        results["pushed"] = sync_assets_by_tag(db, tag)
+    except ProviderError as e:
+        errors.append(f"推送失败: {e}")
+        db.rollback()
+
+    # 拉取远端更新（三方合并，冲突保两份）
+    try:
+        results["pulled"] = pull_assets_by_tag(db, tag)
+    except ProviderError as e:
+        errors.append(f"拉取失败: {e}")
+        db.rollback()
+
+    update_last_auto_sync(db)
+
+    return {
+        "tag": tag,
+        "pushed": results["pushed"],
+        "pulled": results["pulled"],
+        "errors": errors,
+    }
 
 
 def sanitize_tag(tag: str) -> str:
@@ -255,6 +339,24 @@ def sync_assets_by_tag(db: Session, tag: str) -> list[dict]:
     return results
 
 
+def push_single_asset(db: Session, ca: CreationAsset, tag: str) -> dict:
+    """推送单个资产到指定标签（项目）的云端目录。
+
+    与 sync_assets_by_tag 的区别：仅推送这一条资产，不扫描整标签，
+    不影响该标签下其他资产，适合创建/编辑后即刻推送。
+    """
+    owner_id, owner_name = get_or_create_owner(db)
+    key_tag = sanitize_tag(tag.strip())
+    cloud_versions = _scan_cloud_versions(qiniu_service.list_team_keys(key_tag), key_tag)
+    item = _push_one(db, key_tag, owner_id, owner_name, ca, cloud_versions)
+    # 更新项目成员名册（失败不影响推送结果）
+    try:
+        _touch_project_members(db, key_tag, owner_id, owner_name)
+    except Exception:  # noqa: BLE001 名册是辅助信息，静默降级
+        db.rollback()
+    return item
+
+
 def _push_one(
     db: Session, key_tag: str, owner_id: str, owner_name: str, ca: CreationAsset,
     cloud_versions: dict[tuple[str, str], int],
@@ -271,6 +373,10 @@ def _push_one(
                 "asset_id": ca.id, "name": ca.name, "status": "conflict",
                 "message": f"云端已有 v{cloud_version}（本地基于 v{ca.base_version}），请先拉取合并后再推送",
             }
+        # 内容指纹未变 → 跳过（集中化自动同步的核心优化，避免无效写入）
+        if ca.base_fingerprint and local_fingerprint(db, ca) == ca.base_fingerprint:
+            return {"asset_id": ca.id, "name": ca.name, "status": "up_to_date",
+                    "version": ca.base_version, "message": "内容未变更"}
         new_version = cloud_version + 1
     elif cloud_version > 0:
         # 同一资产 id 在目标目录已存在他人版本链，不确定来源，保守拒绝
@@ -294,6 +400,10 @@ def _push_one(
         data = path.read_bytes()
         sha = hashlib.sha256(data).hexdigest()
         ext = path.suffix.lower() or ".bin"
+        # 修正旧数据中 application/octet-stream 的 mime_type（如被误判的 webp 图片）
+        effective_mime = asset.mime_type or ""
+        if not effective_mime or effective_mime == "application/octet-stream":
+            effective_mime = detect_mime_type(path.name, data, effective_mime)
         # 内容寻址文件名：同一资产换图后 key 不同，对象不可变 → CDN 缓存天然安全
         filename = f"{role}.{sha[:12]}{ext}"
         qiniu_service.upload_team_object(
@@ -301,7 +411,7 @@ def _push_one(
         )
         files[role] = {
             "filename": filename,
-            "mime_type": asset.mime_type,
+            "mime_type": effective_mime,
             "file_size": asset.file_size,
             "sha256": sha,
         }

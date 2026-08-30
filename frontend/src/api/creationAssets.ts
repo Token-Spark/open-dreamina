@@ -48,6 +48,14 @@ export interface CreationAsset {
   image_url: string | null
   image_thumbnail_url: string | null
   audio_url: string | null
+  /** 创建/编辑后即刻推送到云端的单资产同步结果（无推送则为 null） */
+  sync_result: {
+    asset_id: string
+    name: string
+    status: string
+    version: number | null
+    message: string | null
+  } | null
 }
 
 export interface ListCreationAssetsQuery {
@@ -197,6 +205,49 @@ export async function pullAssetsByTag(tag: string): Promise<SyncResult> {
   const { data } = await apiClient.post<SyncResult>(
     '/creation-assets/pull',
     { tag },
+    { timeout: 300_000 },
+  )
+  return data
+}
+
+// ---------------- 集中化自动同步 ----------------
+
+export interface AutoSyncConfig {
+  enabled: boolean
+  tag: string
+  last_sync_at: string
+}
+
+export interface AutoSyncResult {
+  tag: string
+  pushed: SyncResultItem[]
+  pulled: SyncResultItem[]
+  errors: string[]
+}
+
+export async function getAutoSyncConfig(): Promise<AutoSyncConfig> {
+  const { data } = await apiClient.get<AutoSyncConfig>(
+    '/creation-assets/auto-sync',
+  )
+  return data
+}
+
+export async function updateAutoSyncConfig(
+  enabled: boolean,
+  tag: string,
+): Promise<AutoSyncConfig> {
+  const { data } = await apiClient.put<AutoSyncConfig>(
+    '/creation-assets/auto-sync',
+    { enabled, tag },
+  )
+  return data
+}
+
+/** 手动触发一次集中化自动同步周期（推送 + 拉取）。 */
+export async function runAutoSyncNow(): Promise<AutoSyncResult> {
+  const { data } = await apiClient.post<AutoSyncResult>(
+    '/creation-assets/auto-sync/run',
+    {},
     { timeout: 300_000 },
   )
   return data

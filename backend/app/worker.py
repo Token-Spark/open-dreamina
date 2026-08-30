@@ -43,7 +43,7 @@ from .services.asset_service import (
 )
 from .services.backup_service import backup_database
 from .utils.crypto import decrypt
-from .utils.file_utils import resolve_relative, save_uploaded_file
+from .utils.file_utils import _guess_asset_type, resolve_relative, save_uploaded_file
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,12 @@ celery_app.conf.update(
         "recover-stale-tasks": {
             "task": "app.worker.recover_stale_tasks",
             "schedule": crontab(minute="*/5"),
+        },
+        # 集中化自动同步：每 2 分钟推送本地变更 + 拉取远端更新，
+        # 保证团队成员即时获取最新素材（仅在 auto-sync 开启且七牛云已配置时生效）
+        "auto-sync-creation-assets": {
+            "task": "app.worker.auto_sync_creation_assets_task",
+            "schedule": crontab(minute="*/2"),
         },
     },
 )
@@ -377,8 +383,9 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         for file_bytes, mime_type in files:
             saved = save_generated_file(file_bytes, mime_type)
 
-            # 生成缩略图
-            asset_type = "image" if mime_type.startswith("image/") else "video"
+            # 用修正后的 mime_type（save_generated_file 内部已做 magic-bytes 嗅探）
+            # 推导 asset_type，避免上游 octet-stream 导致 webp 被误判为 video
+            asset_type = _guess_asset_type(saved.mime_type)
             thumb_rel = generate_thumbnail_for(saved, asset_type)
             if first_saved is None:
                 first_saved = saved
@@ -523,6 +530,52 @@ def recover_stale_tasks() -> dict[str, Any]:
     except Exception:
         logger.exception("recover_stale_tasks failed")
         return {"recovered": 0, "error": "recovery failed"}
+
+
+@celery_app.task(name="app.worker.auto_sync_creation_assets_task")
+def auto_sync_creation_assets_task() -> dict[str, Any]:
+    """集中化自动同步定时任务：推送本地变更 + 拉取远端更新。
+
+    读取 settings 表中的 auto-sync 配置；未启用 / 未配置 tag / 七牛云未配置时静默跳过。
+    """
+    from .services import creation_asset_service as svc, qiniu_service
+
+    # 前置检查：七牛云未配置 → 跳过
+    if not qiniu_service.is_configured():
+        return {"skipped": True, "reason": "qiniu_not_configured"}
+
+    try:
+        with db_session() as db:
+            config = svc.get_auto_sync_config(db)
+        if not config["enabled"] or not config["tag"]:
+            return {"skipped": True, "reason": "auto_sync_disabled"}
+
+        tag = config["tag"]
+        with db_session() as db:
+            result = svc.auto_sync_cycle(db, tag)
+
+        pushed_count = sum(
+            1 for r in result["pushed"] if r.get("status") == "synced"
+        )
+        pulled_count = sum(
+            1 for r in result["pulled"]
+            if r.get("status") in ("imported", "updated")
+        )
+        if pushed_count or pulled_count or result["errors"]:
+            logger.info(
+                "[自动同步] tag=%s: 推送 %d 条, 拉取 %d 条%s",
+                tag, pushed_count, pulled_count,
+                f", 错误 {len(result['errors'])} 条" if result["errors"] else "",
+            )
+        return {
+            "tag": tag,
+            "pushed": pushed_count,
+            "pulled": pulled_count,
+            "errors": result["errors"],
+        }
+    except Exception:
+        logger.exception("[自动同步] 执行失败")
+        return {"error": "auto_sync_failed"}
 
 
 # ============================================================

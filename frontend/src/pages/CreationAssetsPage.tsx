@@ -13,13 +13,14 @@
 // limitations under the License.
 
 import { useState } from 'react'
-import { Cloud, Plus, Search } from 'lucide-react'
+import { Cloud, Plus, Search, Zap } from 'lucide-react'
 import {
   CATEGORY_OPTIONS,
   type CreationAsset,
   type CreationAssetCategory,
 } from '@/api/creationAssets'
 import {
+  useAutoSyncConfig,
   useCreateCreationAsset,
   useCreateProject,
   useCreationAssetTags,
@@ -27,8 +28,10 @@ import {
   useDeleteCreationAsset,
   useProjects,
   usePullAssetsByTag,
+  useRunAutoSyncNow,
   useSyncAssetsByTag,
   useSyncConfig,
+  useUpdateAutoSyncConfig,
   useUpdateCreationAsset,
   useUpdateOwnerName,
 } from '@/hooks/useCreationAssets'
@@ -69,6 +72,7 @@ export function CreationAssetsPage() {
   const { data, isLoading } = useCreationAssets(query)
   const { data: tagData } = useCreationAssetTags()
   const { data: syncConfig } = useSyncConfig()
+  const { data: autoSyncConfig } = useAutoSyncConfig()
   const { data: projectsData, isLoading: projectsLoading, refetch: refetchProjects } =
     useProjects(syncOpen)
 
@@ -79,19 +83,53 @@ export function CreationAssetsPage() {
   const pullAssets = usePullAssetsByTag()
   const updateOwner = useUpdateOwnerName()
   const createProject = useCreateProject()
+  const updateAutoSync = useUpdateAutoSyncConfig()
+  const runAutoSync = useRunAutoSyncNow()
   const queryClient = useQueryClient()
 
   const assets = data?.items ?? []
   const tagSummaries = tagData?.tags ?? []
 
+  /** 根据后端返回的单资产同步结果显示对应的 toast。 */
+  function showSyncToast(
+    syncResult: CreationAsset['sync_result'],
+    defaultMessage: string,
+  ) {
+    if (!syncResult) {
+      toast(defaultMessage, 'success')
+      return
+    }
+    const SYNC_STATUS_TEXT: Record<string, string> = {
+      synced: '已推送',
+      updated: '已更新',
+      up_to_date: '已是最新',
+      conflict: '同步冲突',
+      failed: '推送失败',
+      skipped: '已跳过',
+    }
+    const status = syncResult.status
+    const label = SYNC_STATUS_TEXT[status] ?? status
+    if (status === 'synced' || status === 'updated' || status === 'up_to_date') {
+      toast(`${defaultMessage}，${label}`, 'success')
+    } else if (status === 'conflict' || status === 'failed') {
+      toast(
+        `${defaultMessage}，但${label}：${syncResult.message ?? '请稍后在团队项目中手动重试'}`,
+        'warning',
+      )
+    } else {
+      toast(`${defaultMessage}`, 'success')
+    }
+  }
+
   async function handleSubmit(values: CreationAssetFormValues) {
     if (editing) {
-      await updateAsset.mutateAsync({ id: editing.id, payload: values })
-      toast('已保存', 'success')
-    } else {
-      await createAsset.mutateAsync(values)
-      toast('资产已创建', 'success')
+      const updated = await updateAsset.mutateAsync({ id: editing.id, payload: values })
+      showSyncToast(updated.sync_result, '已保存')
+      return
     }
+
+    const created = await createAsset.mutateAsync(values)
+    showSyncToast(created.sync_result, '资产已创建')
   }
 
   async function handleDelete() {
@@ -111,7 +149,15 @@ export function CreationAssetsPage() {
       {/* 顶部：标题 + 同步/新建入口 */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-medium tracking-tight text-fg-primary">素材库</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-medium tracking-tight text-fg-primary">素材库</h1>
+            {autoSyncConfig?.enabled && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] text-success">
+                <Zap className="h-3 w-3" />
+                自动同步中
+              </span>
+            )}
+          </div>
           <p className="text-xs text-fg-secondary">
             集中管理人物、场景、道具等可复用创作资产，按项目同步共享给团队成员
           </p>
@@ -236,6 +282,7 @@ export function CreationAssetsPage() {
         projectsLoading={projectsLoading}
         ownerName={syncConfig?.owner_name ?? ''}
         qiniuConfigured={syncConfig?.qiniu_configured ?? false}
+        autoSyncConfig={autoSyncConfig}
         onClose={() => setSyncOpen(false)}
         onSync={(tag) => syncAssets.mutateAsync(tag)}
         onPull={(tag) => pullAssets.mutateAsync(tag)}
@@ -248,6 +295,12 @@ export function CreationAssetsPage() {
         onRefreshProjects={() => {
           void refetchProjects()
           void queryClient.invalidateQueries({ queryKey: PROJECTS_KEY })
+        }}
+        onToggleAutoSync={async (enabled, tag) => {
+          await updateAutoSync.mutateAsync({ enabled, tag })
+        }}
+        onRunAutoSyncNow={async () => {
+          await runAutoSync.mutateAsync()
         }}
       />
 

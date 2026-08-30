@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Upload, X } from 'lucide-react'
 import { uploadAsset, assetThumbnailUrl, type Asset } from '@/api/assets'
 import {
@@ -60,6 +60,8 @@ export function CreationAssetFormDialog({
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
+  const [tagSuggestIdx, setTagSuggestIdx] = useState(-1)
+  const [showTagSuggest, setShowTagSuggest] = useState(false)
   const [image, setImage] = useState<Asset | null>(null)
   const [audio, setAudio] = useState<Asset | null>(null)
   const [uploading, setUploading] = useState<'image' | 'audio' | null>(null)
@@ -77,6 +79,8 @@ export function CreationAssetFormDialog({
     setDescription(asset?.description ?? '')
     setTags(asset?.tags ?? [])
     setTagInput('')
+    setTagSuggestIdx(-1)
+    setShowTagSuggest(false)
     setImage(null)
     setAudio(null)
   }, [open, asset])
@@ -87,7 +91,18 @@ export function CreationAssetFormDialog({
       setTags((prev) => [...prev, t])
     }
     setTagInput('')
+    setTagSuggestIdx(-1)
+    setShowTagSuggest(false)
   }
+
+  /** 根据当前输入从已有标签中过滤匹配项作为备选。 */
+  const tagSuggestions = useMemo(() => {
+    const q = tagInput.trim().toLowerCase()
+    return existingTags
+      .filter((t) => !tags.includes(t))
+      .filter((t) => (q ? t.toLowerCase().includes(q) : true))
+      .slice(0, 8)
+  }, [existingTags, tags, tagInput])
 
   async function handleUpload(kind: 'image' | 'audio', file: File) {
     setUploading(kind)
@@ -281,21 +296,66 @@ export function CreationAssetFormDialog({
                 </button>
               </span>
             ))}
-            <Input
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ',') {
-                  e.preventDefault()
-                  addTag(tagInput)
-                }
-              }}
-              onBlur={() => tagInput && addTag(tagInput)}
-              placeholder="输入后回车添加"
-              className="h-7 w-40"
-            />
+            <div className="relative">
+              <Input
+                value={tagInput}
+                onChange={(e) => {
+                  setTagInput(e.target.value)
+                  setTagSuggestIdx(-1)
+                  setShowTagSuggest(true)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault()
+                    if (showTagSuggest && tagSuggestIdx >= 0 && tagSuggestions[tagSuggestIdx]) {
+                      addTag(tagSuggestions[tagSuggestIdx])
+                    } else {
+                      addTag(tagInput)
+                    }
+                  } else if (e.key === 'ArrowDown' && tagSuggestions.length > 0) {
+                    e.preventDefault()
+                    setShowTagSuggest(true)
+                    setTagSuggestIdx((prev) => (prev + 1) % tagSuggestions.length)
+                  } else if (e.key === 'ArrowUp' && tagSuggestions.length > 0) {
+                    e.preventDefault()
+                    setTagSuggestIdx((prev) => (prev <= 0 ? tagSuggestions.length - 1 : prev - 1))
+                  } else if (e.key === 'Escape') {
+                    setShowTagSuggest(false)
+                  }
+                }}
+                onFocus={() => setShowTagSuggest(true)}
+                onBlur={() => {
+                  if (tagInput) addTag(tagInput)
+                  // 延迟关闭以便点击下拉项时 onClick 先触发
+                  setTimeout(() => setShowTagSuggest(false), 150)
+                }}
+                placeholder="输入后回车添加"
+                className="h-7 w-40"
+              />
+              {showTagSuggest && tagSuggestions.length > 0 && (
+                <div className="absolute left-0 top-full z-10 mt-1 max-h-48 w-48 overflow-auto rounded-btn border border-border bg-bg-secondary shadow-lg">
+                  {tagSuggestions.map((t, i) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        addTag(t)
+                      }}
+                      className={`block w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                        i === tagSuggestIdx
+                          ? 'bg-bg-tertiary text-fg-primary'
+                          : 'text-fg-secondary hover:bg-bg-tertiary'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          {existingTags.filter((t) => !tags.includes(t)).length > 0 && (
+          {!showTagSuggest && existingTags.filter((t) => !tags.includes(t)).length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
               {existingTags
                 .filter((t) => !tags.includes(t))

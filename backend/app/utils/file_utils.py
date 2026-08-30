@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import io
+import mimetypes
 import os
 import shutil
 import subprocess
@@ -41,13 +42,36 @@ EXT_BY_MIME = {
     "image/jpeg": ".jpg",
     "image/webp": ".webp",
     "image/gif": ".gif",
+    "image/bmp": ".bmp",
+    "image/svg+xml": ".svg",
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
     "audio/mpeg": ".mp3",
     "audio/wav": ".wav",
+    "audio/ogg": ".ogg",
+    "audio/flac": ".flac",
+    "audio/aac": ".aac",
 }
 
 MIME_BY_EXT = {v: k for k, v in EXT_BY_MIME.items()}
+
+# 魔术字节（magic bytes）→ MIME，用于扩展名缺失或不匹配时从文件内容探测真实类型
+_MAGIC_BYTES: tuple[tuple[bytes, str], ...] = (
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"BM", "image/bmp"),
+    # WebP: RIFF....WEBP
+    (b"RIFF", "image/webp"),  # 进一步校验下方 _sniff_mime
+    # 音频
+    (b"ID3", "audio/mpeg"),   # MP3 with ID3 tag
+    (b"\xff\xfb", "audio/mpeg"),  # MP3 frame sync
+    (b"\xff\xf3", "audio/mpeg"),  # MP3 frame sync (v2)
+    (b"\xff\xfa", "audio/mpeg"),  # MP3 frame sync (v3)
+    (b"OggS", "audio/ogg"),
+    (b"fLaC", "audio/flac"),
+)
 
 
 @dataclass
@@ -81,12 +105,58 @@ def _guess_asset_type(mime_type: str) -> str:
     return "image"
 
 
+def _sniff_mime(data: bytes) -> str | None:
+    """从文件内容前几个字节（magic bytes）探测真实 MIME 类型。
+
+    用于扩展名缺失 / 上游声明 application/octet-stream 时做兜底识别，
+    避免把 webp 图片误判为未知二进制流。
+    """
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    for magic, mime in _MAGIC_BYTES:
+        if magic == b"RIFF":
+            continue  # RIFF 已在上面单独处理（需同时校验 WEBP 标记）
+        if data.startswith(magic):
+            return mime
+    return None
+
+
+def detect_mime_type(filename: str, file_bytes: bytes, declared: str = "") -> str:
+    """三级 MIME 探测：扩展名 → 魔术字节 → mimetypes → 声明值兜底。
+
+    - 优先用扩展名查表（最快、最可靠，用户命名通常可信）
+    - 扩展名查不到时嗅探文件内容（处理 .webp 被声明为 octet-stream 的场景）
+    - 仍查不到则用标准库 mimetypes 猜一次
+    - 全部失败时回退到上游声明值或 application/octet-stream
+    """
+    ext = Path(filename).suffix.lower() if filename else ""
+    # 1) 扩展名查表
+    if ext and ext in MIME_BY_EXT:
+        return MIME_BY_EXT[ext]
+    # 2) 魔术字节嗅探
+    sniffed = _sniff_mime(file_bytes)
+    if sniffed:
+        return sniffed
+    # 3) 标准库 mimetypes
+    if ext:
+        guessed = mimetypes.guess_type(filename)[0]
+        if guessed:
+            return guessed
+    # 4) 上游声明值兜底
+    return declared or "application/octet-stream"
+
+
 def save_generated_file(
     file_bytes: bytes,
     mime_type: str,
     asset_type: str | None = None,
 ) -> SavedFile:
     """保存生成结果文件，返回相对/绝对路径及基本元信息（不含缩略图）。"""
+    # 上游声明的 MIME 不精确（如 AI 接口返回 octet-stream 的 webp 图片）时，
+    # 从文件内容重新探测真实类型
+    if not mime_type or mime_type == "application/octet-stream":
+        mime_type = detect_mime_type("", file_bytes, mime_type)
+
     if asset_type is None:
         asset_type = _guess_asset_type(mime_type)
 
@@ -128,7 +198,7 @@ def save_generated_file(
 def save_uploaded_file(file_bytes: bytes, filename: str) -> SavedFile:
     """保存用户上传的参考图（图生图/图生视频输入）。"""
     ext = Path(filename).suffix.lower() or ".bin"
-    mime_type = MIME_BY_EXT.get(ext, "application/octet-stream")
+    mime_type = detect_mime_type(filename, file_bytes)
 
     month = _month_folder()
     new_name = f"{uuid.uuid4().hex}{ext}"

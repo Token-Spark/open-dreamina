@@ -13,13 +13,14 @@
 // limitations under the License.
 
 import { useEffect, useState } from 'react'
-import { CloudDownload, Loader2, Plus, RefreshCw, Upload, Users } from 'lucide-react'
-import type { SyncResult, TeamProject } from '@/api/creationAssets'
+import { CloudDownload, Loader2, Plus, RefreshCw, Upload, Users, Zap } from 'lucide-react'
+import type { AutoSyncConfig, SyncResult, TeamProject } from '@/api/creationAssets'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
+import { Switch } from '@/components/ui/Switch'
 import { Textarea } from '@/components/ui/Textarea'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
@@ -30,12 +31,15 @@ export interface CreationAssetSyncDialogProps {
   projectsLoading: boolean
   ownerName: string
   qiniuConfigured: boolean
+  autoSyncConfig: AutoSyncConfig | undefined
   onClose: () => void
   onSync: (tag: string) => Promise<SyncResult>
   onPull: (tag: string) => Promise<SyncResult>
   onUpdateOwnerName: (name: string) => Promise<void>
   onCreateProject: (name: string, description: string) => Promise<void>
   onRefreshProjects: () => void
+  onToggleAutoSync: (enabled: boolean, tag: string) => Promise<void>
+  onRunAutoSyncNow: () => Promise<void>
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -58,27 +62,34 @@ const STATUS_VARIANT: Record<string, 'success' | 'error' | 'warning' | 'default'
   failed: 'error',
 }
 
-/** 团队同步弹窗：项目列表 + 按项目推送/拉取 + 新建项目 + 逐条结果。 */
+/** 团队同步弹窗：集中化自动同步 + 项目管理 + 手动推送/拉取。 */
 export function CreationAssetSyncDialog({
   open,
   projects,
   projectsLoading,
   ownerName,
   qiniuConfigured,
+  autoSyncConfig,
   onClose,
   onSync,
   onPull,
   onUpdateOwnerName,
   onCreateProject,
   onRefreshProjects,
+  onToggleAutoSync,
+  onRunAutoSyncNow,
 }: CreationAssetSyncDialogProps) {
   const [selectedTag, setSelectedTag] = useState('')
   const [nameDraft, setNameDraft] = useState(ownerName)
-  const [busy, setBusy] = useState<'sync' | 'pull' | null>(null)
+  const [busy, setBusy] = useState<'sync' | 'pull' | 'auto' | null>(null)
   const [result, setResult] = useState<SyncResult | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
+
+  const autoEnabled = autoSyncConfig?.enabled ?? false
+  const autoTag = autoSyncConfig?.tag ?? ''
+  const lastSyncAt = autoSyncConfig?.last_sync_at ?? ''
 
   useEffect(() => {
     if (open) {
@@ -88,7 +99,7 @@ export function CreationAssetSyncDialog({
     }
   }, [open, ownerName])
 
-  const effectiveTag = selectedTag || projects[0]?.tag || ''
+  const effectiveTag = selectedTag || autoTag || projects[0]?.tag || ''
 
   async function run(kind: 'sync' | 'pull') {
     if (!effectiveTag) {
@@ -98,7 +109,6 @@ export function CreationAssetSyncDialog({
     setBusy(kind)
     setResult(null)
     try {
-      // 展示名有修改时先保存，让本次同步的 manifest 带上最新名称
       if (nameDraft.trim() && nameDraft.trim() !== ownerName) {
         await onUpdateOwnerName(nameDraft.trim())
       }
@@ -109,9 +119,41 @@ export function CreationAssetSyncDialog({
       ).length
       const conflicts = res.items.filter((i) => i.status === 'conflict').length
       toast(
-        `${kind === 'sync' ? '同步' : '拉取'}完成：${ok} 个资产${conflicts > 0 ? `，${conflicts} 个冲突` : ''}`,
+        `${kind === 'sync' ? '推送' : '拉取'}完成：${ok} 个资产${conflicts > 0 ? `，${conflicts} 个冲突` : ''}`,
         conflicts > 0 ? 'warning' : 'success',
       )
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function handleToggleAutoSync(checked: boolean) {
+    if (checked && !effectiveTag) {
+      toast('请先选择要自动同步的项目', 'error')
+      return
+    }
+    setBusy('auto')
+    try {
+      await onToggleAutoSync(checked, checked ? effectiveTag : '')
+      toast(
+        checked ? `已开启自动同步（项目：${effectiveTag}），每 2 分钟自动同步` : '已关闭自动同步',
+        'success',
+      )
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function handleRunAutoSyncNow() {
+    setBusy('auto')
+    setResult(null)
+    try {
+      await onRunAutoSyncNow()
+      toast('立即同步完成', 'success')
     } catch (e) {
       toast(toApiError(e).message, 'error')
     } finally {
@@ -142,7 +184,7 @@ export function CreationAssetSyncDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title="团队项目"
-      description="项目即云端共享目录。推送本地资产供成员拉取；云端对象按创建者隔离，乐观锁保证绝不盲覆盖。"
+      description="集中化管理团队素材资产：开启自动同步后，本地变更自动推送、远端更新自动拉取，团队成员即时获取最新资产。"
       className="max-w-2xl"
     >
       <div className="space-y-4 py-2">
@@ -151,6 +193,60 @@ export function CreationAssetSyncDialog({
             未检测到七牛云配置，请在后端 .env 中设置 QINIU_* 环境变量并重启服务后再使用同步。
           </div>
         )}
+
+        {/* 集中化自动同步 */}
+        <div className="space-y-3 rounded-btn border border-accent/20 bg-accent/5 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-accent" />
+              <div>
+                <span className="text-sm font-medium text-fg-primary">集中化自动同步</span>
+                {autoEnabled && (
+                  <Badge variant="success" className="ml-2">
+                    运行中
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Switch
+              checked={autoEnabled}
+              onCheckedChange={handleToggleAutoSync}
+              disabled={busy != null || !qiniuConfigured}
+              aria-label="自动同步开关"
+            />
+          </div>
+
+          {autoEnabled && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-fg-secondary">
+              {autoTag && (
+                <span>
+                  项目：<span className="text-fg-primary">{projects.find((p) => p.tag === autoTag)?.name ?? autoTag}</span>
+                </span>
+              )}
+              {lastSyncAt && <span>最近同步：{lastSyncAt}</span>}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRunAutoSyncNow}
+                disabled={busy != null}
+                className="h-7 gap-1.5"
+              >
+                {busy === 'auto' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                立即同步
+              </Button>
+            </div>
+          )}
+
+          {!autoEnabled && (
+            <p className="text-xs text-fg-muted">
+              开启后，系统每 2 分钟自动推送本地变更并拉取远端更新，冲突自动保两份。
+            </p>
+          )}
+        </div>
 
         <div className="space-y-1.5">
           <Label>我的名称（团队成员看到的署名）</Label>
@@ -165,7 +261,7 @@ export function CreationAssetSyncDialog({
         {/* 项目列表 */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label>选择项目</Label>
+            <Label>选择项目{autoEnabled && <span className="ml-1 text-fg-muted">（点击切换自动同步项目）</span>}</Label>
             <Button variant="ghost" size="sm" onClick={onRefreshProjects} disabled={projectsLoading}>
               <RefreshCw className={`h-3.5 w-3.5 ${projectsLoading ? 'animate-spin' : ''}`} />
               刷新
@@ -173,48 +269,58 @@ export function CreationAssetSyncDialog({
           </div>
           {projects.length === 0 && !projectsLoading && (
             <p className="text-xs text-fg-muted">
-              暂无云端项目，可在下方新建；也可直接对资产打的任意标签推送（自动建目录）
+              暂无云端项目，可在下方新建
             </p>
           )}
           <div className="grid max-h-44 grid-cols-1 gap-1.5 overflow-auto">
-            {projects.map((p) => (
-              <button
-                key={p.tag}
-                type="button"
-                onClick={() => setSelectedTag(p.tag)}
-                className={`flex items-center justify-between gap-2 rounded-btn border px-3 py-2 text-left transition-colors ${
-                  effectiveTag === p.tag
-                    ? 'border-accent bg-accent/10'
-                    : 'border-border hover:border-fg-muted'
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm text-fg-primary">{p.name}</span>
-                    {p.members.length > 0 && (
-                      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-fg-muted">
-                        <Users className="h-3 w-3" />
-                        {p.members.length}
-                      </span>
+            {projects.map((p) => {
+              const isSelected = effectiveTag === p.tag
+              const isAutoProject = autoEnabled && autoTag === p.tag
+              return (
+                <button
+                  key={p.tag}
+                  type="button"
+                  onClick={() => setSelectedTag(p.tag)}
+                  className={`flex items-center justify-between gap-2 rounded-btn border px-3 py-2 text-left transition-colors ${
+                    isSelected
+                      ? 'border-accent bg-accent/10'
+                      : 'border-border hover:border-fg-muted'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm text-fg-primary">{p.name}</span>
+                      {isAutoProject && (
+                        <Badge variant="success" className="shrink-0 text-[10px]">
+                          自动同步
+                        </Badge>
+                      )}
+                      {p.members.length > 0 && (
+                        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-fg-muted">
+                          <Users className="h-3 w-3" />
+                          {p.members.length}
+                        </span>
+                      )}
+                    </div>
+                    {p.description && (
+                      <p className="truncate text-xs text-fg-muted">{p.description}</p>
                     )}
                   </div>
-                  {p.description && (
-                    <p className="truncate text-xs text-fg-muted">{p.description}</p>
-                  )}
-                </div>
-                <span className="shrink-0 text-[11px] text-fg-muted">
-                  {p.created_by ? `由 ${p.created_by} 创建` : ''}
-                </span>
-              </button>
-            ))}
+                  <span className="shrink-0 text-[11px] text-fg-muted">
+                    {p.created_by ? `由 ${p.created_by} 创建` : ''}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* 推送 / 拉取 */}
+        {/* 手动推送 / 拉取 */}
         <div className="flex gap-2">
           <Button
             onClick={() => run('sync')}
             disabled={busy != null || !qiniuConfigured || !effectiveTag}
+            variant="outline"
             className="flex-1"
           >
             {busy === 'sync' ? (
@@ -222,10 +328,10 @@ export function CreationAssetSyncDialog({
             ) : (
               <Upload className="h-4 w-4" />
             )}
-            推送该项目资产
+            手动推送
           </Button>
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={() => run('pull')}
             disabled={busy != null || !qiniuConfigured || !effectiveTag}
             className="flex-1"
@@ -235,7 +341,7 @@ export function CreationAssetSyncDialog({
             ) : (
               <CloudDownload className="h-4 w-4" />
             )}
-            拉取该项目资产
+            手动拉取
           </Button>
         </div>
 

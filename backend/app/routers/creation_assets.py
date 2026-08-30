@@ -30,6 +30,9 @@ from ..database import get_db
 from ..models import Asset, CreationAsset
 from ..providers import ProviderError
 from ..schemas import (
+    AutoSyncConfigResponse,
+    AutoSyncConfigUpdate,
+    AutoSyncResultResponse,
     CreationAssetCreate,
     CreationAssetListResponse,
     CreationAssetResponse,
@@ -41,6 +44,7 @@ from ..schemas import (
     ProjectResponse,
     SyncConfigResponse,
     SyncConfigUpdate,
+    SyncResultItem,
     SyncResultResponse,
     TagSyncRequest,
 )
@@ -50,7 +54,7 @@ from ..services import qiniu_service
 router = APIRouter(prefix="/creation-assets", tags=["creation-assets"])
 
 
-def _to_response(ca: CreationAsset, owner_id: str) -> CreationAssetResponse:
+def _to_response(ca: CreationAsset, owner_id: str, sync_result: dict | None = None) -> CreationAssetResponse:
     image_url = (
         f"/api/v1/assets/{ca.image_asset_id}/file" if ca.image_asset_id else None
     )
@@ -84,6 +88,7 @@ def _to_response(ca: CreationAsset, owner_id: str) -> CreationAssetResponse:
         image_url=image_url,
         image_thumbnail_url=image_thumb,
         audio_url=audio_url,
+        sync_result=sync_result,
     )
 
 
@@ -197,12 +202,39 @@ def create_project(
 
 # ---------------- CRUD ----------------
 
+def _match_project_tag(db: Session, tags: list[str]) -> str | None:
+    """检查标签列表中是否有已存在的云端项目标签，返回匹配的首个原始标签。
+
+    七牛未配置时返回 None；匹配逻辑：资产标签 sanitize 后等于某项目 tag。
+    """
+    if not tags or not qiniu_service.is_configured():
+        return None
+    try:
+        project_tags = {p.get("tag", "") for p in svc.list_projects()}
+    except Exception:  # noqa: BLE001 项目列举失败不阻断创建
+        return None
+    for t in tags:
+        if svc.sanitize_tag(t) in project_tags:
+            return t
+    return None
+
+
+def _try_push_to_cloud(db: Session, ca: CreationAsset, tag: str) -> dict | None:
+    """创建/编辑后即刻推送单条资产到云端项目目录，失败静默降级返回 None。"""
+    try:
+        return svc.push_single_asset(db, ca, tag)
+    except Exception:  # noqa: BLE001 即刻推送是最佳努力，失败不阻断主流程
+        db.rollback()
+        return None
+
+
 @router.post("", response_model=CreationAssetResponse, status_code=201)
 def create_creation_asset(
     payload: CreationAssetCreate, db: Session = Depends(get_db)
 ) -> CreationAssetResponse:
     owner_id, owner_name = svc.get_or_create_owner(db)
     _validate_media_refs(db, payload.image_asset_id, payload.audio_asset_id)
+    cleaned_tags = _clean_tags(payload.tags)
     ca = CreationAsset(
         id=uuid.uuid4().hex,
         name=payload.name.strip(),
@@ -210,7 +242,7 @@ def create_creation_asset(
         description=payload.description or "",
         image_asset_id=payload.image_asset_id,
         audio_asset_id=payload.audio_asset_id,
-        tags_json=json.dumps(_clean_tags(payload.tags), ensure_ascii=False),
+        tags_json=json.dumps(cleaned_tags, ensure_ascii=False),
         owner_id=owner_id,
         owner_name=owner_name,
         origin="local",
@@ -218,7 +250,70 @@ def create_creation_asset(
     db.add(ca)
     db.commit()
     db.refresh(ca)
-    return _to_response(ca, owner_id)
+
+    # 带团队项目标签的新建资产，即刻推送到云端
+    sync_result: dict | None = None
+    project_tag = _match_project_tag(db, cleaned_tags)
+    if project_tag:
+        sync_result = _try_push_to_cloud(db, ca, project_tag)
+        db.refresh(ca)
+    return _to_response(ca, owner_id, sync_result=sync_result)
+
+
+# ---------------- 集中化自动同步 ----------------
+# 注意：静态路径必须在 GET /{ca_id} 之前注册，否则会被动态路径参数拦截
+
+@router.get("/auto-sync", response_model=AutoSyncConfigResponse)
+def get_auto_sync_config(db: Session = Depends(get_db)) -> AutoSyncConfigResponse:
+    """读取自动同步配置（enabled + tag + 最近同步时间）。"""
+    config = svc.get_auto_sync_config(db)
+    return AutoSyncConfigResponse(**config)
+
+
+@router.put("/auto-sync", response_model=AutoSyncConfigResponse)
+def update_auto_sync_config(
+    payload: AutoSyncConfigUpdate, db: Session = Depends(get_db)
+) -> AutoSyncConfigResponse:
+    """开启 / 关闭集中化自动同步，绑定自动同步的项目。
+
+    开启时 tag 必填且七牛云须已配置；关闭时 tag 可留空。
+    开启后 Celery Beat 每 2 分钟自动推送本地变更 + 拉取远端更新。
+    """
+    if payload.enabled:
+        _require_qiniu()
+        if not payload.tag.strip():
+            raise HTTPException(
+                400,
+                detail={"code": "tag_required", "message": "开启自动同步时必须选择一个项目"},
+            )
+    config = svc.set_auto_sync_config(db, payload.enabled, payload.tag)
+    return AutoSyncConfigResponse(**config)
+
+
+@router.post("/auto-sync/run", response_model=AutoSyncResultResponse)
+def run_auto_sync_now(db: Session = Depends(get_db)) -> AutoSyncResultResponse:
+    """手动触发一次集中化自动同步周期（推送 + 拉取）。
+
+    与 Celery 定时任务执行完全相同的逻辑，供前端「立即同步」按钮调用。
+    """
+    _require_qiniu()
+    config = svc.get_auto_sync_config(db)
+    tag = config.get("tag", "")
+    if not tag:
+        raise HTTPException(
+            400,
+            detail={"code": "no_project", "message": "尚未配置自动同步项目，请先选择项目并开启"},
+        )
+    try:
+        result = svc.auto_sync_cycle(db, tag)
+    except ProviderError as e:
+        raise HTTPException(400, detail={"code": "auto_sync_failed", "message": str(e)})
+    return AutoSyncResultResponse(
+        tag=result["tag"],
+        pushed=[SyncResultItem(**item) for item in result["pushed"]],
+        pulled=[SyncResultItem(**item) for item in result["pulled"]],
+        errors=result["errors"],
+    )
 
 
 @router.get("/{ca_id}", response_model=CreationAssetResponse)
@@ -263,7 +358,15 @@ def update_creation_asset(
     for old in (old_image, old_audio):
         if old and old not in (ca.image_asset_id, ca.audio_asset_id):
             svc.cleanup_media_asset(db, old, exclude_ca_id=ca.id)
-    return _to_response(ca, owner_id)
+
+    # 带团队项目标签的资产编辑后，即刻推送到云端
+    sync_result: dict | None = None
+    current_tags = json.loads(ca.tags_json or "[]")
+    project_tag = _match_project_tag(db, current_tags)
+    if project_tag:
+        sync_result = _try_push_to_cloud(db, ca, project_tag)
+        db.refresh(ca)
+    return _to_response(ca, owner_id, sync_result=sync_result)
 
 
 @router.delete("/{ca_id}", response_model=MessageResponse)
