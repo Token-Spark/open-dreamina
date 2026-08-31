@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Asset, CreationAsset
+from ..utils.time_utils import now_iso
 from ..providers import ProviderError
 from ..schemas import (
     AutoSyncConfigResponse,
