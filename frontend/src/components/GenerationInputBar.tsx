@@ -32,7 +32,18 @@ import { ReferenceSlot, type ReferenceKind } from '@/components/ReferenceSlot'
 import { ModelPicker } from '@/components/ModelPicker'
 import { SizePicker } from '@/components/SizePicker'
 import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
-import { uploadAsset, assetFileUrl, submitAssetAudit, getAssetAudit } from '@/api/assets'
+import {
+  uploadAsset,
+  assetFileUrl,
+  assetThumbnailUrl,
+  submitAssetAudit,
+  getAssetAudit,
+  listAssets,
+  type Asset,
+  type AssetType,
+} from '@/api/assets'
+import { useQuery } from '@tanstack/react-query'
+import { ASSETS_KEY } from '@/hooks/useAssets'
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
@@ -57,6 +68,25 @@ export interface ReferenceAsset {
   auditStatus?: 'pending' | 'active' | 'failed'
   /** 审核失败原因。 */
   auditError?: string | null
+}
+
+/**
+ * @ 引用候选项：可引用已上传的参考素材（slot）或资产库中已有的资产（library）。
+ * - slot：已在上传槽位中的素材，token 按类型编号（图1/视频1/音频1…）。
+ * - library：资产库中尚未加入参考列表的资产，选中后自动追加到 refAssets。
+ */
+interface MentionItem {
+  /** 候选项来源：已上传参考槽位 / 资产库。 */
+  source: 'slot' | 'library'
+  /** 对应的 ReferenceAsset（slot 取现有项；library 为根据 Asset 构造的待加入项）。 */
+  asset: ReferenceAsset
+  kind: ReferenceKind
+  /** 插入到提示词中的引用 token，如 @图1、@视频2。 */
+  token: string
+  /** 展示名称。slot 为类型编号（参考图 1），library 为资产文件名/编号。 */
+  label: string
+  /** 缩略图地址；slot 用 file 原图，library 用缩略图。 */
+  thumbUrl: string
 }
 
 /**
@@ -176,6 +206,13 @@ export function isSparkHubSeedance(slug: string): boolean {
   return slug === 'sparkhub-seedance'
 }
 
+/** 资产展示名称：取 file_path 文件名（去扩展名），兜底用原路径。 */
+function assetDisplayName(a: Asset): string {
+  const base = a.file_path.split('/').pop() ?? a.file_path
+  const dot = base.lastIndexOf('.')
+  return dot > 0 ? base.slice(0, dot) : base
+}
+
 export interface GenerationInputBarProps {
   /** 内容模式：图片 / 视频（需求1：合并文生图/图生图、文生视频/图生视频）。 */
   mode: ContentMode
@@ -242,34 +279,76 @@ export function GenerationInputBar({
     activeIndex: number
   }>({ open: false, start: -1, query: '', activeIndex: 0 })
 
-  /** 候选项：按当前模式过滤的参考素材，编号按类型分别从 1 递增（图1/视频1/音频1…）。 */
-  const mentionItems = useMemo(() => {
-    if (!mention.open) return [] as {
-      asset: ReferenceAsset
-      kind: ReferenceKind
-      token: string
-      label: string
-    }[]
+  /**
+   * 资产库查询：仅在 @ 选择器打开时请求，按当前模式过滤类型。
+   * 图片模式仅查 image；视频模式查 image/video/audio 全部。
+   * staleTime 1 分钟避免重复请求；useQuery 自带缓存，与资产库页面共享 ASSETS_KEY。
+   */
+  const libTypes: AssetType[] = mode === 'image' ? ['image'] : ['image', 'video', 'audio']
+  const { data: libData } = useQuery({
+    queryKey: [...ASSETS_KEY, { types: libTypes, mention: true }],
+    queryFn: () => listAssets({ page: 1, page_size: 50 }),
+    enabled: mention.open,
+    staleTime: 60_000,
+  })
+
+  /**
+   * 候选项：已上传参考素材（slot）+ 资产库中尚未加入参考列表的资产（library）。
+   * slot 项 token 按类型编号（@图1/@视频1…）；library 项选中后追加到 refAssets，
+   * token 同样按"加入后的序号"编号，保证与 slot 引用风格一致。
+   */
+  const mentionItems = useMemo<MentionItem[]>(() => {
+    if (!mention.open) return []
+    const refIds = new Set(refAssets.map((a) => a.assetId))
+
+    // —— slot：已上传参考素材 ——
     const counts: Record<ReferenceKind, number> = { image: 0, video: 0, audio: 0 }
-    const items = refAssets
+    const slotItems: MentionItem[] = refAssets
       .filter((a) => (mode === 'image' ? (a.kind ?? 'image') === 'image' : true))
       .map((a) => {
         const kind = a.kind ?? 'image'
         counts[kind] += 1
         const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
         return {
+          source: 'slot',
           asset: a,
           kind,
           token: `@${short}${counts[kind]}`,
           label: `${KIND_LABELS[kind]} ${counts[kind]}`,
+          thumbUrl: a.previewUrl,
         }
       })
-    if (!mention.query) return items
+
+    // —— library：资产库中尚未加入的"素材"（task_id 为 null 的上传文件，排除生成作品） ——
+    const libAssets = (libData?.items ?? [])
+      .filter((a) => !a.task_id && libTypes.includes(a.type) && !refIds.has(a.id))
+    // 预计算 library 项加入后每种类型的起始编号
+    const libStart: Record<ReferenceKind, number> = { ...counts }
+    const libItems: MentionItem[] = libAssets.map((a) => {
+      const kind = a.type as ReferenceKind
+      libStart[kind] += 1
+      const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
+      return {
+        source: 'library',
+        asset: {
+          assetId: a.id,
+          previewUrl: assetFileUrl(a.id),
+          kind,
+        },
+        kind,
+        token: `@${short}${libStart[kind]}`,
+        label: assetDisplayName(a),
+        thumbUrl: assetThumbnailUrl(a.id),
+      }
+    })
+
+    const all = [...slotItems, ...libItems]
+    if (!mention.query) return all
     const q = mention.query.toLowerCase()
-    return items.filter(
+    return all.filter(
       (it) => it.token.toLowerCase().includes(q) || it.label.toLowerCase().includes(q),
     )
-  }, [mention.open, mention.query, refAssets, mode])
+  }, [mention.open, mention.query, refAssets, mode, libData, libTypes])
 
   // 点击浮层外部关闭引用选择器
   useEffect(() => {
@@ -349,8 +428,51 @@ export function GenerationInputBar({
     }
   }
 
-  /** 将引用 token 插入到 @ 起始处，替换 @ 及其后已输入的查询文本，并追加一个空格。 */
-  function insertMention(item: (typeof mentionItems)[number]) {
+  /**
+   * 将引用 token 插入到 @ 起始处，替换 @ 及其后已输入的查询文本，并追加一个空格。
+   * 若选择的是资产库项（library），先将其追加到 refAssets（含上限校验），再按加入后的序号生成 token。
+   */
+  function insertMention(item: MentionItem) {
+    // 资产库项：追加到参考列表，并按加入后的实际序号重新编号 token
+    if (item.source === 'library') {
+      const kind = item.kind
+      // 上限校验：与上传流程保持一致
+      const cap = KIND_CAPS[kind]
+      const currentCount = refAssetsRef.current.filter(
+        (a) => (a.kind ?? 'image') === kind,
+      ).length
+      if (currentCount >= cap) {
+        toast(`${KIND_LABELS[kind]}最多 ${cap} 个`, 'error')
+        setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+        return
+      }
+      // 首帧/首尾帧模式仅接受图片，且数量受限
+      const spec = frameModeSpec(mode, isSeedance, frameMode)
+      if (spec && !spec.allowMultimodal && kind !== 'image') {
+        toast(`${spec.label}模式仅支持图片参考`, 'error')
+        setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+        return
+      }
+      if (spec && !spec.allowMultimodal) {
+        const imageCount = refAssetsRef.current.filter(
+          (a) => (a.kind ?? 'image') === 'image',
+        ).length
+        if (kind === 'image' && imageCount >= spec.maxImages) {
+          toast(`${spec.label}模式最多 ${spec.maxImages} 张参考图`, 'error')
+          setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+          return
+        }
+      }
+      const next = [...refAssetsRef.current, item.asset]
+      refAssetsRef.current = next
+      onRefAssetsChange(next)
+      // 重新计算 token：按类型编号
+      const sameKind = next.filter((a) => (a.kind ?? 'image') === kind)
+      const idx = sameKind.findIndex((a) => a.assetId === item.asset.assetId) + 1
+      const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
+      item = { ...item, token: `@${short}${idx}` }
+    }
+
     const textarea = textareaRef.current
     const pos = textarea?.selectionStart ?? prompt.length
     const token = item.token + ' '
@@ -749,25 +871,27 @@ export function GenerationInputBar({
               )}
             </div>
             <div className="relative flex flex-1 flex-col gap-2">
-              {/* @ 引用悬浮选择器：在提示词中键入 @ 时弹出，选择已上传参考素材作为生成提示词 */}
+              {/* @ 引用悬浮选择器：在提示词中键入 @ 时弹出，可选择已上传参考素材或资产库已有资产 */}
               {mention.open && (
                 <div
                   ref={mentionRef}
                   className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-card border border-border bg-bg-secondary p-1 shadow-xl"
                 >
-                  {refAssets.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-fg-muted">请先上传参考素材</div>
+                  {refAssets.length === 0 && (libData?.items ?? []).length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-fg-muted">
+                      暂无可引用的素材，请先上传或在资产库中生成作品
+                    </div>
                   ) : mentionItems.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-fg-muted">无匹配的参考素材</div>
+                    <div className="px-3 py-2 text-sm text-fg-muted">无匹配的素材</div>
                   ) : (
                     <>
                       <div className="px-2 pb-1 pt-1 text-[11px] text-fg-muted">
-                        选择要引用的参考素材
+                        选择要引用的素材
                       </div>
                       <div className="flex max-h-60 flex-col gap-0.5 overflow-auto scrollbar-thin">
                         {mentionItems.map((item, i) => (
                           <button
-                            key={item.asset.assetId}
+                            key={item.source + item.asset.assetId}
                             type="button"
                             onClick={() => insertMention(item)}
                             className={cn(
@@ -780,7 +904,7 @@ export function GenerationInputBar({
                             <span className="h-6 w-6 shrink-0 overflow-hidden rounded border border-border">
                               {item.kind === 'image' ? (
                                 <img
-                                  src={item.asset.previewUrl}
+                                  src={item.thumbUrl}
                                   alt=""
                                   className="h-full w-full object-cover"
                                 />
@@ -794,8 +918,15 @@ export function GenerationInputBar({
                                 </span>
                               )}
                             </span>
-                            <span>{item.label}</span>
-                            <span className="ml-auto text-xs text-fg-muted">{item.token}</span>
+                            <span className="truncate">{item.label}</span>
+                            {item.source === 'library' && (
+                              <span className="shrink-0 rounded bg-bg-tertiary px-1 py-0.5 text-[10px] text-fg-muted">
+                                资产库
+                              </span>
+                            )}
+                            <span className="ml-auto shrink-0 text-xs text-fg-muted">
+                              {item.token}
+                            </span>
                           </button>
                         ))}
                       </div>
