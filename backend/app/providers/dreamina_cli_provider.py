@@ -60,24 +60,29 @@ VIDEO_MODEL_MAP: dict[str, str] = {
 }
 DEFAULT_VIDEO_MODEL = "seedance2.5"
 
-# (width, height) -> video_resolution 反查表（与 Seedance 对齐的子集，未命中则省略由 CLI 取默认）
-_VIDEO_RESOLUTION_REVERSE: dict[tuple[int, int], str] = {
-    (864, 480): "480p",
-    (736, 544): "480p",
-    (640, 640): "480p",
-    (544, 736): "480p",
-    (480, 864): "480p",
-    (1248, 704): "720p",
-    (1120, 832): "720p",
-    (960, 960): "720p",
-    (832, 1120): "720p",
-    (704, 1248): "720p",
-    (1920, 1088): "1080p",
-    (1664, 1248): "1080p",
-    (1440, 1440): "1080p",
-    (1248, 1664): "1080p",
-    (1088, 1920): "1080p",
-}
+# Seedance CLI 支持的画面比例（与 text2video / multimodal2video --ratio 参数对齐）。
+# 宽高像素组合不一定能约简为标准比例字符串（如 480×864 → 10:18 ≠ 9:16），
+# 因此按最接近的浮点比值匹配，确保传给 CLI 的 --ratio 始终是合法枚举值。
+_VIDEO_SUPPORTED_RATIOS: tuple[tuple[float, str], ...] = (
+    (21 / 9, "21:9"),
+    (16 / 9, "16:9"),
+    (4 / 3, "4:3"),
+    (1 / 1, "1:1"),
+    (3 / 4, "3:4"),
+    (9 / 16, "9:16"),
+)
+
+
+def _video_ratio_from_size(width: int, height: int) -> str:
+    """由宽高推导 CLI --ratio：按最接近的官方支持比例匹配。
+
+    视频像素表中的尺寸（如 480×864）经 GCD 约简后得到 10:18，
+    并非 CLI 接受的 9:16，因此必须用最近匹配而非整数约简。
+    """
+    if width <= 0 or height <= 0:
+        return "16:9"
+    aspect = width / height
+    return min(_VIDEO_SUPPORTED_RATIOS, key=lambda r: abs(r[0] - aspect))[1]
 
 # ============================== Seedream（图片）参数映射 ==============================
 DEFAULT_IMAGE_MODEL = "seedream5.0"
@@ -533,9 +538,24 @@ class DreaminaSeedanceProvider(DreaminaCliBaseProvider):
     def _build_submit_args(self, kwargs: dict[str, Any], input_paths: list[str]) -> list[str]:
         model_version = self._resolve_model(kwargs)
         args: list[str] = []
+        frame_mode = kwargs.get("frame_mode")
+        # 根据参考素材数量与帧模式选择正确的 CLI 子命令：
+        # - image2video：单张参考图（首帧），CLI 只接受 --image=<single path>
+        # - frames2video：首帧 + 尾帧两张图，CLI 用 --first / --last
+        # - multimodal2video：多张参考图（reference 模式），CLI 用可重复 --image
+        # - text2video：无参考图
         if input_paths:
-            args.append("image2video")
-            args.append(f"--image={input_paths[0]}")
+            if frame_mode == "first_last" and len(input_paths) >= 2:
+                args.append("frames2video")
+                args.append(f"--first={input_paths[0]}")
+                args.append(f"--last={input_paths[1]}")
+            elif len(input_paths) > 1:
+                args.append("multimodal2video")
+                for p in input_paths:
+                    args.append(f"--image={p}")
+            else:
+                args.append("image2video")
+                args.append(f"--image={input_paths[0]}")
         else:
             args.append("text2video")
 
@@ -549,9 +569,13 @@ class DreaminaSeedanceProvider(DreaminaCliBaseProvider):
 
         width, height = kwargs.get("width"), kwargs.get("height")
         if width is not None and height is not None:
-            resolution = _VIDEO_RESOLUTION_REVERSE.get((int(width), int(height)))
-            if resolution:
-                args.append(f"--video_resolution={resolution}")
+            # CLI Seedance 2.0 系列仅支持 720p；其他分辨率档位（480p/1080p/2160p）
+            # 由前端按模型过滤，此处只传 720p 避免 invalid param 报错。
+            args.append("--video_resolution=720p")
+            # 画面比例独立于分辨率传入（CLI text2video/multimodal2video 支持 --ratio）。
+            # image2video / frames2video 比例由输入图推断，不传 --ratio。
+            if args[0] in ("text2video", "multimodal2video"):
+                args.append(f"--ratio={_video_ratio_from_size(int(width), int(height))}")
         return args
 
     async def text_to_video(
@@ -573,6 +597,18 @@ class DreaminaSeedanceProvider(DreaminaCliBaseProvider):
         if not image_bytes:
             raise ProviderError("即梦 Seedance（CLI）图生视频缺少输入图片")
         kwargs = {**kwargs, "prompt": prompt, "duration": duration}
+        # 收集所有参考图：首帧 + 尾帧 / 多模态参考列表。
+        # worker 按 frame_mode 设置 last_image_bytes / reference_image_bytes_list。
+        ref_list: list[bytes] = kwargs.pop("reference_image_bytes_list", None) or []
+        last_bytes = kwargs.pop("last_image_bytes", None)
+        frame_mode = kwargs.get("frame_mode")
+        if frame_mode == "first_last":
+            if not last_bytes:
+                raise ProviderError("即梦 Seedance（CLI）首尾帧模式缺少尾帧图片")
+            return await self._generate(kwargs, input_images=[image_bytes, last_bytes])
+        if frame_mode == "reference" and ref_list:
+            return await self._generate(kwargs, input_images=ref_list)
+        # 单图（首帧）模式
         return await self._generate(kwargs, input_images=[image_bytes])
 
     async def text_to_image(self, prompt: str, **kwargs: Any) -> GenerationResult:

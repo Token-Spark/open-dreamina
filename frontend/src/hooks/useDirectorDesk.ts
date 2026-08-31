@@ -38,7 +38,6 @@ export type DirectorDeskAction =
   | 'project.get'
   | 'timeline.get'
   | 'export.frame'
-  | 'export.video'
 
 export interface DirectorDeskError {
   code: string
@@ -60,15 +59,6 @@ export interface DirectorFrameData {
   width: number
   height: number
   progress: number
-}
-
-export interface DirectorVideoData {
-  blob: Blob
-  mimeType: string
-  fileName: string
-  width: number
-  height: number
-  durationSeconds: number
 }
 
 export interface DirectorCapture {

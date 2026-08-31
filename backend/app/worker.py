@@ -23,7 +23,6 @@ import asyncio
 import json
 import logging
 import traceback
-from datetime import datetime
 from typing import Any
 
 from celery import Celery
@@ -44,6 +43,7 @@ from .services.asset_service import (
 from .services.backup_service import backup_database
 from .utils.crypto import decrypt
 from .utils.file_utils import _guess_asset_type, resolve_relative, save_uploaded_file
+from .utils.time_utils import now_iso as _now
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +80,6 @@ celery_app.conf.update(
         },
     },
 )
-
-
-def _now() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _update_task(

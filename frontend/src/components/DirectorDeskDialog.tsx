@@ -14,14 +14,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Clapperboard, X, ImageDown, Film, Video } from 'lucide-react'
-import { useDirectorDesk, type DirectorFrameData, type DirectorVideoData } from '@/hooks/useDirectorDesk'
+import { Clapperboard, X, Camera } from 'lucide-react'
+import { useDirectorDesk, type DirectorFrameData } from '@/hooks/useDirectorDesk'
 import { toast } from '@/stores/uiStore'
 import { cn } from '@/lib/utils'
 
 /**
  * 3D 导演台弹窗：以 iframe 嵌入独立导演台应用，通过 postMessage 受控协议
- * 采集首帧/尾帧/参考视频，回传给宿主用于 Seedance 视频生成。
+ * 采集首帧/尾帧，回传给宿主用于 Seedance 视频生成。
  *
  * 嵌入协议：https://github.com/xiaozangao/3d-director-desk/blob/main/docs/embed-contract.md
  */
@@ -33,10 +33,8 @@ export interface DirectorDeskDialogProps {
   url: string
   /** 主题：跟随宿主当前主题。 */
   theme: 'dark' | 'light'
-  /** 采集到图片；position 标注首帧/尾帧，undefined 表示普通截图。 */
-  onCaptureImage: (file: File, position?: 'first' | 'last') => void
-  /** 采集到参考视频。 */
-  onCaptureVideo: (file: File) => void
+  /** 采集到图片，作为参考图添加。 */
+  onCaptureImage: (file: File) => void
 }
 
 /** data:image/png;base64,... → File */
@@ -49,34 +47,15 @@ function dataUrlToFile(dataUrl: string, fileName: string): File {
   return new File([u8], fileName, { type: mime })
 }
 
-/**
- * 检测当前浏览器是否支持录制 MP4 视频。
- * 导演台的视频导出依赖 MediaRecorder + video/mp4 编解码器；
- * 旧版 Chrome/Firefox 仅支持 WebM 录制，导致导演台无法注册导出处理器，
- * 返回"当前浏览器无法导出参考视频"错误。
- */
-function supportsMp4Recording(): boolean {
-  if (typeof MediaRecorder === 'undefined') return false
-  try {
-    return MediaRecorder.isTypeSupported('video/mp4')
-  } catch {
-    return false
-  }
-}
-
 export function DirectorDeskDialog({
   open,
   onClose,
   url,
   theme,
   onCaptureImage,
-  onCaptureVideo,
 }: DirectorDeskDialogProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [busy, setBusy] = useState('')
-
-  // 浏览器能力检测：仅检测一次，避免每次渲染重复判断
-  const canRecordMp4 = useMemo(() => supportsMp4Recording(), [])
 
   // 同一个 instanceId 复用同一导演台工程（浏览器 localStorage 隔离）
   const instanceId = useRef('dreamina-director').current
@@ -121,40 +100,18 @@ export function DirectorDeskDialog({
     if (!open) setBusy('')
   }, [open])
 
-  async function captureFrame(position: 'first' | 'last') {
+  async function captureFrame() {
     if (busy) return
-    const label = position === 'first' ? '首帧' : '尾帧'
-    setBusy(`正在采集${label}…`)
+    setBusy('正在采集截图…')
     try {
       const data = await request<DirectorFrameData>('export.frame', {
-        position,
         quality: '1080p',
       })
-      const file = dataUrlToFile(data.dataUrl, data.fileName || `导演台${label}.png`)
-      onCaptureImage(file, position)
-      toast(`已采集${label}`, 'success')
+      const file = dataUrlToFile(data.dataUrl, data.fileName || '导演台截图.png')
+      onCaptureImage(file)
+      toast('已采集截图', 'success')
     } catch (e) {
-      toast((e as { message?: string })?.message ?? `采集${label}失败`, 'error')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function captureVideo() {
-    if (busy) return
-    setBusy('正在导出参考视频（可能需要数秒）…')
-    try {
-      const data = await request<DirectorVideoData>('export.video', {
-        fps: 30,
-        quality: '720p',
-      })
-      const file = new File([data.blob], data.fileName || '导演台参考视频.mp4', {
-        type: data.mimeType || 'video/mp4',
-      })
-      onCaptureVideo(file)
-      toast('已采集参考视频', 'success')
-    } catch (e) {
-      toast((e as { message?: string })?.message ?? '导出参考视频失败', 'error')
+      toast((e as { message?: string })?.message ?? '采集截图失败', 'error')
     } finally {
       setBusy('')
     }
@@ -180,32 +137,12 @@ export function DirectorDeskDialog({
         <div className="flex items-center gap-2">
           {/* 操作按钮组 */}
           <ActionButton
-            icon={ImageDown}
-            label="采集首帧"
-            title="将镜头轨迹的第一帧设为视频首帧参考"
+            icon={Camera}
+            label="采集截图"
+            title="采集当前镜头画面作为参考图"
             disabled={!ready || !!busy}
-            busy={busy.includes('首帧')}
-            onClick={() => captureFrame('first')}
-          />
-          <ActionButton
-            icon={Film}
-            label="采集尾帧"
-            title="将镜头轨迹的最后一帧设为视频尾帧参考"
-            disabled={!ready || !!busy}
-            busy={busy.includes('尾帧')}
-            onClick={() => captureFrame('last')}
-          />
-          <ActionButton
-            icon={Video}
-            label="参考视频"
-            title={
-              canRecordMp4
-                ? '将运镜预演导出为参考视频'
-                : '当前浏览器不支持 MP4 视频录制，请使用 Chrome 107+ 或 Edge 浏览器'
-            }
-            disabled={!ready || !!busy || !canRecordMp4}
-            busy={busy.includes('参考视频')}
-            onClick={captureVideo}
+            busy={busy.includes('截图')}
+            onClick={() => captureFrame()}
           />
 
           <div className="mx-1 h-6 w-px bg-border" />
@@ -266,8 +203,8 @@ function ActionButton({
       disabled={disabled}
       title={title}
       className={cn(
-        'flex h-8 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-xs text-fg-secondary transition-colors',
-        'hover:text-fg-primary disabled:opacity-40 disabled:hover:text-fg-secondary',
+        'flex h-8 items-center gap-1.5 rounded-btn border border-border bg-bg-primary px-3 text-xs text-fg-primary transition-colors',
+        'hover:bg-bg-primary disabled:opacity-40',
       )}
     >
       <Icon className={cn('h-3.5 w-3.5', busy && 'animate-pulse')} />

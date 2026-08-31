@@ -55,12 +55,22 @@ _VIDEO_SIZE_REVERSE: dict[tuple[int, int], tuple[str, str]] = {
 # 分辨率档位映射：2160p 视为 4K 别名。
 _RESOLUTION_ALIAS = {"2160p": "2160p", "4k": "2160p"}
 
-# 各型号允许的分辨率档位（最多 4K 或 720p）。
+# 各型号允许的分辨率档位（数据驱动，与前端 videoResolutionsForModel 对齐）。
+# 来源：火山引擎 Seedance 2.0/2.5 API 文档。
 _MODEL_MAX_RESOLUTION: dict[str, str] = {
     "doubao_seedance_2": "2160p",        # 480p/720p/1080p/2160p(4K)
     "doubao_seedance_2_fast": "720p",    # 仅 480p/720p
     "doubao_seedance_2_mini": "720p",    # 仅 480p/720p
-    "doubao_seedance_2_5": "720p",       # 仅 480p/720p
+    "doubao_seedance_2_5": "1080p",      # 480p/720p/1080p（不支持 4K）
+}
+
+# 各型号允许的时长范围（秒），与前端 videoDurationRangeForModel 对齐。
+# -1 表示智能时长（API 原生支持），不在此校验。
+_MODEL_DURATION_RANGE: dict[str, tuple[int, int]] = {
+    "doubao_seedance_2": (4, 15),
+    "doubao_seedance_2_fast": (4, 15),
+    "doubao_seedance_2_mini": (4, 15),
+    "doubao_seedance_2_5": (4, 30),
 }
 
 # 多模态参考素材的类型与最大数量（Seedance 2.5；总数上限 50，图 30/视频 10/音频 10）。
@@ -107,12 +117,27 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
         max_res = _MODEL_MAX_RESOLUTION.get(api_name, "2160p")
         if resolution in _RESOLUTION_ALIAS:
             resolution = _RESOLUTION_ALIAS[resolution]
-        if resolution != "2160p" and max_res == "720p" and resolution not in ("480p", "720p"):
+        _RES_ORDER = ["480p", "720p", "1080p", "2160p"]
+        if resolution not in _RES_ORDER:
             raise ProviderError(
-                f"模型 {api_name} 不支持 {resolution}，仅支持 480p / 720p，请降低分辨率"
+                f"不支持的分辨率档位：{resolution}，请选择 480p / 720p / 1080p"
+                + (" / 2160p" if max_res == "2160p" else "")
+            )
+        if _RES_ORDER.index(resolution) > _RES_ORDER.index(max_res):
+            allowed = _RES_ORDER[: _RES_ORDER.index(max_res) + 1]
+            raise ProviderError(
+                f"模型 {api_name} 不支持 {resolution}，仅支持 {' / '.join(allowed)}，请降低分辨率"
             )
 
         duration = int(kwargs.get("duration") or 5)
+        # -1 表示智能时长，API 原生支持，跳过范围校验
+        if duration != -1:
+            dur_range = _MODEL_DURATION_RANGE.get(api_name)
+            if dur_range and not (dur_range[0] <= duration <= dur_range[1]):
+                raise ProviderError(
+                    f"模型 {api_name} 时长 {duration}s 超出允许范围"
+                    f"（{dur_range[0]}~{dur_range[1]}s），请调整时长"
+                )
         pl: dict[str, Any] = {
             "api_name": api_name,
             "prompt": prompt,

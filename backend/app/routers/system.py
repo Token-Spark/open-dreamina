@@ -106,7 +106,7 @@ def update_settings(
     payload: SystemSettings,
     db: Session = Depends(get_db),
 ) -> SystemSettings:
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = now_iso()
     _upsert_setting(db, "max_concurrent_tasks", str(payload.max_concurrent_tasks), now)
     _upsert_setting(db, "default_provider", payload.default_provider, now)
     if payload.director_desk_url:

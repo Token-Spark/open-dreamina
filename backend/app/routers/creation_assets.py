@@ -350,7 +350,7 @@ def update_creation_asset(
         ca.image_asset_id = payload.image_asset_id
     if payload.audio_asset_id is not None:
         ca.audio_asset_id = payload.audio_asset_id
-    ca.updated_at = svc.now_iso()
+    ca.updated_at = now_iso()
     db.commit()
     db.refresh(ca)
 

@@ -41,12 +41,11 @@ import json
 import re
 import time
 import uuid
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Asset, CreationAsset, Setting
+from ..utils.time_utils import now_iso
 from ..providers import ProviderError
 from . import qiniu_service
 from .asset_service import create_asset_record, delete_asset_files, resolve_asset_path
@@ -190,12 +189,7 @@ def sanitize_tag(tag: str) -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def now_iso() -> str:
-    """当前时间字符串（供路由层更新 updated_at 使用）。"""
-    return _now_iso()
+    return now_iso()
 
 
 def _load_tags(ca: CreationAsset) -> list[str]:

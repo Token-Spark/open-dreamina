@@ -16,10 +16,10 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Pencil, ImagePlus } from 'lucide-react'
 import { useTaskSSE } from '@/hooks/useTaskSSE'
 import { useConversationStore, type GenMessage } from '@/stores/conversationStore'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Progress } from '@/components/ui/Progress'
-import { STATUS_LABEL, TASK_TYPE_LABEL, statusBadgeVariant } from '@/lib/taskStatus'
+import { TASK_TYPE_LABEL } from '@/lib/taskStatus'
+import { errorTitle, errorDetail } from '@/lib/errorMessages'
 
 interface GenMessageCardProps {
   topicId: string
@@ -101,14 +101,11 @@ function ResultCard({
 
   return (
     <div className="rounded-card bg-transparent p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {running && <Loader2 className="h-4 w-4 animate-spin text-fg-secondary" />}
-          {message.status === 'completed' && <CheckCircle2 className="h-4 w-4 text-success" />}
-          {message.status === 'failed' && <AlertCircle className="h-4 w-4 text-error" />}
-          <span className="text-sm font-medium text-fg-primary">{TASK_TYPE_LABEL[message.type]}</span>
-        </div>
-        <Badge variant={statusBadgeVariant(message.status)}>{STATUS_LABEL[message.status]}</Badge>
+      <div className="flex items-center gap-2">
+        {running && <Loader2 className="h-4 w-4 animate-spin text-fg-secondary" />}
+        {message.status === 'completed' && <CheckCircle2 className="h-4 w-4 text-success" />}
+        {message.status === 'failed' && <AlertCircle className="h-4 w-4 text-error" />}
+        <span className="text-sm font-medium text-fg-primary">{TASK_TYPE_LABEL[message.type]}</span>
       </div>
 
       {running && (
@@ -129,23 +126,30 @@ function ResultCard({
       )}
 
       {message.status === 'failed' && (
-        <div className="space-y-2 rounded-btn border border-error/30 bg-error/10 p-3">
+        <div className="space-y-1.5 rounded-btn border border-border bg-bg-secondary/50 p-3">
           <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-error">生成失败</p>
-              <p className="text-xs text-error/80">{message.error ?? '未知错误'}</p>
+              <p className="text-sm text-fg-primary">{errorTitle(message.error)}</p>
+              <p className="text-xs text-fg-muted">{errorDetail(message.error)}</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              <RefreshCw className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-3 pl-6">
+            <button
+              onClick={onRetry}
+              className="inline-flex items-center gap-1 text-xs text-fg-secondary transition-colors hover:text-fg-primary"
+            >
+              <RefreshCw className="h-3 w-3" />
               重新生成
-            </Button>
-            <Button variant="secondary" size="sm" onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <span className="text-border" />
+            <button
+              onClick={onEdit}
+              className="inline-flex items-center gap-1 text-xs text-fg-secondary transition-colors hover:text-fg-primary"
+            >
+              <Pencil className="h-3 w-3" />
               重新编辑
-            </Button>
+            </button>
           </div>
         </div>
       )}

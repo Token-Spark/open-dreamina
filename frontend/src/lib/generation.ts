@@ -293,33 +293,92 @@ export const RESOLUTIONS_BY_MODE: Record<ContentMode, ResolutionDef[]> = {
 }
 
 /**
- * 视频模型支持的分辨率因模型而异（数据来源：spark-hub router.md 第 9.3 节）：
- * - Seedance 2.0（标准版）：480p / 720p / 1080p / 2160p
- * - Seedance 2.0 Fast / Mini：仅 480p / 720p
- * - Seedance 2.5：仅 480p / 720p
+ * 视频模型能力规格表（数据驱动，P0.3）。
+ * 来源：火山引擎 Seedance 2.0/2.5 API 文档
+ *   https://www.volcengine.com/docs/82379/2291680 (Seedance 2.0)
+ *   https://www.volcengine.com/docs/82379/2607688 (Seedance 2.5)
+ *
+ * | 模型               | 分辨率                      | 时长      |
+ * |--------------------|------------------------------|-----------|
+ * | Seedance 2.0 标准   | 480p/720p/1080p/2160p       | 4~15 秒   |
+ * | Seedance 2.0 Fast  | 480p/720p                   | 4~15 秒   |
+ * | Seedance 2.0 Mini  | 480p/720p                   | 4~15 秒   |
+ * | Seedance 2.5       | 480p/720p/1080p             | 4~30 秒   |
  */
-export function videoResolutionsForModel(modelId: string): ResolutionDef[] {
-  const id = modelId.toLowerCase()
-  const isFastOrMini = id.includes('fast') || id.includes('mini')
-  const is25 = id.includes('2_5') || id.includes('2-5') || id.includes('2.5')
-  const isFullSeedance2 =
-    !isFastOrMini &&
-    !is25 &&
-    (id.includes('seedance_2') || id.includes('seedance-2') || id.includes('seedance2.0'))
+interface VideoModelSpec {
+  /** 模型 ID 匹配函数（已转小写）；按数组顺序，首个匹配生效。 */
+  match: (id: string) => boolean
+  resolutions: ResolutionDef[]
+  duration: { min: number; max: number; default: number }
+}
 
-  if (isFullSeedance2) {
-    return [
+const VIDEO_MODEL_SPECS: VideoModelSpec[] = [
+  {
+    // Seedance 2.5：支持 480p/720p/1080p（不支持 4K），时长 4~30 秒
+    match: (id) => id.includes('2_5') || id.includes('2-5') || id.includes('2.5'),
+    resolutions: [
+      { value: '480p', label: '标清 480p' },
+      { value: '720p', label: '高清 720p' },
+      { value: '1080p', label: '超清 1080p' },
+    ],
+    duration: { min: 4, max: 30, default: 5 },
+  },
+  {
+    // Seedance 2.0 Fast/Mini：仅 480p/720p，时长 4~15 秒
+    match: (id) => id.includes('fast') || id.includes('mini'),
+    resolutions: [
+      { value: '480p', label: '标清 480p' },
+      { value: '720p', label: '高清 720p' },
+    ],
+    duration: { min: 4, max: 15, default: 5 },
+  },
+  {
+    // Seedance 2.0 标准版：480p/720p/1080p/2160p，时长 4~15 秒
+    match: (id) => id.includes('seedance_2') || id.includes('seedance-2') || id.includes('seedance2.0'),
+    resolutions: [
       { value: '480p', label: '标清 480p' },
       { value: '720p', label: '高清 720p' },
       { value: '1080p', label: '超清 1080p' },
       { value: '2160p', label: '4K 2160p' },
-    ]
-  }
-  // Fast / Mini / 2.5 及未知视频模型仅支持 480p / 720p
-  return [
+    ],
+    duration: { min: 4, max: 15, default: 5 },
+  },
+]
+
+/** 未知视频模型的回退规格（仅 480p/720p，4~15 秒）。 */
+const _DEFAULT_VIDEO_SPEC: VideoModelSpec = {
+  match: () => true,
+  resolutions: [
     { value: '480p', label: '标清 480p' },
     { value: '720p', label: '高清 720p' },
-  ]
+  ],
+  duration: { min: 4, max: 15, default: 5 },
+}
+
+/** 查找模型规格；未知模型回退到默认规格。 */
+function videoModelSpec(modelId: string): VideoModelSpec {
+  const id = modelId.toLowerCase()
+  return VIDEO_MODEL_SPECS.find((s) => s.match(id)) ?? _DEFAULT_VIDEO_SPEC
+}
+
+/**
+ * 视频模型支持的分辨率（按模型系列不同）。
+ * - Seedance 2.0 标准版：480p / 720p / 1080p / 2160p(4K)
+ * - Seedance 2.0 Fast / Mini：480p / 720p
+ * - Seedance 2.5：480p / 720p / 1080p（不支持 4K）
+ */
+export function videoResolutionsForModel(modelId: string): ResolutionDef[] {
+  return videoModelSpec(modelId).resolutions
+}
+
+/**
+ * 视频模型支持的时长范围（秒）。
+ * - Seedance 2.0 系列（标准/Fast/Mini）：4~15 秒
+ * - Seedance 2.5：4~30 秒
+ * API 还支持 -1（智能时长），前端 UI 可选择性暴露。
+ */
+export function videoDurationRangeForModel(modelId: string): { min: number; max: number; default: number } {
+  return videoModelSpec(modelId).duration
 }
 
 /** 是否为即梦 CLI 的 Seedream 图片 Provider（slug 固定为 dreamina-seedream）。 */

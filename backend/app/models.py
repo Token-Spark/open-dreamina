@@ -15,17 +15,11 @@
 """ORM 模型，严格对应规格书第 4 节 SQL 定义。"""
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
-
-
-def _now_iso() -> str:
-    """与 SQLite datetime('now') 一致的本地时间字符串（YYYY-MM-DD HH:MM:SS）。"""
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+from .utils.time_utils import now_iso as _now_iso
 
 
 class Conversation(Base):

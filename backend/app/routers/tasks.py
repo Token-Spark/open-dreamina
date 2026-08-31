@@ -38,6 +38,7 @@ from ..schemas import (
 )
 from ..services import task_service
 from ..utils.sse import format_event, heartbeat_event
+from ..utils.time_utils import now_iso as _now
 from ..worker import run_generation_task
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -420,8 +421,3 @@ def delete_task(
         raise HTTPException(status_code=500, detail={"code": "db_error", "message": str(e)})
 
     return MessageResponse(message=f"任务 {task_id} 已删除", detail={"delete_files": delete_files})
-
-
-def _now() -> str:
-    from datetime import datetime
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
