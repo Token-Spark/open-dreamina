@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>使用指南 — Open Dreamina</title>
+  <meta name="description" content="Open Dreamina 使用指南：用 AI 智能体一键部署，并快速创建图片与视频素材资产。" />
+  <link rel="icon" href="assets/favicon.ico" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --gray-900: #1a1a1a;
+      --gray-700: #3d3d3d;
+      --gray-500: #6b6b6b;
+      --gray-400: #9a9a9a;
+      --gray-200: #e5e5e5;
+      --gray-100: #f5f5f5;
+      --gray-50: #fafafa;
+      --accent: #2f6df6;
+      --radius: 10px;
+      --max: 860px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.75;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); }
+
+    .container {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---------- Nav ---------- */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      text-decoration: none;
+      color: var(--fg);
+      letter-spacing: 0.2px;
+    }
+
+    .brand img {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      object-fit: cover;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 14px;
+    }
+
+    .nav-links a {
+      color: var(--gray-500);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .nav-links a:hover { color: var(--fg); }
+    .nav-links a.active { color: var(--fg); font-weight: 500; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      border: 1px solid var(--gray-200);
+      color: var(--gray-700);
+      background: var(--bg);
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+
+    .btn:hover { border-color: var(--gray-400); color: var(--fg); }
+
+    .btn-primary {
+      background: var(--fg);
+      color: #fff;
+      border-color: var(--fg);
+    }
+
+    .btn-primary:hover { background: var(--gray-900); color: #fff; }
+
+    /* ---------- Hero ---------- */
+    .hero {
+      padding: 72px 0 56px;
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    .hero .eyebrow {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--gray-400);
+      margin-bottom: 14px;
+    }
+
+    .hero h1 {
+      font-size: 38px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+
+    .hero p.subtitle {
+      font-size: 17px;
+      color: var(--gray-500);
+      max-width: 620px;
+    }
+
+    /* ---------- TOC ---------- */
+    .toc {
+      padding: 36px 0 8px;
+    }
+
+    .toc .toc-title {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--gray-400);
+      margin-bottom: 16px;
+    }
+
+    .toc ol {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 4px 24px;
+    }
+
+    .toc a {
+      display: flex;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--gray-500);
+      text-decoration: none;
+      padding: 6px 0;
+      border-bottom: 1px solid transparent;
+      transition: color 0.15s ease;
+    }
+
+    .toc a:hover { color: var(--fg); }
+
+    .toc a .idx {
+      color: var(--gray-400);
+      font-variant-numeric: tabular-nums;
+      min-width: 18px;
+    }
+
+    /* ---------- Article ---------- */
+    article { padding: 24px 0 80px; }
+
+    section.chapter {
+      padding: 44px 0;
+      border-bottom: 1px solid var(--gray-100);
+    }
+
+    section.chapter:last-of-type { border-bottom: none; }
+
+    .step-tag {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: var(--accent);
+      background: rgba(47, 109, 246, 0.08);
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      margin-bottom: 18px;
+    }
+
+    h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-top: 30px;
+      margin-bottom: 10px;
+    }
+
+    p {
+      color: var(--gray-700);
+      margin-bottom: 16px;
+    }
+
+    p strong, li strong { color: var(--fg); font-weight: 600; }
+
+    ul, ol.list {
+      margin: 0 0 16px;
+      padding-left: 22px;
+    }
+
+    ul li, ol.list li {
+      color: var(--gray-700);
+      margin-bottom: 8px;
+    }
+
+    code.inline {
+      font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
+      font-size: 0.88em;
+      background: var(--gray-100);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: var(--gray-900);
+    }
+
+    pre {
+      background: var(--gray-900);
+      color: var(--gray-200);
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      font-size: 13.5px;
+      line-height: 1.8;
+      overflow-x: auto;
+      margin: 0 0 16px;
+      font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
+    }
+
+    pre .comment { color: var(--gray-400); }
+    pre .copy {
+      float: right;
+      font-size: 12px;
+      color: var(--gray-400);
+      cursor: pointer;
+      user-select: none;
+      border: 1px solid var(--gray-700);
+      border-radius: 6px;
+      padding: 2px 8px;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    pre .copy:hover { color: var(--gray-200); border-color: var(--gray-500); }
+
+    /* ---------- Callout ---------- */
+    .callout {
+      border: 1px solid var(--gray-200);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      background: var(--gray-50);
+      margin: 0 0 18px;
+      font-size: 14.5px;
+      color: var(--gray-700);
+    }
+
+    .callout .label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .callout.warn {
+      border-left-color: #d48806;
+      background: #fffbf0;
+    }
+    .callout.warn .label { color: #b7791f; }
+
+    /* ---------- Card grid ---------- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1px;
+      background: var(--gray-200);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin: 8px 0 18px;
+    }
+
+    .card {
+      background: var(--bg);
+      padding: 22px;
+    }
+
+    .card h4 {
+      font-size: 14.5px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 13.5px;
+      color: var(--gray-500);
+      margin: 0;
+    }
+
+    /* ---------- Table ---------- */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      margin: 8px 0 18px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    th {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--gray-400);
+      background: var(--gray-50);
+    }
+
+    td:first-child { font-weight: 500; white-space: nowrap; }
+    td:last-child { color: var(--gray-500); }
+    tr:last-child td { border-bottom: none; }
+
+    /* ---------- FAQ ---------- */
+    .faq details {
+      border-bottom: 1px solid var(--gray-100);
+      padding: 18px 0;
+    }
+
+    .faq summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 15.5px;
+      list-style: none;
+      position: relative;
+      padding-right: 26px;
+    }
+
+    .faq summary::-webkit-details-marker { display: none; }
+
+    .faq summary::after {
+      content: "+";
+      position: absolute;
+      right: 0;
+      top: -2px;
+      font-size: 20px;
+      color: var(--gray-400);
+      transition: transform 0.2s ease;
+    }
+
+    .faq details[open] summary::after { content: "−"; }
+
+    .faq details p {
+      margin-top: 10px;
+      color: var(--gray-700);
+      font-size: 14.5px;
+    }
+
+    /* ---------- CTA ---------- */
+    .cta {
+      text-align: center;
+      padding: 64px 0 40px;
+      border-top: 1px solid var(--gray-200);
+    }
+
+    .cta h2 { margin-bottom: 14px; }
+    .cta p { max-width: 480px; margin: 0 auto 26px; }
+    .cta .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* ---------- Footer ---------- */
+    footer {
+      padding: 36px 0;
+      font-size: 13px;
+      color: var(--gray-400);
+    }
+
+    footer .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    footer a { color: var(--gray-500); text-decoration: none; }
+    footer a:hover { color: var(--fg); }
+
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 30px; }
+      .nav-links a:not(.btn) { display: none; }
+      h2 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="index.html">
+        <img src="assets/logo.jpg" alt="Open Dreamina Logo" />
+        Open Dreamina
+      </a>
+      <div class="nav-links">
+        <a href="index.html#features">特性</a>
+        <a href="index.html#models">模型</a>
+        <a href="guide.html" class="active">使用指南</a>
+        <a class="btn btn-primary" href="https://github.com/Token-Spark/open-dreamina" target="_blank" rel="noopener" style="color:#fff;">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="container">
+      <div class="eyebrow">User Guide</div>
+      <h1>用智能体快速创建素材资产</h1>
+      <p class="subtitle">
+        一句话让 AI 智能体完成部署，再在浏览器里把提示词变成可用的图片与视频素材。本指南覆盖从安装到产出的完整路径。
+      </p>
+    </div>
+  </header>
+
+  <div class="container toc">
+    <div class="toc-title">目录</div>
+    <ol>
+      <li><a href="#overview"><span class="idx">01</span> 它是怎么工作的</a></li>
+      <li><a href="#prereq"><span class="idx">02</span> 准备工作</a></li>
+      <li><a href="#deploy"><span class="idx">03</span> 第一步：智能体一键部署</a></li>
+      <li><a href="#models"><span class="idx">04</span> 第二步：配置模型服务</a></li>
+      <li><a href="#image"><span class="idx">05</span> 第三步：创建图片素材</a></li>
+      <li><a href="#video"><span class="idx">06</span> 第四步：创建视频素材</a></li>
+      <li><a href="#maintain"><span class="idx">07</span> 用智能体保持更新</a></li>
+      <li><a href="#advanced"><span class="idx">08</span> 进阶用法</a></li>
+      <li><a href="#faq"><span class="idx">09</span> 常见问题</a></li>
+    </ol>
+  </div>
+
+  <article>
+    <div class="container">
+
+      <!-- 01 Overview -->
+      <section class="chapter" id="overview">
+        <h2>它是怎么工作的</h2>
+        <p>
+          Open Dreamina 是一个跑在你自己电脑上的 AIGC 创作工具，用浏览器打开就能用。它本身不绑定某一个模型，而是把<strong>图片生成</strong>和<strong>视频生成</strong>当作可插拔的服务：你在界面里激活哪一家模型，它就调用哪一家。
+        </p>
+        <p>
+          这套工具同时附带了一份面向 AI 智能体的指引文件（仓库根目录的 <code class="inline">AGENTS.md</code>）。当你把它交给 codex、workbuddy 这类智能体时，智能体会读取这份指引，自动完成环境检查、配置生成、镜像构建和服务启动。你不需要记任何命令，只要把一句话需求发给智能体即可。
+        </p>
+        <p>
+          所以整条路径被压缩成了两段：智能体负责把工具装好跑起来，你负责在浏览器里写提示词产出素材。下面按顺序讲清楚每一步。
+        </p>
+        <div class="grid">
+          <div class="card">
+            <h4>智能体做的事</h4>
+            <p>读 AGENTS.md，检查 Docker 与端口，生成 .env，启动服务并做健康检查。</p>
+          </div>
+          <div class="card">
+            <h4>你做的事</h4>
+            <p>发一句话给智能体；部署完成后在浏览器里配置模型、写提示词、生成素材。</p>
+          </div>
+          <div class="card">
+            <h4>结果存哪里</h4>
+            <p>所有对话、生成记录和素材都落在本地 ./data 目录，不依赖任何云端账号。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 Prerequisites -->
+      <section class="chapter" id="prereq">
+        <h2>准备工作</h2>
+        <p>部署前只需要两样东西：一个能跑容器的 Docker 环境，以及一个能读 AGENTS.md 的 AI 智能体。</p>
+        <h3>Docker 环境</h3>
+        <p>
+          Windows 与 macOS 推荐 <strong>Docker Desktop</strong>（启动后等左下角显示 <code class="inline">Engine running</code>）；Linux 用 Docker Engine。确保端口 <code class="inline">10131</code>（前端）和 <code class="inline">10130</code>（后端）没有被占用。Windows 用户建议装 <strong>PowerShell 7</strong>，避免自带 PowerShell 5 的中文编码问题。
+        </p>
+        <div class="callout warn">
+          <div class="label">注意</div>
+          如果你已经在 WSL 发行版里单独装过 Docker Engine，请先卸载或禁用它，否则会和 Docker Desktop 的 WSL 2 后端冲突，导致引擎连不上。
+        </div>
+        <h3>一个 AI 智能体</h3>
+        <p>
+          任意一款支持读取本地仓库文件并执行终端命令的智能体都可以，例如 <strong>codex</strong>、<strong>workbuddy</strong> 等。它的作用是把下面那句话翻译成实际的安装动作。
+        </p>
+      </section>
+
+      <!-- 03 Deploy -->
+      <section class="chapter" id="deploy">
+        <span class="step-tag">步骤 01</span>
+        <h2>智能体一键部署</h2>
+        <p>
+          打开你的智能体，把下面这句话原样发过去。它会克隆仓库、读取 <code class="inline">AGENTS.md</code>、自动完成部署，最后把访问地址告诉你。
+        </p>
+        <pre><span class="copy" onclick="copyCode(this)">复制</span><span class="comment"># 发给智能体</span>
+克隆 https://github.com/Token-Spark/open-dreamina 到本地，按仓库 AGENTS.md 引导完成部署，最后告诉我访问地址。</pre>
+        <p>智能体在后台实际会跑这些动作，你无需手动干预：</p>
+        <ol class="list">
+          <li>检查 <code class="inline">docker version</code> 与 <code class="inline">docker compose version</code> 是否可用；</li>
+          <li>检查 <code class="inline">10131</code> / <code class="inline">10130</code> 端口是否被占用；</li>
+          <li>运行部署脚本（<code class="inline">deploy.sh</code> 或 <code class="inline">deploy.ps1</code>），脚本会生成带随机 <code class="inline">ENCRYPTION_KEY</code> 的 <code class="inline">.env</code>；</li>
+          <li>执行 <code class="inline">docker compose up -d --build</code> 启动全部 5 个服务；</li>
+          <li>做健康检查，确认能访问后把地址交还给你。</li>
+        </ol>
+        <div class="callout">
+          <div class="label">部署完成后</div>
+          应用地址：<a href="http://localhost:10131">http://localhost:10131</a> ／ API 文档：<a href="http://localhost:10130/docs">http://localhost:10130/docs</a>。数据目录是 <code class="inline">./data</code>，里面包含 SQLite 数据库、生成资产与备份。
+        </div>
+        <p>
+          如果你更习惯自己动手，也可以不走智能体，直接在仓库根目录运行 <code class="inline">bash deploy.sh</code>（Linux/macOS）或 <code class="inline">pwsh .\deploy.ps1</code>（Windows）。
+        </p>
+      </section>
+
+      <!-- 04 Models -->
+      <section class="chapter" id="models">
+        <span class="step-tag">步骤 02</span>
+        <h2>配置模型服务</h2>
+        <p>
+          打开应用后，进入<strong>「设置 → 服务管理」</strong>，在这里激活你要用的模型服务并填入对应的 API Key。一次可以激活多个服务，之后在创作界面里随时切换。填入的 Key 会用 <code class="inline">.env</code> 里的密钥加密后存储，不会明文落地。
+        </p>
+        <p>目前可接入的模型服务大致分三类：</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>接入方式</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>API Key 直连</td><td>Seedream、Seedance、GPT Image 2、Stability、通义万相、可灵等，填入厂商或中转网关的 Key 即可。</td></tr>
+              <tr><td>即梦 CLI</td><td>复用本机即梦登录态生图生视频，无需 API Key，需先在服务管理里安装并登录 CLI。</td></tr>
+              <tr><td>Spark Hub 中转</td><td>经中转站统一以异步任务模式调用 Seedream / Seedance，适合批量任务。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <div class="label">选哪个</div>
+          想要图片就激活一个生图服务（如 Seedream 或 GPT Image 2），想要视频就激活 Seedance 或可灵。不确定时先激活一个，跑通流程再加其他服务。
+        </div>
+        <p>
+          用即梦 CLI 的话稍多一点步骤：在服务管理页面点「安装」，装完点「登录」并按提示完成授权。登录态保存在 <code class="inline">./data/dreamina-home</code>，容器重建后也不会丢。
+        </p>
+      </section>
+
+      <!-- 05 Image -->
+      <section class="chapter" id="image">
+        <span class="step-tag">步骤 03</span>
+        <h2>创建图片素材</h2>
+        <p>
+          模型激活后，回到创作界面新建一次图片对话。核心就两件事：选好生图模型，把画面描述写清楚。
+        </p>
+        <h3>文生图</h3>
+        <p>
+          选一个生图服务（例如 Seedream 5.0 或 GPT Image 2），在输入框里写下你想要的画面。一条好用的提示词通常包含<strong>主体、场景、风格、细节</strong>四个要素。比如：「一只橘猫趴在木质书桌上，午后阳光斜照，胶片摄影质感，浅景深」。点生成，等结果回来即可下载。
+        </p>
+        <h3>图生图（编辑）</h3>
+        <p>
+          把已有图片喂给模型，再用文字描述要做的修改——换背景、改色调、增删元素都可以。这适合在已有素材上做二次调整，而不是从零开始。
+        </p>
+        <div class="callout">
+          <div class="label">提示词小技巧</div>
+          先写最重要的主体，再补充风格与氛围，最后加细节约束。一次只表达一个清晰意图，比堆砌一堆形容词更容易得到稳定结果。
+        </div>
+        <p>
+          每次生成的结果都会进入本地记录，可以随时回看、复用提示词或再次编辑，不需要重新下载。
+        </p>
+      </section>
+
+      <!-- 06 Video -->
+      <section class="chapter" id="video">
+        <span class="step-tag">步骤 04</span>
+        <h2>创建视频素材</h2>
+        <p>
+          视频流程和图片类似，只是把生图服务换成 Seedance、可灵等视频模型。生成耗时更长，结果同样保存在本地记录里。
+        </p>
+        <h3>文生视频</h3>
+        <p>
+          直接用文字描述动态画面。视频提示词除了画面内容，最好再点明<strong>镜头运动</strong>和<strong>节奏</strong>，比如「镜头缓慢推进，水面泛起涟漪，宁静氛围」。运动描述越具体，画面越不容易静止或抖动。
+        </p>
+        <h3>图生视频</h3>
+        <p>
+          先用上一步生成的图片当起始帧，再用文字补充它该怎么动。这是把静态图片变成短视频片段最高效的方式，特别适合做封面动效或短视频素材。
+        </p>
+        <div class="callout">
+          <div class="label">节省时间的做法</div>
+          先用便宜的生图模型快速产出满意的静态画面，再把它交给视频模型生成动态，比反复用文生视频试错更快也更省额度。
+        </div>
+      </section>
+
+      <!-- 07 Maintain -->
+      <section class="chapter" id="maintain">
+        <h2>用智能体保持更新</h2>
+        <p>
+          项目发布新版本后，同样用一句话让智能体拉取最新代码并重建服务，无需你记命令。
+        </p>
+        <pre><span class="copy" onclick="copyCode(this)">复制</span><span class="comment"># 发给智能体</span>
+拉取 https://github.com/Token-Spark/open-dreamina 的最新代码（git pull），然后执行 docker compose up -d --build 重建镜像并重启服务，最后告诉我访问地址。</pre>
+        <p>
+          智能体会执行 <code class="inline">git pull</code> 拉取最新代码，再用 <code class="inline">--build</code> 重建镜像，确保前端静态资源和模型列表都是最新版本。你的数据始终留在 <code class="inline">./data</code>，更新过程不会动它。
+        </p>
+      </section>
+
+      <!-- 08 Advanced -->
+      <section class="chapter" id="advanced">
+        <h2>进阶用法</h2>
+
+        <h3>批量产出素材</h3>
+        <p>
+          同一个提示词配合多个模型，可以在服务管理里同时激活几家，逐个生成做横向对比；需要稳定产出大量片段时，走 Spark Hub 中转的异步任务模式更顺手，避免长任务占用交互界面。
+        </p>
+
+        <h3>数据备份</h3>
+        <p>
+          在「设置」里可以手动触发数据库备份，备份文件落在 <code class="inline">./data/backups</code>，默认保留最近 3 份。换机器或升级前备份一次，是把风险降到最低的习惯。
+        </p>
+
+        <h3>让智能体帮你配模型</h3>
+        <p>
+          如果你不清楚某家模型的 Key 该填在哪，也可以直接问智能体，它能结合 AGENTS.md 与应用界面提示，一步步带你完成激活。涉及 API Key 时，只在应用的「服务管理」页面录入，不要把 Key 贴进对话或写进任何文件。
+        </p>
+      </section>
+
+      <!-- 09 FAQ -->
+      <section class="chapter faq" id="faq">
+        <h2>常见问题</h2>
+
+        <details>
+          <summary>智能体部署后打不开 localhost:10131 怎么办？</summary>
+          <p>先让智能体跑 <code class="inline">docker compose ps</code> 确认 5 个服务都是 Up 状态，再看 <code class="inline">docker compose logs backend</code> 的启动错误。最常见原因是端口被占用或 <code class="inline">.env</code> 缺少 <code class="inline">ENCRYPTION_KEY</code>，重跑一次部署脚本即可。</p>
+        </details>
+
+        <details>
+          <summary>生成的素材存在哪里，会不会丢？</summary>
+          <p>全部存在本地 <code class="inline">./data</code> 目录，包括 SQLite 数据库和生成资产。只要不手动删除这个目录，重建容器也不会丢数据。换机器前用「设置」里的备份功能导出一份即可。</p>
+        </details>
+
+        <details>
+          <summary>没有 API Key 能用吗？</summary>
+          <p>可以选即梦 CLI 方式，它复用本机即梦的登录态来生图生视频，不需要单独申请 API Key。在「服务管理 → 即梦 CLI」里安装并登录即可。</p>
+        </details>
+
+        <details>
+          <summary>可以同时用多家模型吗？</summary>
+          <p>可以。在服务管理里激活多个服务，创作时按需切换。多个服务之间互不影响，方便横向对比不同模型在同一提示词下的表现。</p>
+        </details>
+
+        <details>
+          <summary>能不能不走智能体，自己部署？</summary>
+          <p>完全可以。克隆仓库后，Linux/macOS 跑 <code class="inline">bash deploy.sh</code>，Windows 跑 <code class="inline">pwsh .\deploy.ps1</code>。脚本会自动完成环境检查、配置生成、构建与启动。智能体只是把这些步骤替你做了。</p>
+        </details>
+      </section>
+
+    </div>
+  </article>
+
+  <section class="cta">
+    <div class="container">
+      <h2>准备好开始创作了吗</h2>
+      <p>把那句部署指令发给智能体，几分钟后就能在自己的浏览器里产出第一张素材。</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="index.html#quickstart">回到首页</a>
+        <a class="btn" href="https://github.com/Token-Spark/open-dreamina" target="_blank" rel="noopener">查看源码</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <span>© 2026 Open Dreamina · Apache 2.0 License</span>
+      <a href="https://github.com/Token-Spark/open-dreamina" target="_blank" rel="noopener">GitHub →</a>
+    </div>
+  </footer>
+
+  <script>
+    function copyCode(el) {
+      var pre = el.parentElement;
+      var text = pre.cloneNode(true);
+      var copyNode = text.querySelector('.copy');
+      if (copyNode) copyNode.remove();
+      var raw = text.textContent.replace(/^\s*#.*\n/, '').trim();
+      navigator.clipboard && navigator.clipboard.writeText(raw);
+      var old = el.textContent;
+      el.textContent = '已复制';
+      setTimeout(function () { el.textContent = old; }, 1500);
+    }
+  </script>
+</body>
+</html>
