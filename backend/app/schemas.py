@@ -172,6 +172,146 @@ class BatchDeleteResponse(BaseModel):
     failed: list[str]
 
 
+# ---------------- 创作资产（素材库） ----------------
+
+class CreationAssetCreate(BaseModel):
+    """新建创作资产。图片/音频先经 /assets/upload 上传，此处传 asset_id。"""
+    name: str = Field(..., min_length=1, max_length=100)
+    category: str = Field("character", pattern="^(character|scene|prop)$")
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    image_asset_id: Optional[str] = None
+    audio_asset_id: Optional[str] = None
+
+
+class CreationAssetUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    category: Optional[str] = Field(None, pattern="^(character|scene|prop)$")
+    description: Optional[str] = None
+    tags: Optional[list[str]] = None
+    image_asset_id: Optional[str] = None
+    audio_asset_id: Optional[str] = None
+
+
+class CreationAssetResponse(BaseModel):
+    id: str
+    name: str
+    category: str
+    description: str
+    image_asset_id: Optional[str] = None
+    audio_asset_id: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    owner_id: str
+    owner_name: str
+    origin: str  # local|remote
+    is_mine: bool  # owner_id == 本实例 owner_id（可信团队，remote 亦可编辑）
+    synced_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    # 乐观锁同步状态
+    base_version: int = 0
+    cloud_tag: str = ""
+    has_pending_changes: bool = False  # 本地修改尚未推送（updated_at > synced_at 近似判断）
+    # 便捷链接（关联媒体文件预览）
+    image_url: Optional[str] = None
+    image_thumbnail_url: Optional[str] = None
+    audio_url: Optional[str] = None
+    # 创建/编辑后即刻推送到云端的单资产同步结果（无推送则为 None）
+    sync_result: Optional[dict] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CreationAssetListResponse(BaseModel):
+    items: list[CreationAssetResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class CreationAssetTagResponse(BaseModel):
+    """标签汇总：驱动前端筛选与「按标签同步」入口。"""
+    tags: list[dict] = Field(default_factory=list)  # [{name, count}]
+
+
+class SyncConfigResponse(BaseModel):
+    owner_id: str
+    owner_name: str
+    qiniu_configured: bool
+
+
+class SyncConfigUpdate(BaseModel):
+    owner_name: str = Field(..., min_length=1, max_length=50)
+
+
+class TagSyncRequest(BaseModel):
+    """按标签同步/拉取：tag 即云端一级目录（如短剧名称）。"""
+    tag: str = Field(..., min_length=1, max_length=50)
+
+
+class SyncResultItem(BaseModel):
+    asset_id: str
+    name: str
+    status: str  # synced|conflict|failed|imported|updated|up_to_date|skipped
+    version: Optional[int] = None
+    message: Optional[str] = None
+
+
+class SyncResultResponse(BaseModel):
+    tag: str
+    items: list[SyncResultItem]
+
+
+# ---------------- 集中化自动同步 ----------------
+
+class AutoSyncConfigResponse(BaseModel):
+    """自动同步配置状态：enabled + 绑定的项目 tag + 最近同步时间。"""
+    enabled: bool
+    tag: str
+    last_sync_at: str = ""
+
+
+class AutoSyncConfigUpdate(BaseModel):
+    """更新自动同步配置：开启时 tag 必填，关闭时 tag 可留空。"""
+    enabled: bool
+    tag: str = Field("", max_length=50)
+
+
+class AutoSyncResultResponse(BaseModel):
+    """手动触发一个自动同步周期的返回值。"""
+    tag: str
+    pushed: list[SyncResultItem]
+    pulled: list[SyncResultItem]
+    errors: list[str] = Field(default_factory=list)
+
+
+# ---------------- 团队项目（云端目录 + project.json） ----------------
+
+class ProjectCreate(BaseModel):
+    """新建项目：项目即云端 team-assets/{tag}/ 目录。"""
+    name: str = Field(..., min_length=1, max_length=50)
+    description: str = Field("", max_length=500)
+
+
+class ProjectMember(BaseModel):
+    owner_id: str = ""
+    owner_name: str = ""
+
+
+class ProjectResponse(BaseModel):
+    tag: str
+    name: str
+    description: str = ""
+    created_by: str = ""
+    created_by_id: str = ""
+    created_at: str = ""
+    members: list[ProjectMember] = Field(default_factory=list)
+
+
+class ProjectListResponse(BaseModel):
+    items: list[ProjectResponse]
+
+
 # ---------------- Provider ----------------
 
 class ProviderCreate(BaseModel):
@@ -286,6 +426,8 @@ class SystemSettings(BaseModel):
     持久化于 settings 表；GET 缺省值由路由层从 config 合并。"""
     max_concurrent_tasks: int = Field(default=2, ge=1, le=8)
     default_provider: str = ""
+    # 3D 导演台 iframe 地址；由 .env / 环境变量提供默认值，可在 settings 表覆盖。
+    director_desk_url: str = ""
 
 
 class BackupResponse(BaseModel):

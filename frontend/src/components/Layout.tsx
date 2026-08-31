@@ -21,6 +21,7 @@ import {
   Sparkles,
   Settings2,
   FolderOpen,
+  Boxes,
   Layers,
   ListTodo,
   Sun,
@@ -34,6 +35,7 @@ import { cn } from '@/lib/utils'
 
 const NAV = [
   { to: '/', label: '创作', icon: Brush },
+  { to: '/creation-assets', label: '素材库', icon: Boxes },
   { to: '/assets', label: '资产库', icon: FolderOpen },
   { to: '/templates', label: '模板', icon: Layers },
   { to: '/tasks', label: '任务', icon: ListTodo },
@@ -142,6 +144,7 @@ export function Layout() {
           >
             {t.variant === 'success' && <CheckCircle2 className="h-4 w-4 text-success" />}
             {t.variant === 'error' && <AlertCircle className="h-4 w-4 text-error" />}
+            {t.variant === 'warning' && <AlertCircle className="h-4 w-4 text-warning" />}
             <span>{t.message}</span>
             <button
               type="button"

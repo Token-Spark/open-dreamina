@@ -54,7 +54,7 @@ interface UIState {
 export interface Toast {
   id: string
   message: string
-  variant: 'default' | 'success' | 'error'
+  variant: 'default' | 'success' | 'error' | 'warning'
 }
 
 let toastSeq = 0

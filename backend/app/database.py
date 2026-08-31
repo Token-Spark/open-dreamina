@@ -128,6 +128,10 @@ def _run_lightweight_migrations() -> None:
     _ensure_column("assets", "audit_asset_id", "TEXT")
     _ensure_column("assets", "audit_asset_url", "TEXT")
     _ensure_column("assets", "audit_error", "TEXT")
+    # 创作资产乐观锁同步字段（manifest v2 版本链）
+    _ensure_column("creation_assets", "base_version", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column("creation_assets", "base_fingerprint", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column("creation_assets", "cloud_tag", "TEXT NOT NULL DEFAULT ''")
 
 
 def init_db() -> None:

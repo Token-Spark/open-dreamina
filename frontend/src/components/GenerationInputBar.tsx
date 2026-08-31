@@ -24,24 +24,35 @@ import {
   Film,
   Music,
   Video,
+  Clapperboard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
 import { ReferenceSlot, type ReferenceKind } from '@/components/ReferenceSlot'
 import { ModelPicker } from '@/components/ModelPicker'
 import { SizePicker } from '@/components/SizePicker'
-import { uploadAsset, assetFileUrl, submitAssetAudit, getAssetAudit } from '@/api/assets'
+import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
+import {
+  uploadAsset,
+  assetFileUrl,
+  submitAssetAudit,
+  getAssetAudit,
+} from '@/api/assets'
+import { listCreationAssets, type CreationAsset } from '@/api/creationAssets'
+import { useQuery } from '@tanstack/react-query'
+import { CREATION_ASSETS_KEY } from '@/hooks/useCreationAssets'
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
   imageResolutionsForModel,
   isSeedreamImageProvider,
   videoResolutionsForModel,
+  videoDurationRangeForModel,
   type ContentMode,
   type AspectRatio,
   type Resolution,
 } from '@/lib/generation'
-import { toast } from '@/stores/uiStore'
+import { toast, useUIStore } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { cn } from '@/lib/utils'
 
@@ -55,6 +66,27 @@ export interface ReferenceAsset {
   auditStatus?: 'pending' | 'active' | 'failed'
   /** 审核失败原因。 */
   auditError?: string | null
+}
+
+/**
+ * @ 引用候选项：可引用已上传的参考素材（slot）或素材库中的可复用素材（library）。
+ * - slot：已在上传槽位中的素材，token 按类型编号（图1/视频1/音频1…）。
+ * - library：素材库（人物/场景/道具）中尚未加入参考列表的素材，选中后自动追加到 refAssets。
+ */
+interface MentionItem {
+  /** 候选项来源：已上传参考槽位 / 素材库。 */
+  source: 'slot' | 'library'
+  /** 主资产：slot 为现有参考项；library 为素材库待加入项中的图片资产（无图时取音频）。 */
+  asset: ReferenceAsset
+  /** 待加入参考列表的资产（slot 恒为单元素；人物素材可能同时含图片与音频）。 */
+  assets: ReferenceAsset[]
+  kind: ReferenceKind
+  /** 实际插入提示词的引用 token 列表，如 @图1，或 @图2、@音频1。 */
+  tokens: string[]
+  /** 展示名称。slot 为类型编号（参考图 1），library 为素材名称。 */
+  label: string
+  /** 缩略图地址；slot 用 file 原图，library 用素材缩略图。 */
+  thumbUrl: string
 }
 
 /**
@@ -174,6 +206,34 @@ export function isSparkHubSeedance(slug: string): boolean {
   return slug === 'sparkhub-seedance'
 }
 
+/**
+ * 素材库素材 → 待加入参考列表的资产：
+ * 图片模式仅取图片；视频模式取图片 + 音频（人物音色）；单帧/首尾帧模式不允许音频。
+ * 顺序固定为图片在前、音频在后，便于后续按加入顺序编号。
+ */
+function pendingAssetsOf(
+  ca: CreationAsset,
+  mode: ContentMode,
+  allowAudio: boolean,
+): ReferenceAsset[] {
+  const list: ReferenceAsset[] = []
+  if (ca.image_asset_id) {
+    list.push({
+      assetId: ca.image_asset_id,
+      previewUrl: assetFileUrl(ca.image_asset_id),
+      kind: 'image',
+    })
+  }
+  if (mode === 'video' && allowAudio && ca.audio_asset_id) {
+    list.push({
+      assetId: ca.audio_asset_id,
+      previewUrl: assetFileUrl(ca.audio_asset_id),
+      kind: 'audio',
+    })
+  }
+  return list
+}
+
 export interface GenerationInputBarProps {
   /** 内容模式：图片 / 视频（需求1：合并文生图/图生图、文生视频/图生视频）。 */
   mode: ContentMode
@@ -195,6 +255,8 @@ export interface GenerationInputBarProps {
   submitting: boolean
   /** 是否已达并发上限：达到时仅禁用生成按钮，输入区仍可编辑以准备下一条任务。 */
   atConcurrencyLimit: boolean
+  /** 3D 导演台 iframe 地址（空则不显示导演台入口）。 */
+  directorDeskUrl?: string
 }
 
 export function GenerationInputBar({
@@ -213,13 +275,21 @@ export function GenerationInputBar({
   onGenerate,
   submitting,
   atConcurrencyLimit,
+  directorDeskUrl,
 }: GenerationInputBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // 导演台弹窗开关 & 当前主题（传给 iframe）
+  const [directorOpen, setDirectorOpen] = useState(false)
+  const theme = useUIStore((s) => s.theme)
   // 镜像 refAssets，供异步审核轮询读取最新列表，避免闭包捕获过期状态。
   const refAssetsRef = useRef(refAssets)
   useEffect(() => {
     refAssetsRef.current = refAssets
   }, [refAssets])
+
+  // 帧模式 / Seedance 判定（@ 引用与上传流程共用）
+  const frameMode = normalizeFrameMode(params.frame_mode)
+  const isSeedance = isSeedanceProvider(providerSlug)
 
   // @ 引用：在提示词中键入 @ 触发悬浮选择器，引用已上传参考素材作为生成提示词。
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -234,34 +304,83 @@ export function GenerationInputBar({
     activeIndex: number
   }>({ open: false, start: -1, query: '', activeIndex: 0 })
 
-  /** 候选项：按当前模式过滤的参考素材，编号按类型分别从 1 递增（图1/视频1/音频1…）。 */
-  const mentionItems = useMemo(() => {
-    if (!mention.open) return [] as {
-      asset: ReferenceAsset
-      kind: ReferenceKind
-      token: string
-      label: string
-    }[]
+  /**
+   * 素材库查询：仅在 @ 选择器打开时请求。
+   * staleTime 1 分钟避免重复请求；useQuery 自带缓存，与素材库页面共享 CREATION_ASSETS_KEY。
+   */
+  const { data: libData } = useQuery({
+    queryKey: [...CREATION_ASSETS_KEY, { mention: true }],
+    queryFn: () => listCreationAssets({ page: 1, page_size: 50 }),
+    enabled: mention.open,
+    staleTime: 60_000,
+  })
+
+  /**
+   * 候选项：已上传参考素材（slot）+ 素材库中尚未加入参考列表的素材（library）。
+   * slot 项 token 按类型编号（@图1/@视频1…）；library 项选中后追加到 refAssets，
+   * token 同样按"加入后的序号"编号，保证与 slot 引用风格一致。
+   * 人物素材可能同时含图片与音频，会展开为多个 token。
+   */
+  const mentionItems = useMemo<MentionItem[]>(() => {
+    if (!mention.open) return []
+    const refIds = new Set(refAssets.map((a) => a.assetId))
+
+    // —— slot：已上传参考素材 ——
     const counts: Record<ReferenceKind, number> = { image: 0, video: 0, audio: 0 }
-    const items = refAssets
+    const slotItems: MentionItem[] = refAssets
       .filter((a) => (mode === 'image' ? (a.kind ?? 'image') === 'image' : true))
       .map((a) => {
         const kind = a.kind ?? 'image'
         counts[kind] += 1
         const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
         return {
+          source: 'slot',
           asset: a,
+          assets: [a],
           kind,
-          token: `@${short}${counts[kind]}`,
+          tokens: [`@${short}${counts[kind]}`],
           label: `${KIND_LABELS[kind]} ${counts[kind]}`,
+          thumbUrl: a.previewUrl,
         }
       })
-    if (!mention.query) return items
+
+    // —— library：素材库中尚未加入的素材（人物/场景/道具） ——
+    // 首帧/首尾帧模式仅图片，不允许音频；auto 合并模式与图片模式允许图片与音频。
+    const spec = frameModeSpec(mode, isSeedance, frameMode)
+    const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
+    // 预计算 library 项加入后每种类型的起始编号
+    const libStart: Record<ReferenceKind, number> = { ...counts }
+    const libItems: MentionItem[] = (libData?.items ?? [])
+      .filter((ca) => !refIds.has(ca.image_asset_id ?? ca.audio_asset_id ?? ''))
+      .map((ca) => {
+        const pending = pendingAssetsOf(ca, mode, allowAudio).filter(
+          (pa) => !refIds.has(pa.assetId),
+        )
+        const tokens = pending.map((pa) => {
+          libStart[pa.kind ?? 'image'] += 1
+          const short = pa.kind === 'image' ? '图' : pa.kind === 'video' ? '视频' : '音频'
+          return `@${short}${libStart[pa.kind ?? 'image']}`
+        })
+        const primary = pending[0]
+        return {
+          source: 'library' as const,
+          asset: primary,
+          assets: pending,
+          kind: (primary?.kind ?? 'image') as ReferenceKind,
+          tokens,
+          label: ca.name,
+          thumbUrl: ca.image_thumbnail_url ?? '',
+        }
+      })
+      .filter((it) => it.assets.length > 0)
+
+    const all = [...slotItems, ...libItems]
+    if (!mention.query) return all
     const q = mention.query.toLowerCase()
-    return items.filter(
-      (it) => it.token.toLowerCase().includes(q) || it.label.toLowerCase().includes(q),
+    return all.filter(
+      (it) => it.tokens.some((t) => t.toLowerCase().includes(q)) || it.label.toLowerCase().includes(q),
     )
-  }, [mention.open, mention.query, refAssets, mode])
+  }, [mention.open, mention.query, refAssets, mode, libData, isSeedance, frameMode])
 
   // 点击浮层外部关闭引用选择器
   useEffect(() => {
@@ -341,14 +460,70 @@ export function GenerationInputBar({
     }
   }
 
-  /** 将引用 token 插入到 @ 起始处，替换 @ 及其后已输入的查询文本，并追加一个空格。 */
-  function insertMention(item: (typeof mentionItems)[number]) {
+  /**
+   * 将引用 token 插入到 @ 起始处，替换 @ 及其后已输入的查询文本，并追加一个空格。
+   * 若选择的是素材库项（library），先将其追加到 refAssets（含上限校验），再按加入后的序号生成 token。
+   * 人物素材可能同时含图片与音频，会插入多个 token（如 @图2 @音频1）。
+   */
+  function insertMention(item: MentionItem) {
+    let tokens = item.tokens
+
+    // 素材库项：追加到参考列表，并按加入后的实际序号重新编号 token
+    if (item.source === 'library') {
+      const spec = frameModeSpec(mode, isSeedance, frameMode)
+      const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
+      // 校验并收集可加入的资产（已过滤掉已存在的）
+      const toAdd: ReferenceAsset[] = []
+      for (const pa of item.assets) {
+        const kind = pa.kind ?? 'image'
+        // 首帧/首尾帧模式仅接受图片
+        if (spec && !spec.allowMultimodal && kind !== 'image') {
+          toast(`${spec.label}模式仅支持图片参考`, 'error')
+          setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+          return
+        }
+        // 上限校验：与上传流程保持一致
+        const cap = KIND_CAPS[kind]
+        const currentCount = refAssetsRef.current.filter(
+          (a) => (a.kind ?? 'image') === kind,
+        ).length
+        if (currentCount + toAdd.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
+          toast(`${KIND_LABELS[kind]}最多 ${cap} 个`, 'error')
+          setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+          return
+        }
+        if (spec && !spec.allowMultimodal && kind === 'image') {
+          const imageCount =
+            refAssetsRef.current.filter((a) => (a.kind ?? 'image') === 'image').length +
+            toAdd.filter((a) => (a.kind ?? 'image') === 'image').length
+          if (imageCount >= spec.maxImages) {
+            toast(`${spec.label}模式最多 ${spec.maxImages} 张参考图`, 'error')
+            setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+            return
+          }
+        }
+        toAdd.push(pa)
+      }
+      // 按加入后的列表重新编号
+      const next = [...refAssetsRef.current, ...toAdd]
+      refAssetsRef.current = next
+      onRefAssetsChange(next)
+      tokens = toAdd.map((pa) => {
+        const kind = pa.kind ?? 'image'
+        const sameKind = next.filter((a) => (a.kind ?? 'image') === kind)
+        const idx = sameKind.findIndex((a) => a.assetId === pa.assetId) + 1
+        const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
+        return `@${short}${idx}`
+      })
+      void allowAudio
+    }
+
     const textarea = textareaRef.current
     const pos = textarea?.selectionStart ?? prompt.length
-    const token = item.token + ' '
-    const newValue = prompt.slice(0, mention.start) + token + prompt.slice(pos)
+    const insertion = tokens.join(' ') + ' '
+    const newValue = prompt.slice(0, mention.start) + insertion + prompt.slice(pos)
     onPromptChange(newValue)
-    const newPos = mention.start + token.length
+    const newPos = mention.start + insertion.length
     setMention({ open: false, start: -1, query: '', activeIndex: 0 })
     requestAnimationFrame(() => {
       textarea?.focus()
@@ -360,8 +535,6 @@ export function GenerationInputBar({
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
   const count = (params.count as number) ?? 1
-  const frameMode = normalizeFrameMode(params.frame_mode)
-  const isSeedance = isSeedanceProvider(providerSlug)
 
   // 切回图片模式时移除视频/音频参考（图片模式不支持多模态参考）。
   useEffect(() => {
@@ -412,6 +585,16 @@ export function GenerationInputBar({
     const supported = videoResolutionsForModel(modelId).map((r) => r.value)
     if (!supported.includes(resolution as Resolution)) {
       updateRatioResolution(aspectRatio, '720p')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, mode])
+
+  // 视频模式：模型切换后，若当前时长超出新模型范围，自动夹紧到范围内。
+  useEffect(() => {
+    if (mode !== 'video') return
+    const range = videoDurationRangeForModel(modelId)
+    if (duration < range.min || duration > range.max) {
+      updateDuration(range.default)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, mode])
@@ -551,6 +734,24 @@ export function GenerationInputBar({
     }
   }
 
+  /** 导演台采集回调：上传截图并作为参考图添加。 */
+  async function handleDirectorImage(file: File) {
+    try {
+      const asset = await uploadAsset(file)
+      const needsAudit = isSparkHubSeedance(providerSlug)
+      const ref: ReferenceAsset = {
+        assetId: asset.id,
+        previewUrl: assetFileUrl(asset.id),
+        kind: 'image',
+        auditStatus: needsAudit ? 'pending' : undefined,
+      }
+      onRefAssetsChange([...refAssets, ref])
+      if (needsAudit) startAudit(ref.assetId)
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    }
+  }
+
   function removeRef(index: number) {
     onRefAssetsChange(refAssets.filter((_, i) => i !== index))
   }
@@ -617,16 +818,16 @@ export function GenerationInputBar({
 
   return (
     <div className="bg-transparent p-4">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-5xl">
         <div
-          className="relative rounded-2xl border border-border/60 bg-bg-secondary/70 p-4 shadow-xl backdrop-blur-md"
+          className="relative rounded-2xl border border-border/60 bg-bg-secondary/70 p-5 shadow-xl backdrop-blur-md transition-colors duration-200 focus-within:border-border"
           onPaste={onPaste}
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
         >
           {/* 已上传的参考素材列表（图片/视频/音频）；首帧/首尾帧模式下图片在下方固定格子中展示 */}
           {refAssets.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2">
+            <div className="mb-3 flex flex-wrap gap-2">
               {refAssets.map((ref, i) =>
                 frameSlots && (ref.kind ?? 'image') === 'image' ? null : (
                   <ReferenceSlot
@@ -643,13 +844,13 @@ export function GenerationInputBar({
             </div>
           )}
 
-          {/* 输入区：参考图槽 + 提示词 */}
-          <div className="flex gap-3">
-            {frameSlots ? (
-              // 首帧/首尾帧：渲染指定数量的角色格子；全部填满后不再显示上传按钮，
-              // 需先移除已有图片才能重新上传。
-              <div className="flex gap-2">
-                {frameSlots.map((label, i) => (
+          {/* 输入区：参考素材槽（含导演台）+ 提示词 */}
+          <div className="flex gap-4">
+            <div className="flex gap-2">
+              {frameSlots ? (
+                // 首帧/首尾帧：渲染指定数量的角色格子；全部填满后不再显示上传按钮，
+                // 需先移除已有图片才能重新上传。
+                frameSlots.map((label, i) => (
                   <ReferenceSlot
                     key={label}
                     label={label}
@@ -659,35 +860,53 @@ export function GenerationInputBar({
                     onPick={() => fileInputRef.current?.click()}
                     onClear={() => removeFrameImage(i)}
                   />
-                ))}
-              </div>
-            ) : (
-              <ReferenceSlot
-                previewUrl={null}
-                onPick={() => fileInputRef.current?.click()}
-                onClear={() => {}}
-              />
-            )}
+                ))
+              ) : (
+                <ReferenceSlot
+                  previewUrl={null}
+                  onPick={() => fileInputRef.current?.click()}
+                  onClear={() => {}}
+                />
+              )}
+              {/* 导演台：本质是一种参考素材来源，与参考槽位并排展示 */}
+              {mode === 'video' && directorDeskUrl && (
+                <div className="flex w-16 shrink-0 flex-col items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDirectorOpen(true)}
+                    disabled={submitting}
+                    title="打开 3D 导演台，采集运镜参考"
+                    aria-label="导演台"
+                    className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-btn border border-dashed border-border text-fg-muted transition-colors hover:border-fg-muted hover:text-fg-secondary disabled:opacity-50"
+                  >
+                    <Clapperboard className="h-5 w-5" />
+                  </button>
+                  <span className="text-xs text-fg-muted">导演台</span>
+                </div>
+              )}
+            </div>
             <div className="relative flex flex-1 flex-col gap-2">
-              {/* @ 引用悬浮选择器：在提示词中键入 @ 时弹出，选择已上传参考素材作为生成提示词 */}
+              {/* @ 引用悬浮选择器：在提示词中键入 @ 时弹出，可选择已上传参考素材或素材库已有素材 */}
               {mention.open && (
                 <div
                   ref={mentionRef}
-                  className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-card border border-border bg-bg-secondary p-1 shadow-xl"
+                  className="absolute bottom-full left-0 z-50 mb-2 w-80 animate-slide-up rounded-card border border-border bg-bg-secondary p-1.5 shadow-xl"
                 >
-                  {refAssets.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-fg-muted">请先上传参考素材</div>
+                  {refAssets.length === 0 && (libData?.items ?? []).length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-fg-muted">
+                      暂无可引用的素材，请先上传或在素材库中新建资产
+                    </div>
                   ) : mentionItems.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-fg-muted">无匹配的参考素材</div>
+                    <div className="px-3 py-2 text-sm text-fg-muted">无匹配的素材</div>
                   ) : (
                     <>
                       <div className="px-2 pb-1 pt-1 text-[11px] text-fg-muted">
-                        选择要引用的参考素材
+                        选择要引用的素材
                       </div>
                       <div className="flex max-h-60 flex-col gap-0.5 overflow-auto scrollbar-thin">
                         {mentionItems.map((item, i) => (
                           <button
-                            key={item.asset.assetId}
+                            key={item.source + item.asset.assetId}
                             type="button"
                             onClick={() => insertMention(item)}
                             className={cn(
@@ -700,7 +919,7 @@ export function GenerationInputBar({
                             <span className="h-6 w-6 shrink-0 overflow-hidden rounded border border-border">
                               {item.kind === 'image' ? (
                                 <img
-                                  src={item.asset.previewUrl}
+                                  src={item.thumbUrl}
                                   alt=""
                                   className="h-full w-full object-cover"
                                 />
@@ -714,8 +933,15 @@ export function GenerationInputBar({
                                 </span>
                               )}
                             </span>
-                            <span>{item.label}</span>
-                            <span className="ml-auto text-xs text-fg-muted">{item.token}</span>
+                            <span className="truncate">{item.label}</span>
+                            {item.source === 'library' && (
+                              <span className="shrink-0 rounded bg-bg-tertiary px-1 py-0.5 text-[10px] text-fg-muted">
+                                素材库
+                              </span>
+                            )}
+                            <span className="ml-auto shrink-0 text-xs text-fg-muted">
+                              {item.tokens.join(' ')}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -736,10 +962,10 @@ export function GenerationInputBar({
                       : '上传参考图/视频/音频、输入文字或 @ 引用素材，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
                     : '上传参考图、输入文字或 @ 引用素材，描述你想生成的图片。支持上传多张参考图融合生成。'
                 }
-                rows={3}
+                rows={4}
                 className={cn(
-                  'w-full resize-none bg-transparent text-base text-fg-primary placeholder:text-fg-muted',
-                  'focus-visible:outline-none',
+                  'min-h-[120px] w-full resize-none bg-transparent text-base leading-relaxed text-fg-primary placeholder:text-fg-muted',
+                  'transition-[height] duration-200 focus-visible:outline-none',
                 )}
               />
               <input
@@ -757,7 +983,7 @@ export function GenerationInputBar({
           </div>
 
           {/* 底部工具栏 */}
-          <div className="mt-3 flex flex-wrap items-center gap-2 pr-32">
+          <div className="mt-4 flex flex-wrap items-center gap-2 pr-36">
             <ModeDropdown mode={mode} onChange={onModeChange} disabled={submitting} placement="top" />
             <ModelPicker
               mode={mode}
@@ -782,7 +1008,7 @@ export function GenerationInputBar({
               <CountPicker count={count} onChange={updateCount} disabled={submitting} />
             )}
             {mode === 'video' && (
-              <DurationPicker duration={duration} onChange={updateDuration} disabled={submitting} />
+              <DurationPicker duration={duration} onChange={updateDuration} modelId={modelId} disabled={submitting} />
             )}
             {mode === 'video' && isSeedance && (
               <FrameModePicker frameMode={frameMode} onChange={updateFrameMode} disabled={submitting} />
@@ -792,7 +1018,7 @@ export function GenerationInputBar({
               size="md"
               onClick={onGenerate}
               disabled={submitting || atConcurrencyLimit}
-              className="absolute bottom-4 right-4"
+              className="absolute bottom-5 right-5 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
             >
               <Wand2 className="h-4 w-4" />
               {submitting ? '提交中…' : atConcurrencyLimit ? '并发已满' : '生成'}
@@ -800,6 +1026,13 @@ export function GenerationInputBar({
           </div>
         </div>
       </div>
+      <DirectorDeskDialog
+        open={directorOpen}
+        onClose={() => setDirectorOpen(false)}
+        url={directorDeskUrl ?? ''}
+        theme={theme}
+        onCaptureImage={handleDirectorImage}
+      />
     </div>
   )
 }
@@ -844,13 +1077,16 @@ function ModeDropdown({
 function DurationPicker({
   duration,
   onChange,
+  modelId,
   disabled,
 }: {
   duration: number
   onChange: (duration: number) => void
+  modelId: string
   disabled?: boolean
 }) {
-  // 本地文本态，允许自由输入；失焦/回车时校验并提交。
+  const range = videoDurationRangeForModel(modelId)
+  // 本地文本态，允许自由输入；失焦/回车时按模型范围校验并提交。
   const [text, setText] = useState(String(duration))
   useEffect(() => {
     setText(String(duration))
@@ -858,8 +1094,12 @@ function DurationPicker({
 
   function commit() {
     const n = Number(text)
-    if (Number.isFinite(n) && n > 0) onChange(n)
-    else setText(String(duration))
+    if (Number.isFinite(n) && n >= range.min && n <= range.max) {
+      onChange(n)
+    } else {
+      // 超出范围时回退到当前值（模型切换的 clamp effect 会修正）
+      setText(String(duration))
+    }
   }
 
   return (
@@ -867,7 +1107,8 @@ function DurationPicker({
       <Clock className="h-4 w-4" />
       <input
         type="number"
-        min={1}
+        min={range.min}
+        max={range.max}
         step={1}
         value={text}
         disabled={disabled}
@@ -879,6 +1120,7 @@ function DurationPicker({
         className="w-10 bg-transparent text-fg-primary focus-visible:outline-none disabled:opacity-50"
       />
       <span className="text-fg-muted">秒</span>
+      <span className="text-xs text-fg-muted">{range.min}~{range.max}s</span>
     </div>
   )
 }

@@ -27,6 +27,7 @@ from typing import Any
 import redis
 
 from ..config import settings
+from ..utils.time_utils import now_iso
 
 # Redis 进度 key 命名
 _PROGRESS_KEY = "task:{task_id}:progress"
@@ -164,18 +165,21 @@ def safe_json_loads(s: str | None, default: Any) -> Any:
 
 
 def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
-    """将长时间卡在 running 状态的任务标记为 failed（孤儿任务恢复）。
+    """将长时间卡在 running / pending 状态的任务标记为 failed（孤儿任务恢复）。
 
     背景：Celery worker 在任务执行中途被杀/崩溃时，run_generation_task 的
     except 块不会执行，DB 状态会永远停留在 running（"生成中"），前端也一直
     显示生成中。正常任务受 task_time_limit（默认 600s）约束，超过该时长仍未
     进入终态即视为异常。
 
-    这里用 started_at 判断运行时长，超过阈值即标记失败，避免任务永久卡死。
-    幂等：仅处理 running 状态且超时的任务，可安全地由定时任务 / worker 启动时重复调用。
+    pending 任务也可能卡死：worker 崩溃或入队后 worker 未启动时，任务会一直
+    停留在"排队中"。用 created_at 判断等待时长，超过阈值即标记失败。
+
+    幂等：仅处理 running/pending 状态且超时的任务，可安全地由定时任务 / worker
+    启动时重复调用。
 
     Args:
-        max_running_seconds: 允许的最长运行秒数，超过即判定为卡死。
+        max_running_seconds: 允许的最长运行/等待秒数，超过即判定为卡死。
 
     Returns:
         本次恢复（标记为 failed）的任务数量。
@@ -186,26 +190,35 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
     cutoff = datetime.now() - timedelta(seconds=max_running_seconds)
     recovered = 0
     # SQLite 在 Docker Desktop 挂载卷上偶发瞬时 disk I/O error（WAL 同步延迟），
-    # 重试几次避免恢复机制因瞬时故障失效、任务永久卡在 running。
+    # 重试几次避免恢复机制因瞬时故障失效、任务永久卡在 running/pending。
     for attempt in range(3):
         try:
             with db_session() as db:
-                tasks = db.query(Task).filter(Task.status == "running").all()
+                tasks = db.query(Task).filter(
+                    Task.status.in_(("running", "pending"))
+                ).all()
                 for t in tasks:
-                    if not t.started_at:
+                    ts_str = t.started_at if t.status == "running" else t.created_at
+                    if not ts_str:
                         continue
                     try:
-                        started_dt = datetime.strptime(t.started_at, "%Y-%m-%d %H:%M:%S")
+                        dt = datetime.fromisoformat(ts_str)
+                        if dt.tzinfo is not None:
+                            dt = dt.astimezone().replace(tzinfo=None)
                     except ValueError:
-                        continue
-                    if started_dt >= cutoff:
+                        try:
+                            dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+                        except ValueError:
+                            continue
+                    if dt >= cutoff:
                         continue
                     t.status = "failed"
                     t.error_msg = (
-                        f"任务执行超时（运行超过 {max_running_seconds // 60} 分钟仍未完成），"
+                        f"任务执行超时（{'运行' if t.status == 'running' else '排队'}"
+                        f"超过 {max_running_seconds // 60} 分钟仍未完成），"
                         "可能因 worker 中断导致，已自动标记为失败，请重试"
                     )
-                    t.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    t.completed_at = now_iso()
                     recovered += 1
             break
         except Exception:

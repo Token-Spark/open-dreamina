@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc
@@ -37,13 +36,10 @@ from ..schemas import (
     TaskListResponse,
     TaskResponse,
 )
+from ..utils.time_utils import now_iso as _now
 from .tasks import _asset_id_map, _to_response
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
-
-
-def _now() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _conv_to_response(c: Conversation) -> ConversationResponse:

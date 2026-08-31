@@ -97,6 +97,7 @@ def get_settings(db: Session = Depends(get_db)) -> SystemSettings:
     return SystemSettings(
         max_concurrent_tasks=int(items.get("max_concurrent_tasks", settings.max_concurrent_tasks)),
         default_provider=items.get("default_provider", ""),
+        director_desk_url=items.get("director_desk_url", "") or settings.director_desk_url,
     )
 
 
@@ -105,9 +106,11 @@ def update_settings(
     payload: SystemSettings,
     db: Session = Depends(get_db),
 ) -> SystemSettings:
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = now_iso()
     _upsert_setting(db, "max_concurrent_tasks", str(payload.max_concurrent_tasks), now)
     _upsert_setting(db, "default_provider", payload.default_provider, now)
+    if payload.director_desk_url:
+        _upsert_setting(db, "director_desk_url", payload.director_desk_url, now)
     db.commit()
     return get_settings(db)
 

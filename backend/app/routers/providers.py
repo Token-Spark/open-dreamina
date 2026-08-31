@@ -38,6 +38,7 @@ from ..schemas import (
     ProviderUpdate,
 )
 from ..utils.crypto import decrypt, encrypt, mask_api_key
+from ..utils.time_utils import now_iso
 from ..worker import dreamina_cli_user_credit_task
 
 router = APIRouter(prefix="/providers", tags=["providers"])
@@ -183,8 +184,7 @@ def update_provider(
     if payload.config is not None:
         p.config_json = json.dumps(payload.config, ensure_ascii=False)
 
-    from datetime import datetime
-    p.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    p.updated_at = now_iso()
     db.commit()
     db.refresh(p)
     return _to_response(p)

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { createTask, getTask, retryTask } from '@/api/tasks'
 import { assetFileUrl, getAsset } from '@/api/assets'
@@ -25,6 +25,7 @@ import { useTaskStore } from '@/stores/taskStore'
 import { useConversationStore, useCurrentTopic, type GenMessage } from '@/stores/conversationStore'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
+import { errorDetail } from '@/lib/errorMessages'
 import { TopicPanel } from '@/components/TopicPanel'
 import { GenMessageCard } from '@/components/GenMessageCard'
 import {
@@ -108,22 +109,44 @@ export function CreatePage() {
   const currentTopicId = useConversationStore((s) => s.currentTopicId)
   const messages = useConversationStore((s) => s.messages)
   const initConversations = useConversationStore((s) => s.init)
+  const setCurrentTopic = useConversationStore((s) => s.setCurrentTopic)
   const addMessage = useConversationStore((s) => s.addMessage)
   const updateMessage = useConversationStore((s) => s.updateMessage)
   const addActive = useTaskStore((s) => s.addActive)
 
   const location = useLocation()
+  const navigate = useNavigate()
   const appliedTemplateRef = useRef<string | null>(null)
   const feedRef = useRef<HTMLDivElement>(null)
   // 用户是否贴底：仅在此状态下自动跟随新内容，避免向上查看历史时被拉回底部
   const pinnedToBottomRef = useRef(true)
   // "重新编辑"时复用原任务参数，跳过 mode 变化触发的默认参数重置
   const editParamsRef = useRef<Record<string, number | string> | null>(null)
+  // 从 TaskBar 跳转时暂存待滚动定位的任务 id，待消息列表就绪后滚动
+  const [pendingScrollTaskId, setPendingScrollTaskId] = useState<string | null>(null)
+  // 记录已处理过的导航 taskId，避免 location.state 持续存在导致重复触发
+  const processedNavRef = useRef<string | null>(null)
 
   // 需求4：启动时从后端加载持久化对话
   useEffect(() => {
     initConversations()
   }, [initConversations])
+
+  // 从 TaskBar 点击"进行中"任务跳转：切换到对应对话，并滚动定位到该任务消息
+  useEffect(() => {
+    const nav = location.state as { conversationId?: string; taskId?: string } | null
+    if (!nav?.conversationId || !nav?.taskId) return
+    // location.state 在导航后持续存在，用 ref 记录已处理的 taskId 避免重复触发
+    if (processedNavRef.current === nav.taskId) return
+    processedNavRef.current = nav.taskId
+    setPendingScrollTaskId(nav.taskId)
+    // 切换对话（若已切换完成则直接进入滚动逻辑）
+    if (nav.conversationId !== currentTopicId) {
+      void setCurrentTopic(nav.conversationId)
+    }
+    // 清除 location.state，防止后续其他依赖该 state 的逻辑误触发
+    navigate('.', { replace: true })
+  }, [location.state, currentTopicId, setCurrentTopic, navigate])
 
   // Apply a template passed via router state from TemplatesPage ("使用" action).
   useEffect(() => {
@@ -205,6 +228,16 @@ export function CreatePage() {
       feedRef.current.scrollTop = feedRef.current.scrollHeight
     }
   }, [messages.length])
+
+  // 从 TaskBar 跳转后：消息列表就绪时滚动定位到目标任务消息
+  useEffect(() => {
+    if (!pendingScrollTaskId || messages.length === 0) return
+    const el = document.getElementById(`msg-${pendingScrollTaskId}`)
+    if (!el) return
+    setPendingScrollTaskId(null)
+    pinnedToBottomRef.current = false
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [messages, pendingScrollTaskId])
 
   // 统计在途（非终态）任务数，与后端并发上限对比决定是否允许新提交。
   const activeCount = useMemo(
@@ -304,7 +337,7 @@ export function CreatePage() {
         createdAt: Date.now(),
       })
     } catch (e) {
-      toast(toApiError(e).message, 'error')
+      toast(errorDetail(toApiError(e).message), 'error')
     } finally {
       setSubmitting(false)
     }
@@ -317,6 +350,17 @@ export function CreatePage() {
   // 重试：后端复用同一 task_id 与 conversation_id，本地更新消息状态即可
   async function handleRetry(message: GenMessage) {
     if (!currentTopicId) return
+    // 乐观更新：点击即刻切到 pending 并重置计时基准，避免用户仍看到失败状态
+    updateMessage(currentTopicId, message.id, {
+      status: 'pending',
+      progress: 0,
+      error: null,
+      message: null,
+      resultUrl: null,
+      thumbnailUrl: null,
+      resultUrls: [],
+      createdAt: Date.now(),
+    })
     try {
       await retryTask(message.id)
       const task = await getTask(message.id)
@@ -329,18 +373,25 @@ export function CreatePage() {
         resultUrl: task.result_url,
         thumbnailUrl: task.thumbnail_url,
         resultUrls: task.result_urls?.length ? task.result_urls : task.result_url ? [task.result_url] : [],
-        // 重置计时基准：重试等同于一轮全新提交，已等待时长应从 0 重新累计
-        createdAt: Date.now(),
       })
     } catch (e) {
-      toast(toApiError(e).message, 'error')
+      toast(errorDetail(toApiError(e).message), 'error')
+      // 重试失败：恢复原有失败状态，让用户可再次重试
+      updateMessage(currentTopicId, message.id, {
+        status: 'failed',
+        error: message.error,
+        createdAt: message.createdAt,
+      })
     }
   }
 
   // 重新编辑：将该消息的输入回填到生成对话框，复用提示词/负向提示/参数/模型
   async function handleEdit(message: GenMessage) {
     const nextMode = modeOfTaskType(message.type)
-    const nextParams = message.params as Record<string, number | string>
+    // submit_id 是后端断点续查用的上游任务 ID（仅"重试"同 task_id 时复用），
+    // 重新编辑会创建新任务，必须剥离以免新任务跳过 submit 去轮询旧任务。
+    const { submit_id: _omit, ...restParams } = message.params as Record<string, unknown>
+    const nextParams = restParams as Record<string, number | string>
     // mode 改变会触发默认参数重置，用 ref 暂存待复用的参数
     if (nextMode !== mode) {
       editParamsRef.current = nextParams
@@ -488,6 +539,7 @@ export function CreatePage() {
           onGenerate={handleGenerate}
           submitting={submitting}
           atConcurrencyLimit={atConcurrencyLimit}
+          directorDeskUrl={systemSettings?.director_desk_url}
         />
       </div>
 

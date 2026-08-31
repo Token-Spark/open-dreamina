@@ -28,6 +28,8 @@ services:
       - QINIU_BUCKET=${QINIU_BUCKET:-}
       - QINIU_DOMAIN=${QINIU_DOMAIN:-}
       - QINIU_AUDIT_EXPIRE_DAYS=${QINIU_AUDIT_EXPIRE_DAYS:-14}
+      # 3D 导演台 iframe 地址（默认使用在线版；离线部署可改为自托管地址）
+      - DIRECTOR_DESK_URL=${DIRECTOR_DESK_URL:-https://xiaozangao.github.io/3d-director-desk/}
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"

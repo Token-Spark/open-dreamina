@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -30,6 +29,7 @@ from ..schemas import (
     TemplateResponse,
     TemplateUpdate,
 )
+from ..utils.time_utils import now_iso
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -97,7 +97,7 @@ def update_template(
     if payload.params is not None:
         t.params_json = json.dumps(payload.params, ensure_ascii=False)
 
-    t.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    t.updated_at = now_iso()
     db.commit()
     db.refresh(t)
     return _to_response(t)

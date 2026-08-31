@@ -23,6 +23,8 @@ export interface SystemHealth {
 export interface SystemSettings {
   default_provider: string
   max_concurrent_tasks: number
+  /** 3D 导演台 iframe 地址（由后端环境变量提供默认值）。 */
+  director_desk_url?: string
   [key: string]: unknown
 }
 

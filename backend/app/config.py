@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # 临时文件保留天数，到期由七牛云生命周期规则自动删除
     qiniu_audit_expire_days: int = 14
 
+    # 团队资产同步签名密钥（HMAC）。不设置时复用 QINIU_SECRET_KEY：
+    # 能访问同一云存储的成员天然共享该密钥，manifest 签名即可互验。
+    team_secret: str = ""
+
     # 加密（必须显式配置，无默认值；deploy 脚本会自动生成随机值写入 .env）
     # 未设置时启动即报错，避免使用弱默认值导致 API Key 加密形同虚设
     encryption_key: str
@@ -68,6 +72,10 @@ class Settings(BaseSettings):
 
     # SSE
     sse_heartbeat_interval: int = 15
+
+    # 3D 导演台：iframe 嵌入地址（二创协议见 docs/embed-contract.md）。
+    # 默认指向 GitHub Pages 在线版；离线/自托管时改为本地部署地址。
+    director_desk_url: str = "https://xiaozangao.github.io/3d-director-desk/"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
