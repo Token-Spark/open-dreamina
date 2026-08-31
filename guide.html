@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>使用指南 — Open Dreamina</title>
-  <meta name="description" content="Open Dreamina 使用指南：用 AI 智能体一键部署，并快速创建图片与视频素材资产。" />
+  <title>素材库指南 — Open Dreamina</title>
+  <meta name="description" content="用剧本锚点拆解技能（Agent Skill），一段剧本一键拆解出角色、场景、道具并自动录入素材库。" />
   <link rel="icon" href="assets/favicon.ico" />
   <style>
     :root {
@@ -18,6 +18,7 @@
       --gray-100: #f5f5f5;
       --gray-50: #fafafa;
       --accent: #2f6df6;
+      --accent-soft: rgba(47, 109, 246, 0.08);
       --radius: 10px;
       --max: 860px;
     }
@@ -30,7 +31,7 @@
       color: var(--fg);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
         "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-      line-height: 1.75;
+      line-height: 1.78;
       -webkit-font-smoothing: antialiased;
     }
 
@@ -89,7 +90,6 @@
       text-decoration: none;
       transition: color 0.15s ease;
     }
-
     .nav-links a:hover { color: var(--fg); }
     .nav-links a.active { color: var(--fg); font-weight: 500; }
 
@@ -108,20 +108,13 @@
       transition: all 0.15s ease;
       cursor: pointer;
     }
-
     .btn:hover { border-color: var(--gray-400); color: var(--fg); }
-
-    .btn-primary {
-      background: var(--fg);
-      color: #fff;
-      border-color: var(--fg);
-    }
-
+    .btn-primary { background: var(--fg); color: #fff; border-color: var(--fg); }
     .btn-primary:hover { background: var(--gray-900); color: #fff; }
 
     /* ---------- Hero ---------- */
     .hero {
-      padding: 72px 0 56px;
+      padding: 72px 0 52px;
       border-bottom: 1px solid var(--gray-200);
     }
 
@@ -130,7 +123,7 @@
       font-weight: 600;
       letter-spacing: 1.5px;
       text-transform: uppercase;
-      color: var(--gray-400);
+      color: var(--accent);
       margin-bottom: 14px;
     }
 
@@ -145,15 +138,13 @@
     .hero p.subtitle {
       font-size: 17px;
       color: var(--gray-500);
-      max-width: 620px;
+      max-width: 640px;
     }
 
     /* ---------- TOC ---------- */
-    .toc {
-      padding: 36px 0 8px;
-    }
+    .toc { padding: 36px 0 8px; }
 
-    .toc .toc-title {
+    .toc-title {
       font-size: 12px;
       font-weight: 600;
       letter-spacing: 1.5px;
@@ -176,39 +167,19 @@
       color: var(--gray-500);
       text-decoration: none;
       padding: 6px 0;
-      border-bottom: 1px solid transparent;
       transition: color 0.15s ease;
     }
-
     .toc a:hover { color: var(--fg); }
-
-    .toc a .idx {
-      color: var(--gray-400);
-      font-variant-numeric: tabular-nums;
-      min-width: 18px;
-    }
+    .toc a .idx { color: var(--gray-400); font-variant-numeric: tabular-nums; min-width: 18px; }
 
     /* ---------- Article ---------- */
-    article { padding: 24px 0 80px; }
+    article { padding: 24px 0 72px; }
 
     section.chapter {
-      padding: 44px 0;
+      padding: 42px 0;
       border-bottom: 1px solid var(--gray-100);
     }
-
     section.chapter:last-of-type { border-bottom: none; }
-
-    .step-tag {
-      display: inline-block;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      color: var(--accent);
-      background: rgba(47, 109, 246, 0.08);
-      padding: 3px 10px;
-      border-radius: 999px;
-      margin-bottom: 14px;
-    }
 
     h2 {
       font-size: 26px;
@@ -224,22 +195,11 @@
       margin-bottom: 10px;
     }
 
-    p {
-      color: var(--gray-700);
-      margin-bottom: 16px;
-    }
-
+    p { color: var(--gray-700); margin-bottom: 16px; }
     p strong, li strong { color: var(--fg); font-weight: 600; }
 
-    ul, ol.list {
-      margin: 0 0 16px;
-      padding-left: 22px;
-    }
-
-    ul li, ol.list li {
-      color: var(--gray-700);
-      margin-bottom: 8px;
-    }
+    ul, ol.list { margin: 0 0 16px; padding-left: 22px; }
+    ul li, ol.list li { color: var(--gray-700); margin-bottom: 8px; }
 
     code.inline {
       font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
@@ -251,6 +211,7 @@
     }
 
     pre {
+      position: relative;
       background: var(--gray-900);
       color: var(--gray-200);
       border-radius: var(--radius);
@@ -260,18 +221,21 @@
       overflow-x: auto;
       margin: 0 0 16px;
       font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
-
     pre .comment { color: var(--gray-400); }
     pre .copy {
-      float: right;
+      position: absolute;
+      top: 12px;
+      right: 12px;
       font-size: 12px;
       color: var(--gray-400);
       cursor: pointer;
       user-select: none;
       border: 1px solid var(--gray-700);
       border-radius: 6px;
-      padding: 2px 8px;
+      padding: 2px 9px;
       transition: color 0.15s ease, border-color 0.15s ease;
     }
     pre .copy:hover { color: var(--gray-200); border-color: var(--gray-500); }
@@ -287,7 +251,6 @@
       font-size: 14.5px;
       color: var(--gray-700);
     }
-
     .callout .label {
       font-size: 12px;
       font-weight: 600;
@@ -297,11 +260,18 @@
       margin-bottom: 6px;
     }
 
-    .callout.warn {
-      border-left-color: #d48806;
-      background: #fffbf0;
+    /* ---------- Step pill ---------- */
+    .step-tag {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 14px;
     }
-    .callout.warn .label { color: #b7791f; }
 
     /* ---------- Card grid ---------- */
     .grid {
@@ -314,23 +284,9 @@
       overflow: hidden;
       margin: 8px 0 18px;
     }
-
-    .card {
-      background: var(--bg);
-      padding: 22px;
-    }
-
-    .card h4 {
-      font-size: 14.5px;
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-
-    .card p {
-      font-size: 13.5px;
-      color: var(--gray-500);
-      margin: 0;
-    }
+    .card { background: var(--bg); padding: 22px; }
+    .card h4 { font-size: 14.5px; font-weight: 600; margin-bottom: 6px; }
+    .card p { font-size: 13.5px; color: var(--gray-500); margin: 0; }
 
     /* ---------- Table ---------- */
     .table-wrap {
@@ -339,98 +295,102 @@
       border-radius: var(--radius);
       margin: 8px 0 18px;
     }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-
-    th, td {
-      text-align: left;
-      padding: 13px 16px;
-      border-bottom: 1px solid var(--gray-200);
-    }
-
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--gray-200); }
     th {
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--gray-400);
-      background: var(--gray-50);
+      font-size: 12px; font-weight: 600; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--gray-400); background: var(--gray-50);
     }
-
     td:first-child { font-weight: 500; white-space: nowrap; }
     td:last-child { color: var(--gray-500); }
     tr:last-child td { border-bottom: none; }
 
-    /* ---------- FAQ ---------- */
-    .faq details {
-      border-bottom: 1px solid var(--gray-100);
-      padding: 18px 0;
-    }
-
-    .faq summary {
-      cursor: pointer;
-      font-weight: 600;
-      font-size: 15.5px;
-      list-style: none;
-      position: relative;
-      padding-right: 26px;
-    }
-
-    .faq summary::-webkit-details-marker { display: none; }
-
-    .faq summary::after {
-      content: "+";
-      position: absolute;
-      right: 0;
-      top: -2px;
-      font-size: 20px;
-      color: var(--gray-400);
-      transition: transform 0.2s ease;
-    }
-
-    .faq details[open] summary::after { content: "−"; }
-
-    .faq details p {
-      margin-top: 10px;
+    /* ---------- Anchor example block ---------- */
+    .anchor-demo {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin: 8px 0 18px;
+      font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.85;
       color: var(--gray-700);
-      font-size: 14.5px;
+      overflow-x: auto;
+      white-space: pre-wrap;
     }
+    .anchor-demo .tag-type { color: var(--accent); font-weight: 600; }
+    .anchor-demo .tag-id { color: var(--gray-400); }
+
+    /* ---------- Flow diagram ---------- */
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      align-items: stretch;
+      gap: 0;
+      margin: 8px 0 22px;
+    }
+    .flow-node {
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: 16px 14px;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+    }
+    .flow-node .num { font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 1px; }
+    .flow-node .title { font-size: 14px; font-weight: 600; color: var(--fg); }
+    .flow-node .desc { font-size: 12.5px; color: var(--gray-500); }
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gray-400);
+      font-size: 20px;
+      padding: 0 6px;
+    }
+    @media (max-width: 640px) {
+      .flow { grid-template-columns: 1fr; }
+      .flow-arrow { transform: rotate(90deg); padding: 6px 0; }
+    }
+
+    /* ---------- FAQ ---------- */
+    .faq details { border-bottom: 1px solid var(--gray-100); padding: 18px 0; }
+    .faq summary {
+      cursor: pointer; font-weight: 600; font-size: 15.5px;
+      list-style: none; position: relative; padding-right: 26px;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after {
+      content: "+"; position: absolute; right: 0; top: -2px;
+      font-size: 20px; color: var(--gray-400); transition: transform 0.2s ease;
+    }
+    .faq details[open] summary::after { content: "−"; }
+    .faq details p { margin-top: 10px; color: var(--gray-700); font-size: 14.5px; }
 
     /* ---------- CTA ---------- */
     .cta {
       text-align: center;
-      padding: 64px 0 40px;
+      padding: 60px 0 40px;
       border-top: 1px solid var(--gray-200);
     }
-
     .cta h2 { margin-bottom: 14px; }
     .cta p { max-width: 480px; margin: 0 auto 26px; }
     .cta .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 
     /* ---------- Footer ---------- */
-    footer {
-      padding: 36px 0;
-      font-size: 13px;
-      color: var(--gray-400);
-    }
-
+    footer { padding: 36px 0; font-size: 13px; color: var(--gray-400); }
     footer .container {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 12px;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 12px;
     }
-
     footer a { color: var(--gray-500); text-decoration: none; }
     footer a:hover { color: var(--fg); }
 
     @media (max-width: 640px) {
-      .hero h1 { font-size: 30px; }
+      .hero h1 { font-size: 29px; }
       .nav-links a:not(.btn) { display: none; }
       h2 { font-size: 22px; }
     }
@@ -446,7 +406,7 @@
       <div class="nav-links">
         <a href="index.html#features">特性</a>
         <a href="index.html#models">模型</a>
-        <a href="guide.html" class="active">使用指南</a>
+        <a href="guide.html" class="active">素材库指南</a>
         <a class="btn btn-primary" href="https://github.com/Token-Spark/open-dreamina" target="_blank" rel="noopener" style="color:#fff;">GitHub</a>
       </div>
     </div>
@@ -454,10 +414,10 @@
 
   <header class="hero">
     <div class="container">
-      <div class="eyebrow">User Guide</div>
-      <h1>用智能体快速创建素材资产</h1>
+      <div class="eyebrow">Agent Skill · 素材资产</div>
+      <h1>把一段剧本，变成一整个素材库</h1>
       <p class="subtitle">
-        一句话让 AI 智能体完成部署，再在浏览器里把提示词变成可用的图片与视频素材。本指南覆盖从安装到产出的完整路径。
+        Open Dreamina 内置了一个面向智能体的技能（Agent Skill）：你把剧本交给智能体，它会拆解出角色、场景、道具，自动录入素材库。本指南讲清楚怎么用好它。
       </p>
     </div>
   </header>
@@ -465,14 +425,14 @@
   <div class="container toc">
     <div class="toc-title">目录</div>
     <ol>
-      <li><a href="#overview"><span class="idx">01</span> 它是怎么工作的</a></li>
-      <li><a href="#prereq"><span class="idx">02</span> 准备工作</a></li>
-      <li><a href="#deploy"><span class="idx">03</span> 第一步：智能体一键部署</a></li>
-      <li><a href="#models"><span class="idx">04</span> 第二步：配置模型服务</a></li>
-      <li><a href="#image"><span class="idx">05</span> 第三步：创建图片素材</a></li>
-      <li><a href="#video"><span class="idx">06</span> 第四步：创建视频素材</a></li>
-      <li><a href="#maintain"><span class="idx">07</span> 用智能体保持更新</a></li>
-      <li><a href="#advanced"><span class="idx">08</span> 进阶用法</a></li>
+      <li><a href="#what"><span class="idx">01</span> 素材库是什么</a></li>
+      <li><a href="#two-ways"><span class="idx">02</span> 两条路：手动 vs 技能</a></li>
+      <li><a href="#workflow"><span class="idx">03</span> 用技能从剧本一键建库</a></li>
+      <li><a href="#anchors"><span class="idx">04</span> 锚点体系长什么样</a></li>
+      <li><a href="#prompts"><span class="idx">05</span> 怎么触发这个技能</a></li>
+      <li><a href="#after"><span class="idx">06</span> 建好之后怎么用</a></li>
+      <li><a href="#team"><span class="idx">07</span> 团队协作与同步</a></li>
+      <li><a href="#manual"><span class="idx">08</span> 手动建库（兜底）</a></li>
       <li><a href="#faq"><span class="idx">09</span> 常见问题</a></li>
     </ol>
   </div>
@@ -480,212 +440,253 @@
   <article>
     <div class="container">
 
-      <!-- 01 Overview -->
-      <section class="chapter" id="overview">
-        <h2>它是怎么工作的</h2>
+      <!-- 01 -->
+      <section class="chapter" id="what">
+        <h2>素材库是什么</h2>
         <p>
-          Open Dreamina 是一个跑在你自己电脑上的 AIGC 创作工具，用浏览器打开就能用。它本身不绑定某一个模型，而是把<strong>图片生成</strong>和<strong>视频生成</strong>当作可插拔的服务：你在界面里激活哪一家模型，它就调用哪一家。
+          素材库是 Open Dreamina 里集中管理可复用创作资产的地方，对应应用里的「素材库」页面。每一条资产记录的是某个创作元素的设定和外观，让你在下一次生成图片或视频时不必从零描述。
         </p>
-        <p>
-          这套工具同时附带了一份面向 AI 智能体的指引文件（仓库根目录的 <code class="inline">AGENTS.md</code>）。当你把它交给 codex、workbuddy 这类智能体时，智能体会读取这份指引，自动完成环境检查、配置生成、镜像构建和服务启动。你不需要记任何命令，只要把一句话需求发给智能体即可。
-        </p>
-        <p>
-          所以整条路径被压缩成了两段：智能体负责把工具装好跑起来，你负责在浏览器里写提示词产出素材。下面按顺序讲清楚每一步。
-        </p>
+        <p>资产分成三类，正好覆盖一部短片里反复出现的元素：</p>
         <div class="grid">
           <div class="card">
-            <h4>智能体做的事</h4>
-            <p>读 AGENTS.md，检查 Docker 与端口，生成 .env，启动服务并做健康检查。</p>
+            <h4>人物（character）</h4>
+            <p>角色的外貌、服饰、性格、说话风格，可附带参考图和音色音频。</p>
           </div>
           <div class="card">
-            <h4>你做的事</h4>
-            <p>发一句话给智能体；部署完成后在浏览器里配置模型、写提示词、生成素材。</p>
+            <h4>场景（scene）</h4>
+            <p>环境、视角、时间、氛围与关键元素，附带参考图。</p>
           </div>
           <div class="card">
-            <h4>结果存哪里</h4>
-            <p>所有对话、生成记录和素材都落在本地 ./data 目录，不依赖任何云端账号。</p>
+            <h4>道具（prop）</h4>
+            <p>关键物品的外观、显示内容与功能，附带参考图。</p>
           </div>
         </div>
-      </section>
-
-      <!-- 02 Prerequisites -->
-      <section class="chapter" id="prereq">
-        <h2>准备工作</h2>
-        <p>部署前只需要两样东西：一个能跑容器的 Docker 环境，以及一个能读 AGENTS.md 的 AI 智能体。</p>
-        <h3>Docker 环境</h3>
         <p>
-          Windows 与 macOS 推荐 <strong>Docker Desktop</strong>（启动后等左下角显示 <code class="inline">Engine running</code>）；Linux 用 Docker Engine。确保端口 <code class="inline">10131</code>（前端）和 <code class="inline">10130</code>（后端）没有被占用。Windows 用户建议装 <strong>PowerShell 7</strong>，避免自带 PowerShell 5 的中文编码问题。
-        </p>
-        <div class="callout warn">
-          <div class="label">注意</div>
-          如果你已经在 WSL 发行版里单独装过 Docker Engine，请先卸载或禁用它，否则会和 Docker Desktop 的 WSL 2 后端冲突，导致引擎连不上。
-        </div>
-        <h3>一个 AI 智能体</h3>
-        <p>
-          任意一款支持读取本地仓库文件并执行终端命令的智能体都可以，例如 <strong>codex</strong>、<strong>workbuddy</strong> 等。它的作用是把下面那句话翻译成实际的安装动作。
+          每条资产都能打上标签，通常用剧本或项目名当标签，之后用同一个标签就能把一部剧的全部素材筛出来。素材库的核心价值就在这里：把一次性的设定，变成可复用、可检索、可团队共享的资产。
         </p>
       </section>
 
-      <!-- 03 Deploy -->
-      <section class="chapter" id="deploy">
-        <span class="step-tag">步骤 01</span>
-        <h2>智能体一键部署</h2>
-        <p>
-          打开你的智能体，把下面这句话原样发过去。它会克隆仓库、读取 <code class="inline">AGENTS.md</code>、自动完成部署，最后把访问地址告诉你。
-        </p>
-        <pre><span class="copy" onclick="copyCode(this)">复制</span><span class="comment"># 发给智能体</span>
-克隆 https://github.com/Token-Spark/open-dreamina 到本地，按仓库 AGENTS.md 引导完成部署，最后告诉我访问地址。</pre>
-        <p>智能体在后台实际会跑这些动作，你无需手动干预：</p>
-        <ol class="list">
-          <li>检查 <code class="inline">docker version</code> 与 <code class="inline">docker compose version</code> 是否可用；</li>
-          <li>检查 <code class="inline">10131</code> / <code class="inline">10130</code> 端口是否被占用；</li>
-          <li>运行部署脚本（<code class="inline">deploy.sh</code> 或 <code class="inline">deploy.ps1</code>），脚本会生成带随机 <code class="inline">ENCRYPTION_KEY</code> 的 <code class="inline">.env</code>；</li>
-          <li>执行 <code class="inline">docker compose up -d --build</code> 启动全部 5 个服务；</li>
-          <li>做健康检查，确认能访问后把地址交还给你。</li>
-        </ol>
-        <div class="callout">
-          <div class="label">部署完成后</div>
-          应用地址：<a href="http://localhost:10131">http://localhost:10131</a> ／ API 文档：<a href="http://localhost:10130/docs">http://localhost:10130/docs</a>。数据目录是 <code class="inline">./data</code>，里面包含 SQLite 数据库、生成资产与备份。
-        </div>
-        <p>
-          如果你更习惯自己动手，也可以不走智能体，直接在仓库根目录运行 <code class="inline">bash deploy.sh</code>（Linux/macOS）或 <code class="inline">pwsh .\deploy.ps1</code>（Windows）。
-        </p>
-      </section>
-
-      <!-- 04 Models -->
-      <section class="chapter" id="models">
-        <span class="step-tag">步骤 02</span>
-        <h2>配置模型服务</h2>
-        <p>
-          打开应用后，进入<strong>「设置 → 服务管理」</strong>，在这里激活你要用的模型服务并填入对应的 API Key。一次可以激活多个服务，之后在创作界面里随时切换。填入的 Key 会用 <code class="inline">.env</code> 里的密钥加密后存储，不会明文落地。
-        </p>
-        <p>目前可接入的模型服务大致分三类：</p>
+      <!-- 02 -->
+      <section class="chapter" id="two-ways">
+        <h2>两条路：手动 vs 技能</h2>
+        <p>往素材库里加东西有两种方式，效率差别很大。</p>
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>接入方式</th><th>说明</th></tr>
+              <tr><th>方式</th><th>适合场景</th></tr>
             </thead>
             <tbody>
-              <tr><td>API Key 直连</td><td>Seedream、Seedance、GPT Image 2、Stability、通义万相、可灵等，填入厂商或中转网关的 Key 即可。</td></tr>
-              <tr><td>即梦 CLI</td><td>复用本机即梦登录态生图生视频，无需 API Key，需先在服务管理里安装并登录 CLI。</td></tr>
-              <tr><td>Spark Hub 中转</td><td>经中转站统一以异步任务模式调用 Seedream / Seedance，适合批量任务。</td></tr>
+              <tr><td>手动新建</td><td>只补一两个零散角色或道具；还没有完整剧本。</td></tr>
+              <tr><td>技能批量生成</td><td>手里有一段剧本或分镜，想一次性把全剧的角色、场景、道具全部入库。</td></tr>
             </tbody>
           </table>
         </div>
-        <div class="callout">
-          <div class="label">选哪个</div>
-          想要图片就激活一个生图服务（如 Seedream 或 GPT Image 2），想要视频就激活 Seedance 或可灵。不确定时先激活一个，跑通流程再加其他服务。
-        </div>
         <p>
-          用即梦 CLI 的话稍多一点步骤：在服务管理页面点「安装」，装完点「登录」并按提示完成授权。登录态保存在 <code class="inline">./data/dreamina-home</code>，容器重建后也不会丢。
-        </p>
-      </section>
-
-      <!-- 05 Image -->
-      <section class="chapter" id="image">
-        <span class="step-tag">步骤 03</span>
-        <h2>创建图片素材</h2>
-        <p>
-          模型激活后，回到创作界面新建一次图片对话。核心就两件事：选好生图模型，把画面描述写清楚。
-        </p>
-        <h3>文生图</h3>
-        <p>
-          选一个生图服务（例如 Seedream 5.0 或 GPT Image 2），在输入框里写下你想要的画面。一条好用的提示词通常包含<strong>主体、场景、风格、细节</strong>四个要素。比如：「一只橘猫趴在木质书桌上，午后阳光斜照，胶片摄影质感，浅景深」。点生成，等结果回来即可下载。
-        </p>
-        <h3>图生图（编辑）</h3>
-        <p>
-          把已有图片喂给模型，再用文字描述要做的修改——换背景、改色调、增删元素都可以。这适合在已有素材上做二次调整，而不是从零开始。
+          手动方式是逐条在「素材库」页面点新建、填名称、上传图、写设定——零散补几个还行，遇到一部有十几个角色的剧本就很折磨。本指南的重点是第二种：仓库里附带了一个名为 <code class="inline">script-anchor-analysis</code> 的智能体技能，专门用来把剧本快速拆解成素材库。
         </p>
         <div class="callout">
-          <div class="label">提示词小技巧</div>
-          先写最重要的主体，再补充风格与氛围，最后加细节约束。一次只表达一个清晰意图，比堆砌一堆形容词更容易得到稳定结果。
-        </div>
-        <p>
-          每次生成的结果都会进入本地记录，可以随时回看、复用提示词或再次编辑，不需要重新下载。
-        </p>
-      </section>
-
-      <!-- 06 Video -->
-      <section class="chapter" id="video">
-        <span class="step-tag">步骤 04</span>
-        <h2>创建视频素材</h2>
-        <p>
-          视频流程和图片类似，只是把生图服务换成 Seedance、可灵等视频模型。生成耗时更长，结果同样保存在本地记录里。
-        </p>
-        <h3>文生视频</h3>
-        <p>
-          直接用文字描述动态画面。视频提示词除了画面内容，最好再点明<strong>镜头运动</strong>和<strong>节奏</strong>，比如「镜头缓慢推进，水面泛起涟漪，宁静氛围」。运动描述越具体，画面越不容易静止或抖动。
-        </p>
-        <h3>图生视频</h3>
-        <p>
-          先用上一步生成的图片当起始帧，再用文字补充它该怎么动。这是把静态图片变成短视频片段最高效的方式，特别适合做封面动效或短视频素材。
-        </p>
-        <div class="callout">
-          <div class="label">节省时间的做法</div>
-          先用便宜的生图模型快速产出满意的静态画面，再把它交给视频模型生成动态，比反复用文生视频试错更快也更省额度。
+          <div class="label">一句话区别</div>
+          手动是「你来填表」，技能是「智能体帮你读剧本、拆要素、批量录入」，你只需要给它剧本并确认结果。
         </div>
       </section>
 
-      <!-- 07 Maintain -->
-      <section class="chapter" id="maintain">
-        <h2>用智能体保持更新</h2>
+      <!-- 03 -->
+      <section class="chapter" id="workflow">
+        <h2>用技能从剧本一键建库</h2>
         <p>
-          项目发布新版本后，同样用一句话让智能体拉取最新代码并重建服务，无需你记命令。
+          技能背后的逻辑很简单：智能体读完你的剧本，先产出一份结构化的「锚点清单」，等你确认后，再把其中的角色、场景、道具通过系统接口批量写进素材库。全程三步。
         </p>
+
+        <div class="flow">
+          <div class="flow-node">
+            <div class="num">STEP 1</div>
+            <div class="title">给剧本</div>
+            <div class="desc">把剧本和剧本名、画风、时长告诉智能体</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">
+            <div class="num">STEP 2</div>
+            <div class="title">看锚点清单</div>
+            <div class="desc">智能体拆出角色、场景、道具，列给你确认</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">
+            <div class="num">STEP 3</div>
+            <div class="title">自动入库</div>
+            <div class="desc">确认后批量写入素材库，统一打标签</div>
+          </div>
+        </div>
+
+        <h3>第一步：把剧本交给智能体</h3>
+        <p>
+          打开你的智能体（codex、workbuddy 这类能读仓库文件、调本地接口的智能体都可以），把剧本正文连同三个关键信息一起发过去：剧本名称、画面风格、视频时长。剧本名称尤其重要，它会成为这一整批素材的统一标签，决定你之后能不能用标签一键筛出全剧素材。
+        </p>
+
+        <h3>第二步：核对锚点清单</h3>
+        <p>
+          智能体不会闷头入库，它会先把剧本拆成一份锚点清单交给你过目——每个角色、每个场景、每个道具各占一条，附带可直接当提示词用的外观描述。你可以在这里增删条目、改描述、补细节，确认无误了再让它执行第三步。这一步的存在就是为了让你在资产真正落地前把好关。
+        </p>
+
+        <h3>第三步：确认后自动入库</h3>
+        <p>
+          你点头之后，智能体调用素材库接口把清单里的角色、场景、道具逐条创建出来，全部打上剧本名标签。注意风格、构图、时序这几类锚点不会单独建素材：风格锚点是全片的视觉基底，构图锚点会被合并进对应场景的描述里，时序锚点只用于规划分镜。真正落库的是角色、场景、道具三类。
+        </p>
+        <div class="callout">
+          <div class="label">防重复</div>
+          入库前智能体会先按标签查一遍素材库里有没有同名素材，避免同一部剧跑两次产生重复条目。你也可以让它只拆解不入库，先拿到锚点清单自己挑。
+        </div>
+      </section>
+
+      <!-- 04 -->
+      <section class="chapter" id="anchors">
+        <h2>锚点体系长什么样</h2>
+        <p>
+          技能把剧本拆成的「锚点」，本质是一份标准化的设定清单。每个锚点由编号、类型、标题、描述组成，编号像 A01、A02 连续递增。下面这份是一次完整拆解的样例（节选自技能内置示例），你可以借此判断它的产出质量。
+        </p>
+        <div class="anchor-demo"><span class="tag-id">A01</span> <span class="tag-type">【风格锚点】</span>：二次元动画短片画风，赛博朋克未来都市色调（霓虹蓝+橙色调），线条干净，分镜构图感强，高饱和色彩
+
+<span class="tag-id">A02</span> <span class="tag-type">【角色·AI少女-GPT形象】</span>：短发白色系女生，佩戴半透明全息耳机，白色衬衫+蓝色领带，眼睛有光点特效，表情灵动自信
+
+<span class="tag-id">A03</span> <span class="tag-type">【角色·AI少年-另一模型形象】</span>：深色短发男生，深蓝色卫衣，胸前发光电路纹，眼镜上有数据流投影，表情冷静睿智
+
+<span class="tag-id">A04</span> <span class="tag-type">【场景·未来城市全景】</span>：俯瞰视角，赛博朋克未来城市，高楼林立，霓虹招牌，空中有飞行载具，夜晚，灯光璀璨
+
+<span class="tag-id">A06</span> <span class="tag-type">【构图·双角色对话】</span>：两位AI角色并排坐于会议桌前，面向镜头，背景为全息数据屏，中景构图，人物占画面2/3
+
+<span class="tag-id">A08</span> <span class="tag-type">【时序】</span>：全片约60秒，共8-10个分镜，每镜5-8秒，台词语速适中，字幕同步显示
+
+<span class="tag-id">A09</span> <span class="tag-type">【道具·全息数据板】</span>：漂浮在空中的半透明蓝色全息面板，显示城市人口曲线、加班时长统计图、红色下降箭头</div>
+        <p>
+          这套体系有个好处：每条描述都写得足够具体、可以直接当作图片或视频的生成提示词。你拿到清单后，既能直接用来生成，也能先把角色、场景、道具入库，之后生成时随手调用。
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>锚点类型</th><th>会不会入库</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>风格锚点</td><td>不入库，作为全片视觉基底</td></tr>
+              <tr><td>角色锚点</td><td>入库，类别为人物</td></tr>
+              <tr><td>场景锚点</td><td>入库，类别为场景</td></tr>
+              <tr><td>构图锚点</td><td>不入库，合并进对应场景的描述</td></tr>
+              <tr><td>时序锚点</td><td>不入库，用于分镜规划</td></tr>
+              <tr><td>道具锚点</td><td>入库，类别为道具</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 05 -->
+      <section class="chapter" id="prompts">
+        <h2>怎么触发这个技能</h2>
+        <p>
+          只要你描述里出现了「剧本、分镜、拆解、建素材库」这类词，支持读取仓库 <code class="inline">.skills</code> 目录的智能体就会自动匹配到这个技能。下面两句可以直接复制发给智能体，按你的实际情况改掉占位内容即可。
+        </p>
+
+        <h3>完整入库</h3>
+        <p>手里有剧本、想直接建库时用这句：</p>
         <pre><span class="copy" onclick="copyCode(this)">复制</span><span class="comment"># 发给智能体</span>
-拉取 https://github.com/Token-Spark/open-dreamina 的最新代码（git pull），然后执行 docker compose up -d --build 重建镜像并重启服务，最后告诉我访问地址。</pre>
+剧本名称：{你的剧本名，将作为这批素材的统一标签}
+画风：{如：二次元动画、写实电影感}
+时长：{如：60秒}
+
+下面是剧本正文：
+{粘贴你的剧本或分镜}
+
+请用剧本锚点拆解技能把它拆成锚点清单，我先确认，确认后把角色、场景、道具录入素材库。</pre>
+
+        <h3>只拆解不入库</h3>
+        <p>想先拿到清单自己挑选、暂不写进素材库：</p>
+        <pre><span class="copy" onclick="copyCode(this)">复制</span><span class="comment"># 发给智能体</span>
+这是我的剧本：{粘贴剧本}
+请只做锚点拆解，输出锚点清单，先不要录入素材库，等我看完再决定。</pre>
+
+        <div class="callout">
+          <div class="label">确认环节别跳过</div>
+          技能的设计要求智能体在入库前把清单给你确认。如果你只想要清单，明说「只拆解不入库」；想入库就让它「确认后录入」。把这句意图讲清楚，能避免它擅自批量建一堆你不要的素材。
+        </div>
+      </section>
+
+      <!-- 06 -->
+      <section class="chapter" id="after">
+        <h2>建好之后怎么用</h2>
         <p>
-          智能体会执行 <code class="inline">git pull</code> 拉取最新代码，再用 <code class="inline">--build</code> 重建镜像，确保前端静态资源和模型列表都是最新版本。你的数据始终留在 <code class="inline">./data</code>，更新过程不会动它。
+          素材进了库，接下来的产出环节就能省掉大量重复描述。打开「素材库」页面，你会看到刚入库的全部资产按时间倒序排列，顶部能按类别（全部／人物／场景／道具）切换，也能点标签把同一部剧的素材一次筛出来。
+        </p>
+        <ul>
+          <li><strong>补参考图</strong>：入库时资产可以先不配图。你用生图模型跑出满意的角色或场景图后，回到素材库点编辑上传，把它和设定绑定，下次生成就能当参考图复用。</li>
+          <li><strong>人物可带音色</strong>：人物类资产除了图片，还能挂一段音色音频，做带配音的视频时直接调用。</li>
+          <li><strong>设定即提示词</strong>：每条资产的「细节设定」就是一段现成的画面描述。生成时把它贴进输入框，或作为参考素材的补充，比每次重新描述稳定得多。</li>
+          <li><strong>按标签管理</strong>：一部剧一个标签，做完一部切下一个标签，互不干扰；随时能用标签筛回某部剧的全部素材继续加工。</li>
+        </ul>
+        <p>
+          一句话：素材库让你把一次性设定沉淀下来，生成时随手取用，而不是每张图、每段视频都从头写一遍提示词。
         </p>
       </section>
 
-      <!-- 08 Advanced -->
-      <section class="chapter" id="advanced">
-        <h2>进阶用法</h2>
-
-        <h3>批量产出素材</h3>
+      <!-- 07 -->
+      <section class="chapter" id="team">
+        <h2>团队协作与同步</h2>
         <p>
-          同一个提示词配合多个模型，可以在服务管理里同时激活几家，逐个生成做横向对比；需要稳定产出大量片段时，走 Spark Hub 中转的异步任务模式更顺手，避免长任务占用交互界面。
+          素材库不只是个人的。在「素材库」页面点「团队项目」，可以基于标签（通常就是剧本名）把整批素材同步到云端对象存储，团队成员再按同一个标签拉取到自己本地，等于大家共用一套设定。
         </p>
-
-        <h3>数据备份</h3>
+        <div class="grid">
+          <div class="card">
+            <h4>推送</h4>
+            <p>把某个标签下你的素材上传到云端，供团队共用。</p>
+          </div>
+          <div class="card">
+            <h4>拉取</h4>
+            <p>从云端把该标签下其他人共享的素材导入本地。</p>
+          </div>
+          <div class="card">
+            <h4>自动同步</h4>
+            <p>开启后每隔几分钟自动推送本地改动并拉取远端更新，免去手动操作。</p>
+          </div>
+        </div>
         <p>
-          在「设置」里可以手动触发数据库备份，备份文件落在 <code class="inline">./data/backups</code>，默认保留最近 3 份。换机器或升级前备份一次，是把风险降到最低的习惯。
-        </p>
-
-        <h3>让智能体帮你配模型</h3>
-        <p>
-          如果你不清楚某家模型的 Key 该填在哪，也可以直接问智能体，它能结合 AGENTS.md 与应用界面提示，一步步带你完成激活。涉及 API Key 时，只在应用的「服务管理」页面录入，不要把 Key 贴进对话或写进任何文件。
+          云端同步需要在 <code class="inline">.env</code> 里配置好对象存储相关参数后重启服务。同步采用乐观锁，不会盲目覆盖别人的修改；本地删除只删本地副本，云端版本其他人仍能拉取。
         </p>
       </section>
 
-      <!-- 09 FAQ -->
+      <!-- 08 -->
+      <section class="chapter" id="manual">
+        <h2>手动建库（兜底）</h2>
+        <p>
+          没有完整剧本、只想补一两个零散元素时，直接在「素材库」页面点「新建资产」：填名称、选类别（人物／场景／道具）、上传参考图、写细节设定、打标签，保存即可。人物类还能额外挂一段音色音频。这条路的体验和技能批量生成没法比，但胜在随时可用，不需要先准备剧本。
+        </p>
+        <p>
+          如果你还没把工具跑起来，部署方法见首页的「快速开始」——同样可以用智能体一句话完成部署，这部分本指南不再重复。
+        </p>
+      </section>
+
+      <!-- 09 -->
       <section class="chapter faq" id="faq">
         <h2>常见问题</h2>
 
         <details>
-          <summary>智能体部署后打不开 localhost:10131 怎么办？</summary>
-          <p>先让智能体跑 <code class="inline">docker compose ps</code> 确认 5 个服务都是 Up 状态，再看 <code class="inline">docker compose logs backend</code> 的启动错误。最常见原因是端口被占用或 <code class="inline">.env</code> 缺少 <code class="inline">ENCRYPTION_KEY</code>，重跑一次部署脚本即可。</p>
+          <summary>技能拆出来的锚点，我可以改吗？</summary>
+          <p>可以，而且这正是第二步「确认环节」的意义。清单交给你之后，增删条目、改描述都行，确认后智能体才按你认可的内容入库。不满意就让它重新拆。</p>
         </details>
 
         <details>
-          <summary>生成的素材存在哪里，会不会丢？</summary>
-          <p>全部存在本地 <code class="inline">./data</code> 目录，包括 SQLite 数据库和生成资产。只要不手动删除这个目录，重建容器也不会丢数据。换机器前用「设置」里的备份功能导出一份即可。</p>
+          <summary>同一部剧跑两次会不会生成重复素材？</summary>
+          <p>不会。入库前智能体会先用标签查一遍素材库里有没有同名资产，命中就跳过或提示你。你也可以让它「只拆解不入库」，拿到清单后手动挑着建。</p>
         </details>
 
         <details>
-          <summary>没有 API Key 能用吗？</summary>
-          <p>可以选即梦 CLI 方式，它复用本机即梦的登录态来生图生视频，不需要单独申请 API Key。在「服务管理 → 即梦 CLI」里安装并登录即可。</p>
+          <summary>风格、构图、时序为什么不单独建素材？</summary>
+          <p>风格锚点描述的是全片统一的视觉基调，是其他所有锚点的基底，不适合独立成条；构图锚点会被合并进对应场景的描述里；时序锚点只用于规划分镜数和时长。真正适合入库、能在生成时单独调用的是角色、场景、道具三类。</p>
         </details>
 
         <details>
-          <summary>可以同时用多家模型吗？</summary>
-          <p>可以。在服务管理里激活多个服务，创作时按需切换。多个服务之间互不影响，方便横向对比不同模型在同一提示词下的表现。</p>
+          <summary>入库的素材没有图怎么办？</summary>
+          <p>不影响。资产可以先只有文字设定，照样能用设定当提示词生成。等你用生图模型跑出满意的图，再回素材库点编辑上传，把图和设定绑定，之后就 能当参考图复用了。</p>
         </details>
 
         <details>
-          <summary>能不能不走智能体，自己部署？</summary>
-          <p>完全可以。克隆仓库后，Linux/macOS 跑 <code class="inline">bash deploy.sh</code>，Windows 跑 <code class="inline">pwsh .\deploy.ps1</code>。脚本会自动完成环境检查、配置生成、构建与启动。智能体只是把这些步骤替你做了。</p>
+          <summary>不用智能体，能直接调用素材库接口吗？</summary>
+          <p>能。素材库提供完整的增删改查接口，文档在 <code class="inline">http://localhost:10130/docs</code>。创建一条资产的接口是 <code class="inline">POST /api/v1/creation-assets</code>，传入名称、类别、描述和标签即可。技能本质上就是替你批量调这个接口。</p>
         </details>
       </section>
 
@@ -694,11 +695,11 @@
 
   <section class="cta">
     <div class="container">
-      <h2>准备好开始创作了吗</h2>
-      <p>把那句部署指令发给智能体，几分钟后就能在自己的浏览器里产出第一张素材。</p>
+      <h2>准备好建你的第一个素材库了吗</h2>
+      <p>把剧本和三个关键信息发给智能体，几分钟后整部剧的角色、场景、道具就都在素材库里了。</p>
       <div class="actions">
-        <a class="btn btn-primary" href="index.html#quickstart">回到首页</a>
-        <a class="btn" href="https://github.com/Token-Spark/open-dreamina" target="_blank" rel="noopener">查看源码</a>
+        <a class="btn btn-primary" href="#prompts">查看触发示例</a>
+        <a class="btn" href="https://github.com/Token-Spark/open-dreamina" target="_blank" rel="noopener">查看技能源文件</a>
       </div>
     </div>
   </section>
@@ -713,10 +714,12 @@
   <script>
     function copyCode(el) {
       var pre = el.parentElement;
-      var text = pre.cloneNode(true);
-      var copyNode = text.querySelector('.copy');
-      if (copyNode) copyNode.remove();
-      var raw = text.textContent.replace(/^\s*#.*\n/, '').trim();
+      var clone = pre.cloneNode(true);
+      var btn = clone.querySelector('.copy');
+      if (btn) btn.remove();
+      var raw = clone.textContent.replace(/^\s*#.*\n/, '').replace(/\{[^}]*\}/g, function (m) {
+        return m;
+      }).trim();
       navigator.clipboard && navigator.clipboard.writeText(raw);
       var old = el.textContent;
       el.textContent = '已复制';
