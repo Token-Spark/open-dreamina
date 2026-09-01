@@ -24,6 +24,7 @@ import {
   Boxes,
   Layers,
   ListTodo,
+  Workflow,
   Sun,
   Moon,
   Github,
@@ -35,6 +36,7 @@ import { cn } from '@/lib/utils'
 
 const NAV = [
   { to: '/', label: '创作', icon: Brush },
+  { to: '/canvas', label: '画布', icon: Workflow },
   { to: '/creation-assets', label: '素材库', icon: Boxes },
   { to: '/assets', label: '资产库', icon: FolderOpen },
   { to: '/templates', label: '模板', icon: Layers },

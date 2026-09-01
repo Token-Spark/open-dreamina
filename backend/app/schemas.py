@@ -445,3 +445,214 @@ class ErrorResponse(BaseModel):
 class MessageResponse(BaseModel):
     message: str
     detail: Optional[Any] = None
+
+
+# ---------------- 画布工作流 ----------------
+
+class CanvasCreate(BaseModel):
+    """新建画布：可传初始文档或模板。"""
+    name: Optional[str] = None
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    template_id: Optional[str] = None  # blank|single_image|img2video|storyboard
+    document: Optional[dict[str, Any]] = None  # 直接传初始文档
+
+
+class CanvasUpdate(BaseModel):
+    """修改画布元数据。"""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
+class CanvasSummary(BaseModel):
+    """列表页卡片：不含文档体。"""
+    id: str
+    name: str
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    conversation_id: Optional[str] = None
+    cover_asset_id: Optional[str] = None
+    cover_thumbnail_url: Optional[str] = None
+    version: int = 1
+    node_count: int = 0
+    last_run_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CanvasListResponse(BaseModel):
+    items: list[CanvasSummary]
+    total: int
+    page: int
+    page_size: int
+
+
+class CanvasDocumentPayload(BaseModel):
+    """画布文档 JSON 结构。"""
+    schema_version: int = 1
+    viewport: dict[str, Any] = Field(default_factory=lambda: {"x": 0, "y": 0, "zoom": 1})
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CanvasDetail(BaseModel):
+    """画布详情：元数据 + 最新文档 + 运行态投影。"""
+    id: str
+    name: str
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    conversation_id: Optional[str] = None
+    cover_asset_id: Optional[str] = None
+    version: int = 1
+    node_count: int = 0
+    last_run_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    document: CanvasDocumentPayload
+    runtime: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"from_attributes": True}
+
+
+class CanvasDocumentResponse(BaseModel):
+    """文档读接口返回：带 version。"""
+    version: int
+    document: CanvasDocumentPayload
+    actor: str = "user"
+    actor_name: str = ""
+    change_summary: str = ""
+    created_at: Optional[str] = None
+
+
+class CanvasDocumentSave(BaseModel):
+    """全量保存文档（乐观锁）。"""
+    document: CanvasDocumentPayload
+    base_version: int
+    actor: str = "user"
+    actor_name: str = ""
+    change_summary: str = ""
+
+
+class CanvasOperation(BaseModel):
+    """单个原子操作。"""
+    op: str  # add_node|remove_node|update_node_data|set_position|add_edge|remove_edge|reorder_edge|set_canvas_meta
+    node: Optional[dict[str, Any]] = None
+    node_id: Optional[str] = None
+    edge: Optional[dict[str, Any]] = None
+    edge_id: Optional[str] = None
+    patch: Optional[dict[str, Any]] = None
+    position: Optional[dict[str, float]] = None
+    order: Optional[int] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
+class CanvasOperationsRequest(BaseModel):
+    """增量原子操作请求。"""
+    base_version: Optional[int] = None
+    actor: str = "user"
+    actor_name: str = ""
+    change_summary: str = ""
+    operations: list[CanvasOperation]
+
+
+class CanvasOperationResult(BaseModel):
+    version: int
+    applied: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CanvasValidationItem(BaseModel):
+    level: str  # error|warning
+    code: str
+    message: str
+    node_ids: list[str] = Field(default_factory=list)
+    edge_ids: list[str] = Field(default_factory=list)
+    fix: Optional[str] = None
+
+
+class CanvasValidation(BaseModel):
+    valid: bool
+    errors: list[CanvasValidationItem] = Field(default_factory=list)
+    warnings: list[CanvasValidationItem] = Field(default_factory=list)
+
+
+class CanvasRunRequest(BaseModel):
+    scope: str = Field("all", pattern="^(all|node|upstream)$")
+    node_id: Optional[str] = None
+    force: bool = False
+    trigger: str = "user"  # user|agent
+
+
+class CanvasRunCreateResponse(BaseModel):
+    run_id: str
+
+
+class CanvasRunSummary(BaseModel):
+    """运行历史列表项。"""
+    id: str
+    canvas_id: str
+    doc_version: int
+    scope: str
+    target_node_id: Optional[str] = None
+    status: str
+    trigger: str = "user"
+    created_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+class CanvasRunListResponse(BaseModel):
+    items: list[CanvasRunSummary]
+    total: int
+    page: int
+    page_size: int
+
+
+class CanvasRunDetail(BaseModel):
+    id: str
+    canvas_id: str
+    doc_version: int
+    scope: str
+    target_node_id: Optional[str] = None
+    status: str
+    node_states: dict[str, Any] = Field(default_factory=dict)
+    error_msg: Optional[str] = None
+    trigger: str = "user"
+    created_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+class CanvasVersionItem(BaseModel):
+    version: int
+    actor: str = "user"
+    actor_name: str = ""
+    change_summary: str = ""
+    created_at: Optional[str] = None
+
+
+class CanvasVersionListResponse(BaseModel):
+    items: list[CanvasVersionItem]
+
+
+class CanvasRevertRequest(BaseModel):
+    target_version: int
+
+
+class NodeSpecPort(BaseModel):
+    id: str
+    types: list[str] = Field(default_factory=list)
+    multi: bool = False
+    max: Optional[int] = None
+
+
+class NodeSpec(BaseModel):
+    inputs: list[NodeSpecPort] = Field(default_factory=list)
+    outputs: list[NodeSpecPort] = Field(default_factory=list)
+
+
+class NodeSpecResponse(BaseModel):
+    specs: dict[str, NodeSpec]

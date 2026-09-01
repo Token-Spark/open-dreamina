@@ -22,6 +22,8 @@ import { CreationAssetsPage } from '@/pages/CreationAssetsPage'
 import { TemplatesPage } from '@/pages/TemplatesPage'
 import { TasksPage } from '@/pages/TasksPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { CanvasListPage } from '@/pages/CanvasListPage'
+import { CanvasEditorPage } from '@/pages/CanvasEditorPage'
 import { listTasks, ACTIVE_STATUSES } from '@/api/tasks'
 import { useTaskStore } from '@/stores/taskStore'
 
@@ -50,8 +52,11 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          {/* Canvas editor: full-screen, no sidebar */}
+          <Route path="/canvas/:canvasId" element={<CanvasEditorPage />} />
           <Route element={<Layout />}>
             <Route path="/" element={<CreatePage />} />
+            <Route path="/canvas" element={<CanvasListPage />} />
             <Route path="/assets" element={<AssetsPage />} />
             <Route path="/creation-assets" element={<CreationAssetsPage />} />
             <Route path="/templates" element={<TemplatesPage />} />

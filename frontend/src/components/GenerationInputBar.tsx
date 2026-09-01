@@ -257,6 +257,8 @@ export interface GenerationInputBarProps {
   atConcurrencyLimit: boolean
   /** 3D 导演台 iframe 地址（空则不显示导演台入口）。 */
   directorDeskUrl?: string
+  /** 画布节点内使用的紧凑布局。 */
+  variant?: 'default' | 'compact'
 }
 
 export function GenerationInputBar({
@@ -264,6 +266,8 @@ export function GenerationInputBar({
   onModeChange,
   prompt,
   onPromptChange,
+  negativePrompt,
+  onNegativeChange,
   providerSlug,
   modelId,
   onProviderChange,
@@ -276,7 +280,9 @@ export function GenerationInputBar({
   submitting,
   atConcurrencyLimit,
   directorDeskUrl,
+  variant = 'default',
 }: GenerationInputBarProps) {
+  const compact = variant === 'compact'
   const fileInputRef = useRef<HTMLInputElement>(null)
   // 导演台弹窗开关 & 当前主题（传给 iframe）
   const [directorOpen, setDirectorOpen] = useState(false)
@@ -817,10 +823,13 @@ export function GenerationInputBar({
   }
 
   return (
-    <div className="bg-transparent p-4">
-      <div className="mx-auto max-w-5xl">
+    <div className={cn('bg-transparent', compact ? 'p-0' : 'p-4')}>
+      <div className={cn(!compact && 'mx-auto max-w-5xl')}>
         <div
-          className="relative rounded-2xl border border-border/60 bg-bg-secondary/70 p-5 shadow-xl backdrop-blur-md transition-colors duration-200 focus-within:border-border"
+          className={cn(
+            'relative border border-border/60 bg-bg-secondary/70 backdrop-blur-md transition-colors duration-200 focus-within:border-border',
+            compact ? 'rounded-card p-3 shadow-none' : 'rounded-2xl p-5 shadow-xl',
+          )}
           onPaste={onPaste}
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
@@ -845,7 +854,7 @@ export function GenerationInputBar({
           )}
 
           {/* 输入区：参考素材槽（含导演台）+ 提示词 */}
-          <div className="flex gap-4">
+          <div className={cn('flex', compact ? 'flex-col gap-2' : 'gap-4')}>
             <div className="flex gap-2">
               {frameSlots ? (
                 // 首帧/首尾帧：渲染指定数量的角色格子；全部填满后不再显示上传按钮，
@@ -962,12 +971,22 @@ export function GenerationInputBar({
                       : '上传参考图/视频/音频、输入文字或 @ 引用素材，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
                     : '上传参考图、输入文字或 @ 引用素材，描述你想生成的图片。支持上传多张参考图融合生成。'
                 }
-                rows={4}
+                rows={compact ? 3 : 4}
                 className={cn(
-                  'min-h-[120px] w-full resize-none bg-transparent text-base leading-relaxed text-fg-primary placeholder:text-fg-muted',
+                  'w-full resize-none bg-transparent leading-relaxed text-fg-primary placeholder:text-fg-muted',
                   'transition-[height] duration-200 focus-visible:outline-none',
+                  compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
                 )}
               />
+              {!compact && (
+                <input
+                  value={negativePrompt}
+                  onChange={(e) => onNegativeChange(e.target.value)}
+                  disabled={submitting}
+                  placeholder="负面提示词（可选）"
+                  className="nodrag h-8 w-full rounded-btn border border-border bg-bg-tertiary/60 px-2.5 text-xs text-fg-primary placeholder:text-fg-muted focus:outline-none"
+                />
+              )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -983,8 +1002,8 @@ export function GenerationInputBar({
           </div>
 
           {/* 底部工具栏 */}
-          <div className="mt-4 flex flex-wrap items-center gap-2 pr-36">
-            <ModeDropdown mode={mode} onChange={onModeChange} disabled={submitting} placement="top" />
+          <div className={cn('mt-4 flex flex-wrap items-center gap-2', !compact && 'pr-36')}>
+            {!compact && <ModeDropdown mode={mode} onChange={onModeChange} disabled={submitting} placement="top" />}
             <ModelPicker
               mode={mode}
               providerSlug={providerSlug}
@@ -1004,7 +1023,7 @@ export function GenerationInputBar({
               disabled={submitting}
               placement="top"
             />
-            {mode === 'image' && (
+            {mode === 'image' && !compact && (
               <CountPicker count={count} onChange={updateCount} disabled={submitting} />
             )}
             {mode === 'video' && (
@@ -1018,7 +1037,10 @@ export function GenerationInputBar({
               size="md"
               onClick={onGenerate}
               disabled={submitting || atConcurrencyLimit}
-              className="absolute bottom-5 right-5 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+              className={cn(
+                'transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]',
+                compact ? 'ml-auto' : 'absolute bottom-5 right-5',
+              )}
             >
               <Wand2 className="h-4 w-4" />
               {submitting ? '提交中…' : atConcurrencyLimit ? '并发已满' : '生成'}

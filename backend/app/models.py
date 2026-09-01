@@ -187,3 +187,92 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+
+# ---------------- 画布工作流 ----------------
+
+
+class Canvas(Base):
+    """画布元数据。图结构本身存在 CanvasDocument 中，便于元数据轻量查询。"""
+
+    __tablename__ = "canvases"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, default="未命名画布")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # 画布运行产生的任务归属对话，保证任务中心可见、不产生孤儿任务
+    conversation_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
+    )
+    # 封面：最近一次成功产出的资产
+    cover_asset_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    # 乐观锁版本：每次结构变更 +1
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    node_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    owner_id: Mapped[str] = mapped_column(String, nullable=False, default="")
+    origin: Mapped[str] = mapped_column(String, nullable=False, default="local")  # local|remote
+    last_run_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    __table_args__ = (
+        Index("idx_canvases_updated", "updated_at"),
+        Index("idx_canvases_owner", "owner_id"),
+    )
+
+
+class CanvasDocument(Base):
+    """画布图结构文档（nodes + edges + viewport 的 JSON 快照）。
+
+    与元数据分表：文档可能到几百 KB，列表页不该把它读出来。
+    每个画布保留最近 N 个版本快照，支撑撤销边界与回滚。
+    """
+
+    __tablename__ = "canvas_documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    canvas_id: Mapped[str] = mapped_column(
+        String, ForeignKey("canvases.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # {"schema_version": 1, "nodes": [...], "edges": [...], "viewport": {...}}
+    doc_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    # 变更来源与摘要，供审计
+    actor: Mapped[str] = mapped_column(String, nullable=False, default="user")  # user|agent|system
+    actor_name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    change_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    __table_args__ = (
+        Index("idx_canvas_docs_canvas_version", "canvas_id", "version", unique=True),
+    )
+
+
+class CanvasRun(Base):
+    """一次运行批次：记录调度范围、节点-任务映射与汇总结果。"""
+
+    __tablename__ = "canvas_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    canvas_id: Mapped[str] = mapped_column(
+        String, ForeignKey("canvases.id", ondelete="CASCADE"), nullable=False
+    )
+    doc_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    scope: Mapped[str] = mapped_column(String, nullable=False, default="all")  # all|node|upstream
+    # 请求执行的目标节点（scope=node/upstream 时有值）
+    target_node_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    # {"nd_x": {"task_id": "...", "status": "...", "asset_ids": [...]}, ...}
+    node_states_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger: Mapped[str] = mapped_column(String, nullable=False, default="user")  # user|agent|schedule
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    completed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    __table_args__ = (
+        Index("idx_canvas_runs_canvas", "canvas_id", "created_at"),
+        Index("idx_canvas_runs_status", "status"),
+    )
