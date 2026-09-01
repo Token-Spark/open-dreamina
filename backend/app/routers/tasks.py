@@ -28,7 +28,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ..config import settings
 from ..database import get_db
-from ..models import Conversation, Task
+from ..models import Canvas, Conversation, Task
 from ..schemas import (
     MessageResponse,
     TaskCreate,
@@ -118,7 +118,9 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskCreat
         if not primary_asset_id:
             primary_asset_id = input_asset_ids[0]
 
-    # 归属对话：未指定则自动创建一个，保证任务总有上下文
+    # 归属对话：优先使用显式传入的 conversation_id；
+    # 其次通过 canvas_id 解析画布绑定的对话（懒绑定：若画布尚无对话则自动创建并绑定）；
+    # 均未指定则自动创建新对话，保证任务总有上下文
     conversation_id = payload.conversation_id
     if conversation_id:
         conv = db.get(Conversation, conversation_id)
@@ -126,6 +128,25 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskCreat
             raise HTTPException(
                 status_code=404,
                 detail={"code": "not_found", "message": f"对话 {conversation_id} 不存在"},
+            )
+    elif payload.canvas_id:
+        canvas = db.get(Canvas, payload.canvas_id)
+        if canvas:
+            if canvas.conversation_id:
+                conversation_id = canvas.conversation_id
+            else:
+                # 旧画布未绑定对话，自动创建并回写
+                conv = Conversation(
+                    id=str(uuid.uuid4()), title=canvas.name or "未命名画布"
+                )
+                db.add(conv)
+                db.flush()
+                canvas.conversation_id = conv.id
+                conversation_id = conv.id
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "not_found", "message": f"画布 {payload.canvas_id} 不存在"},
             )
     else:
         conv = Conversation(id=str(uuid.uuid4()), title="新对话")

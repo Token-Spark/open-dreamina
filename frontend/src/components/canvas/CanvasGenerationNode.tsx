@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { AlertCircle, CheckCircle2, Film, Image as ImageIcon, Loader2, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Film, Image as ImageIcon, Loader2, Maximize2, RefreshCw, X } from 'lucide-react'
 import { GenerationInputBar, type ReferenceAsset, effectiveFrameMode, isSeedanceProvider, normalizeFrameMode } from '@/components/GenerationInputBar'
 import { Progress } from '@/components/ui/Progress'
 import { createTask, getTask, retryTask, type TaskStatus } from '@/api/tasks'
@@ -22,6 +22,7 @@ import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { deriveEdgeRefAssets, mergeRefAssets } from '@/lib/canvasRefAssets'
+import { ImageLightbox, type LightboxItem } from '@/components/ImageLightbox'
 
 interface GenerationNodeData extends Record<string, unknown> {
   nodeType?: string
@@ -48,11 +49,13 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
   const storedData = useCanvasStore((state) => state.nodes.find((node) => node.id === id)?.data)
   const edges = useCanvasStore((state) => state.edges)
   const allNodes = useCanvasStore((state) => state.nodes)
+  const canvasId = useCanvasStore((state) => state.canvasId)
   const nodeData = { ...data, ...storedData } as GenerationNodeData
   const updateNodeData = useCanvasStore((state) => state.updateNodeData)
   const addActive = useTaskStore((state) => state.addActive)
   const { data: providers } = useProviders()
   const [submitting, setSubmitting] = useState(false)
+  const [lightboxItem, setLightboxItem] = useState<LightboxItem | null>(null)
 
   const prompt = nodeData.prompt ?? ''
   const negativePrompt = (nodeData.params?.negative_prompt as string) ?? nodeData.negative_prompt ?? ''
@@ -143,6 +146,7 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
         params: sendParams,
         input_asset_id: assetIds[0] ?? undefined,
         input_asset_ids: hasRef ? assetIds : undefined,
+        canvas_id: canvasId ?? undefined,
       })
       const task = await getTask(task_id)
       addActive(task)
@@ -197,9 +201,28 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
       {resultUrls.length > 0 && status === 'completed' && (
         <div className="border-b border-border bg-bg-primary/40 p-3">
           {mode === 'image' ? (
-            <img src={resultUrls[selectedResult]} alt="生成结果" className="h-56 w-full rounded-btn object-contain" />
+            <button
+              type="button"
+              className="nodrag group relative block h-56 w-full rounded-btn"
+              onClick={() => setLightboxItem({ url: resultUrls[selectedResult], type: 'image', title: label })}
+            >
+              <img src={resultUrls[selectedResult]} alt="生成结果" className="h-56 w-full rounded-btn object-contain" />
+              <span className="absolute inset-0 flex items-center justify-center rounded-btn bg-black/0 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100">
+                <Maximize2 className="h-6 w-6 text-white" />
+              </span>
+            </button>
           ) : (
-            <video src={resultUrls[selectedResult]} controls preload="metadata" className="h-56 w-full rounded-btn bg-black object-contain" />
+            <div className="relative">
+              <video src={resultUrls[selectedResult]} controls preload="metadata" className="h-56 w-full rounded-btn bg-black object-contain" />
+              <button
+                type="button"
+                className="nodrag absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-btn bg-black/60 text-white transition-colors hover:bg-black/80"
+                onClick={() => setLightboxItem({ url: resultUrls[selectedResult], type: 'video', title: label })}
+                aria-label="放大预览"
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
           {resultUrls.length > 1 && (
             <div className="nodrag mt-2 flex gap-2 overflow-x-auto">
@@ -263,6 +286,12 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
         />
       </div>
       <Handle id="out" type="source" position={Position.Right} className="h-3 w-3 border-2 border-bg-secondary bg-accent" />
+
+      <ImageLightbox
+        item={lightboxItem}
+        open={!!lightboxItem}
+        onClose={() => setLightboxItem(null)}
+      />
     </div>
   )
 }

@@ -113,14 +113,6 @@ function CanvasEditorInner() {
     enabled: !!canvasId,
   })
 
-  // 同步加载的画布到 store
-  useEffect(() => {
-    if (canvas) {
-      store.setCanvas(canvas.id, canvas.document, canvas.version)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas?.id])
-
   // React Flow 本地状态（保留 measured/dimensions 等内部字段）
   const [rfNodes, setRfNodes] = useNodesState<Node>(
     useMemo(() => store.nodes.map(toRFNode), []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -129,13 +121,14 @@ function CanvasEditorInner() {
     useMemo(() => store.edges.map(toRFEdge), []) // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  // store 加载/重置后，同步到 RF 本地状态
-  const loadedKey = canvas?.id
+  // 同步加载的画布到 store + RF 本地状态（刷新/导航/重新挂载均触发）
   useEffect(() => {
-    setRfNodes(store.nodes.map(toRFNode))
-    setRfEdges(store.edges.map(toRFEdge))
+    if (!canvas) return
+    store.setCanvas(canvas.id, canvas.document, canvas.version)
+    setRfNodes(canvas.document.nodes.map(toRFNode))
+    setRfEdges(canvas.document.edges.map(toRFEdge))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadedKey])
+  }, [canvas])
 
   // 保存
   const saveMut = useMutation({

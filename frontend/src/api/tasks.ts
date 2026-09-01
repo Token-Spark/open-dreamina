@@ -63,6 +63,8 @@ export interface CreateTaskParams {
   /** 多图参考：完整 asset id 列表。后端将首张写入 input_asset_id，完整列表存入 params。 */
   input_asset_ids?: string[]
   conversation_id?: string
+  /** 画布内生成：后端通过 canvas_id 解析画布绑定的对话 */
+  canvas_id?: string
 }
 
 export interface ListTasksQuery {

@@ -6,10 +6,10 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type MouseEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Music, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
+import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Pause, Play, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAssets } from '@/hooks/useAssets'
@@ -57,6 +57,56 @@ const NODE_PORT_SPECS: Record<
   prompt: { inputs: [{ id: 'in' }], outputs: [{ id: 'out' }] },
   preview: { inputs: [{ id: 'in' }], outputs: [] },
   note: { inputs: [], outputs: [] },
+}
+
+/** 音频预览：点击播放/暂停，带进度条。 */
+function AudioPreview({ src, className }: { src: string; className?: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  function togglePlay(e: MouseEvent) {
+    e.stopPropagation()
+    const audio = audioRef.current
+    if (!audio) return
+    if (audio.paused) {
+      void audio.play()
+    } else {
+      audio.pause()
+    }
+  }
+
+  return (
+    <div className={cn('flex items-center gap-2 bg-bg-tertiary px-2 py-1.5', className)}>
+      <audio
+        ref={audioRef}
+        src={src}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setProgress(0) }}
+        onTimeUpdate={(e) => {
+          const audio = e.currentTarget
+          if (audio.duration > 0) {
+            setProgress((audio.currentTime / audio.duration) * 100)
+          }
+        }}
+      />
+      <button
+        type="button"
+        onClick={togglePlay}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-colors hover:bg-accent/80"
+        aria-label={playing ? '暂停' : '播放'}
+      >
+        {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+      </button>
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-fg-muted/30">
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-150"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  )
 }
 
 export function CanvasBasicNode({ id, data, selected }: NodeProps) {
@@ -159,10 +209,10 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
           {assetId ? (
             <div className="relative overflow-hidden rounded-btn">
               {nodeData.asset_type === 'audio' ? (
-                <div className="flex h-24 w-full items-center justify-center gap-2 bg-bg-tertiary">
-                  <Music className="h-8 w-8 text-fg-muted" />
-                  <span className="text-xs text-fg-muted">音频素材</span>
-                </div>
+                <AudioPreview
+                  src={assetFileUrl(assetId)}
+                  className="h-24 w-full"
+                />
               ) : (
                 <img
                   src={(nodeData.asset_thumb as string) ?? assetFileUrl(assetId)}
@@ -324,9 +374,10 @@ function AssetPickerDialog({ open, onOpenChange, onSelect }: AssetPickerDialogPr
                 onClick={() => onSelect(asset)}
               >
                 {asset.type === 'audio' ? (
-                  <div className="flex h-full w-full items-center justify-center bg-bg-tertiary transition-transform group-hover:scale-[1.05]">
-                    <Music className="h-6 w-6 text-fg-muted" />
-                  </div>
+                  <AudioPreview
+                    src={assetFileUrl(asset.id)}
+                    className="h-full w-full"
+                  />
                 ) : (
                   <img
                     src={assetThumbnailUrl(asset.id)}

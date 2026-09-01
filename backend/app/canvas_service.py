@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from .canvas_graph import _find_node, edges_to_port
 from .canvas_validate import validate_document
-from .models import Canvas, CanvasDocument, CanvasRun
+from .models import Canvas, CanvasDocument, CanvasRun, Conversation
 from .utils.time_utils import now_iso as _now
 
 # 版本快照保留数
@@ -184,13 +184,18 @@ def create_canvas(
     template_id: str | None = None,
     document: dict[str, Any] | None = None,
 ) -> Canvas:
-    """新建画布，初始化第一个版本文档。"""
+    """新建画布，初始化第一个版本文档，同时创建关联对话。"""
     canvas_id = str(uuid.uuid4())
+    # 每个画布绑定一个对话，画布内生成任务统一归属该对话
+    conv = Conversation(id=str(uuid.uuid4()), title=name or "未命名画布")
+    db.add(conv)
+    db.flush()
     canvas = Canvas(
         id=canvas_id,
         name=name or "未命名画布",
         description=description,
         tags_json=json.dumps(tags or [], ensure_ascii=False),
+        conversation_id=conv.id,
     )
     db.add(canvas)
     db.flush()

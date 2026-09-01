@@ -34,6 +34,8 @@ class TaskCreate(BaseModel):
     # 首张仍写入 input_asset_id（兼容旧逻辑/预览派生），完整列表存入 params.input_asset_ids。
     input_asset_ids: Optional[list[str]] = None
     conversation_id: Optional[str] = None
+    # 画布内生成：传入 canvas_id，后端自动解析画布绑定的对话
+    canvas_id: Optional[str] = None
 
 
 class TaskCreateResponse(BaseModel):
