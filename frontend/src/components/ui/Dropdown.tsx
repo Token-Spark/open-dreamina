@@ -48,11 +48,11 @@ export function Dropdown({
       {open && (
         <div
           className={cn(
-            'absolute z-50 min-w-[12rem] rounded-card border border-border p-1 shadow-xl',
+            'absolute z-50 min-w-[12rem] rounded-card border border-border p-1.5 shadow-elevated animate-scale-in',
             opaque
               ? 'bg-bg-secondary'
-              : 'bg-bg-secondary/95 backdrop-blur-sm',
-            placement === 'top' ? 'bottom-full mb-1.5' : 'mt-1.5',
+              : 'bg-bg-secondary/95 backdrop-blur-md',
+            placement === 'top' ? 'bottom-full mb-2' : 'mt-2',
             align === 'start' && 'left-0',
             align === 'end' && 'right-0',
             align === 'center' && 'left-1/2 -translate-x-1/2',
@@ -67,21 +67,24 @@ export function Dropdown({
 
 export interface DropdownItemProps {
   active?: boolean
+  disabled?: boolean
   onClick?: () => void
   children: ReactNode
   className?: string
 }
 
-export function DropdownItem({ active, onClick, children, className }: DropdownItemProps) {
+export function DropdownItem({ active, disabled, onClick, children, className }: DropdownItemProps) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       className={cn(
         'flex w-full items-center gap-2 rounded-btn px-3 py-2 text-sm transition-colors',
         active
           ? 'bg-accent text-bg-primary'
           : 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
+        disabled && 'cursor-not-allowed opacity-50',
         className,
       )}
     >

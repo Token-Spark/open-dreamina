@@ -99,8 +99,13 @@ export function AssetsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-4 flex flex-wrap items-end gap-3">
+    <div className="mx-auto max-w-7xl px-6 py-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold tracking-tight text-fg-primary">资产库</h1>
+        <p className="mt-1 text-sm text-fg-secondary">管理所有生成结果与上传素材</p>
+      </div>
+
+      <div className="mb-5 flex flex-wrap items-end gap-3 rounded-card border border-border bg-bg-secondary p-4">
         <div className="space-y-1.5">
           <Label>类型</Label>
           <Select
@@ -155,7 +160,9 @@ export function AssetsPage() {
       </div>
 
       {isLoading ? (
-        <div className="py-16 text-center text-sm text-fg-muted">加载中…</div>
+        <div className="py-16 text-center text-sm text-fg-muted">
+          <span className="animate-pulse">加载中…</span>
+        </div>
       ) : (
         <AssetGrid
           assets={assets}

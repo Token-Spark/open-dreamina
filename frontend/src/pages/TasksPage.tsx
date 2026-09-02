@@ -117,16 +117,21 @@ export function TasksPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-6 py-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold tracking-tight text-fg-primary">任务列表</h1>
+        <p className="mt-1 text-sm text-fg-secondary">查看与管理所有生成任务</p>
+      </div>
+
       <div className="mb-4 flex items-center gap-1 rounded-btn border border-border bg-bg-secondary p-1">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              'rounded-btn px-3 py-1.5 text-sm transition-colors',
+              'rounded-btn px-4 py-1.5 text-sm font-medium transition-all',
               tab === t.key
-                ? 'bg-bg-tertiary text-fg-primary'
+                ? 'bg-bg-tertiary text-fg-primary shadow-soft'
                 : 'text-fg-secondary hover:text-fg-primary',
             )}
           >
@@ -139,20 +144,20 @@ export function TasksPage() {
         <table className="w-full text-sm">
           <thead className="bg-bg-secondary text-xs text-fg-muted">
             <tr>
-              <th className="px-4 py-2.5 text-left font-medium">类型</th>
-              <th className="px-4 py-2.5 text-left font-medium">模型</th>
-              <th className="px-4 py-2.5 text-left font-medium">状态</th>
-              <th className="px-4 py-2.5 text-left font-medium">进度</th>
-              <th className="px-4 py-2.5 text-right font-medium">Token</th>
-              <th className="px-4 py-2.5 text-left font-medium">创建时间</th>
-              <th className="px-4 py-2.5 text-right font-medium">操作</th>
+              <th className="px-4 py-3 text-left font-medium tracking-wide">类型</th>
+              <th className="px-4 py-3 text-left font-medium tracking-wide">模型</th>
+              <th className="px-4 py-3 text-left font-medium tracking-wide">状态</th>
+              <th className="px-4 py-3 text-left font-medium tracking-wide">进度</th>
+              <th className="px-4 py-3 text-right font-medium tracking-wide">Token</th>
+              <th className="px-4 py-3 text-left font-medium tracking-wide">创建时间</th>
+              <th className="px-4 py-3 text-right font-medium tracking-wide">操作</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-fg-muted">
-                  加载中…
+                  <span className="animate-pulse">加载中…</span>
                 </td>
               </tr>
             ) : tasks.length === 0 ? (
@@ -175,16 +180,16 @@ export function TasksPage() {
                       }
                     }}
                     className={cn(
-                      'border-t border-border hover:bg-bg-secondary/60',
+                      'border-t border-border transition-colors hover:bg-bg-secondary/60',
                       task.conversation_id && 'cursor-pointer',
                     )}
                   >
-                    <td className="px-4 py-3 text-fg-primary">
+                    <td className="px-4 py-3 font-medium text-fg-primary">
                       {TASK_TYPE_LABEL[task.type]}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-xs text-fg-primary">
+                        <span className="text-xs font-medium text-fg-primary">
                           {modelLabel(task.provider, task.model_id)}
                         </span>
                         <span className="text-[11px] text-fg-muted">{task.provider}</span>
@@ -231,7 +236,7 @@ export function TasksPage() {
                         {formatTokens(task.tokens_used)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-fg-secondary">
+                    <td className="px-4 py-3 text-xs tabular-nums text-fg-secondary">
                       {formatDateTime(task.created_at)}
                     </td>
                     <td className="px-4 py-3">

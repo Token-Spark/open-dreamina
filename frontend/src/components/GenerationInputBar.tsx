@@ -827,8 +827,8 @@ export function GenerationInputBar({
       <div className={cn(!compact && 'mx-auto max-w-5xl')}>
         <div
           className={cn(
-            'relative border border-border/60 bg-bg-secondary/70 backdrop-blur-md transition-colors duration-200 focus-within:border-border',
-            compact ? 'rounded-card p-3 shadow-none' : 'rounded-2xl p-5 shadow-xl',
+            'relative border border-border/60 bg-bg-secondary/70 backdrop-blur-md transition-all duration-200 focus-within:border-border',
+            compact ? 'rounded-card p-3 shadow-none' : 'rounded-2xl p-5 shadow-elevated',
           )}
           onPaste={onPaste}
           onDrop={onDrop}
@@ -899,7 +899,7 @@ export function GenerationInputBar({
               {mention.open && (
                 <div
                   ref={mentionRef}
-                  className="absolute bottom-full left-0 z-50 mb-2 w-80 animate-slide-up rounded-card border border-border bg-bg-secondary p-1.5 shadow-xl"
+                  className="absolute bottom-full left-0 z-50 mb-2 w-80 animate-slide-up rounded-card border border-border bg-bg-secondary p-1.5 shadow-elevated"
                 >
                   {refAssets.length === 0 && (libData?.items ?? []).length === 0 ? (
                     <div className="px-3 py-2 text-sm text-fg-muted">
@@ -909,7 +909,7 @@ export function GenerationInputBar({
                     <div className="px-3 py-2 text-sm text-fg-muted">无匹配的素材</div>
                   ) : (
                     <>
-                      <div className="px-2 pb-1 pt-1 text-[11px] text-fg-muted">
+                      <div className="px-2 pb-1 pt-1 text-[11px] font-medium text-fg-muted">
                         选择要引用的素材
                       </div>
                       <div className="flex max-h-60 flex-col gap-0.5 overflow-auto scrollbar-thin">
@@ -984,7 +984,7 @@ export function GenerationInputBar({
                   onChange={(e) => onNegativeChange(e.target.value)}
                   disabled={submitting}
                   placeholder="负面提示词（可选）"
-                  className="nodrag h-8 w-full rounded-btn border border-border bg-bg-tertiary/60 px-2.5 text-xs text-fg-primary placeholder:text-fg-muted focus:outline-none"
+                  className="nodrag h-8 w-full rounded-btn border border-border bg-bg-tertiary/60 px-2.5 text-xs leading-relaxed text-fg-primary placeholder:text-fg-muted focus:outline-none"
                 />
               )}
               <input
@@ -1078,7 +1078,7 @@ function ModeDropdown({
         <button
           type="button"
           disabled={disabled}
-          className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary transition-colors hover:text-fg-primary disabled:opacity-50"
+          className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm font-medium text-fg-secondary transition-all hover:text-fg-primary disabled:opacity-50"
         >
           {mode === 'image' ? <ImageIcon className="h-4 w-4" /> : <MonitorPlay className="h-4 w-4" />}
           {current.label}生成
@@ -1125,7 +1125,7 @@ function DurationPicker({
   }
 
   return (
-    <div className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary">
+    <div className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm font-medium text-fg-secondary">
       <Clock className="h-4 w-4" />
       <input
         type="number"
@@ -1159,7 +1159,7 @@ function CountPicker({
   const MIN = 1
   const MAX = 4
   return (
-    <div className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary">
+    <div className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm font-medium text-fg-secondary">
       <Images className="h-4 w-4" />
       <button
         type="button"
@@ -1202,7 +1202,7 @@ function FrameModePicker({
         <button
           type="button"
           disabled={disabled}
-          className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-secondary transition-colors hover:text-fg-primary disabled:opacity-50"
+          className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm font-medium text-fg-secondary transition-all hover:text-fg-primary disabled:opacity-50"
         >
           <Film className="h-4 w-4" />
           {current.label}
@@ -1217,7 +1217,7 @@ function FrameModePicker({
             <Icon className="h-3.5 w-3.5 shrink-0" />
             <div className="flex flex-col">
               <span>{m.label}</span>
-              <span className="text-xs text-fg-muted">{m.hint}</span>
+              <span className="text-xs leading-relaxed text-fg-muted">{m.hint}</span>
             </div>
           </DropdownItem>
         )

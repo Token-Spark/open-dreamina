@@ -61,20 +61,20 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 w-full max-w-lg rounded-dialog border border-border bg-bg-secondary shadow-2xl animate-scale-in',
+          'relative z-10 w-full max-w-lg rounded-dialog border border-border bg-bg-secondary shadow-elevated animate-scale-in',
           className,
         )}
       >
         {(title || description) && (
-          <div className="flex items-start justify-between gap-4 p-5 pb-3">
-            <div className="space-y-1">
+          <div className="flex items-start justify-between gap-4 p-6 pb-3">
+            <div className="space-y-1.5">
               {title && (
-                <h2 className="text-base font-medium tracking-tight text-fg-primary">
+                <h2 className="text-lg font-semibold tracking-tight text-fg-primary">
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-sm text-fg-secondary">{description}</p>
+                <p className="text-sm text-fg-secondary leading-relaxed">{description}</p>
               )}
             </div>
             <button
@@ -87,9 +87,9 @@ export function Dialog({
             </button>
           </div>
         )}
-        <div className="px-5 py-2">{children}</div>
+        <div className="px-6 py-2">{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-2 p-5 pt-3">{footer}</div>
+          <div className="flex items-center justify-end gap-2 p-6 pt-3">{footer}</div>
         )}
       </div>
     </div>,

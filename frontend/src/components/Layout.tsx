@@ -54,14 +54,14 @@ export function Layout() {
     <div className="flex h-screen flex-col bg-bg-primary">
       <div className="flex flex-1 overflow-hidden">
         {/* Left icon rail */}
-        <aside className="flex w-16 shrink-0 flex-col bg-bg-secondary">
+        <aside className="flex w-16 shrink-0 flex-col bg-bg-secondary border-r border-border">
           <div className="flex h-14 items-center justify-center">
-            <NavLink to="/" className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-bg-primary">
+            <NavLink to="/" className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-bg-primary transition-transform hover:scale-105 active:scale-95">
               <Sparkles className="h-4 w-4" />
             </NavLink>
           </div>
 
-          <nav className="flex flex-1 flex-col items-center gap-1 py-3">
+          <nav className="flex flex-1 flex-col items-center gap-1.5 py-3">
             {NAV.map((item) => {
               const Icon = item.icon
               return (
@@ -71,7 +71,7 @@ export function Layout() {
                   end={item.to === '/'}
                   className={({ isActive }) =>
                     cn(
-                      'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-colors',
+                      'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-all duration-200',
                       isActive
                         ? 'bg-bg-tertiary text-fg-primary'
                         : 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
@@ -79,7 +79,7 @@ export function Layout() {
                   }
                 >
                   <Icon className="h-5 w-5" />
-                  <span className="pointer-events-none absolute left-full ml-2 z-50 rounded-btn border border-border bg-bg-tertiary px-2 py-1 text-xs text-fg-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100">
                     {item.label}
                   </span>
                 </NavLink>
@@ -88,19 +88,19 @@ export function Layout() {
           </nav>
 
           {/* GitHub link + theme toggle pinned to the bottom of the rail */}
-          <div className="flex flex-col items-center gap-1 py-3">
+          <div className="flex flex-col items-center gap-1.5 py-3">
             <a
               href="https://github.com/Token-Spark/open-dreamina"
               target="_blank"
               rel="noreferrer"
               className={cn(
-                'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-colors',
+                'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-all duration-200',
                 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
               )}
               aria-label="GitHub 仓库"
             >
               <Github className="h-5 w-5" />
-              <span className="pointer-events-none absolute left-full ml-2 z-50 rounded-btn border border-border bg-bg-tertiary px-2 py-1 text-xs text-fg-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+              <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100">
                 GitHub
               </span>
             </a>
@@ -108,7 +108,7 @@ export function Layout() {
               type="button"
               onClick={toggleTheme}
               className={cn(
-                'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-colors',
+                'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-all duration-200',
                 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
               )}
               aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
@@ -119,7 +119,7 @@ export function Layout() {
               ) : (
                 <Moon className="h-5 w-5" />
               )}
-              <span className="pointer-events-none absolute left-full ml-2 rounded-btn border border-border bg-bg-tertiary px-2 py-1 text-xs text-fg-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+              <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100">
                 {theme === 'dark' ? '亮色模式' : '暗色模式'}
               </span>
             </button>

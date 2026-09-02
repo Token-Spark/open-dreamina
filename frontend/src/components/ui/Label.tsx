@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn('text-xs font-medium text-fg-secondary', className)}
+      className={cn('text-xs font-medium tracking-wide text-fg-secondary', className)}
       {...props}
     />
   )

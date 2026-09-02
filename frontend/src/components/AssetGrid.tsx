@@ -43,7 +43,7 @@ export function AssetGrid({
   if (assets.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-card border border-dashed border-border py-16 text-center">
-        <p className="text-sm text-fg-secondary">暂无资产</p>
+        <p className="text-sm font-medium text-fg-secondary">暂无资产</p>
         <p className="mt-1 text-xs text-fg-muted">生成的作品将出现在这里</p>
       </div>
     )
@@ -52,7 +52,7 @@ export function AssetGrid({
   return (
     <div
       className={cn(
-        'grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5',
+        'grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5',
         className,
       )}
     >
@@ -62,7 +62,7 @@ export function AssetGrid({
           <Card
             key={asset.id}
             className={cn(
-              'group overflow-hidden transition-colors',
+              'group overflow-hidden transition-all',
               selected && 'ring-1 ring-accent',
             )}
           >
@@ -122,14 +122,14 @@ export function AssetGrid({
             </div>
             <div className="px-2.5 py-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] uppercase tracking-wide text-fg-muted">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
                   {asset.type}
                 </span>
-                <span className="text-[11px] text-fg-muted">
+                <span className="text-[11px] tabular-nums text-fg-muted">
                   {formatFileSize(asset.file_size)}
                 </span>
               </div>
-              <p className="mt-0.5 truncate text-[11px] text-fg-muted">
+              <p className="mt-0.5 truncate text-[11px] tabular-nums text-fg-muted">
                 {formatRelativeTime(asset.created_at)}
               </p>
             </div>

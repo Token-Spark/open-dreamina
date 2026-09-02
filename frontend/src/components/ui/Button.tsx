@@ -17,19 +17,19 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-btn text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fg-primary/40 disabled:pointer-events-none disabled:opacity-40 select-none',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-btn text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg-primary/30 disabled:pointer-events-none disabled:opacity-40 select-none',
   {
     variants: {
       variant: {
         // Primary: solid white, dark text — the key action per spec 10.1
-        primary: 'bg-accent text-bg-primary hover:bg-fg-primary/90',
-        secondary: 'bg-bg-tertiary text-fg-primary hover:bg-bg-tertiary/80 border border-border',
-        outline: 'border border-border bg-transparent text-fg-primary hover:bg-bg-tertiary',
+        primary: 'bg-accent text-bg-primary hover:bg-fg-primary/90 active:scale-[0.97]',
+        secondary: 'bg-bg-tertiary text-fg-primary hover:bg-bg-tertiary/80 border border-border active:scale-[0.97]',
+        outline: 'border border-border bg-transparent text-fg-primary hover:bg-bg-tertiary active:scale-[0.97]',
         ghost: 'bg-transparent text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
-        danger: 'bg-error/10 text-error border border-error/30 hover:bg-error/20',
+        danger: 'bg-error/10 text-error border border-error/30 hover:bg-error/20 active:scale-[0.97]',
       },
       size: {
-        sm: 'h-8 px-3 text-xs',
+        sm: 'h-8 px-3 text-xs gap-1.5',
         md: 'h-9 px-4',
         lg: 'h-11 px-6 text-base',
         icon: 'h-9 w-9 p-0',

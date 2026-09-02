@@ -30,11 +30,11 @@ export function TaskBar() {
 
   return (
     <div className="shrink-0 border-t border-border bg-bg-secondary/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2">
+      <div className="mx-auto flex max-w-7xl items-center gap-3 px-6 py-2.5">
         <button
           type="button"
           onClick={() => navigate('/tasks')}
-          className="flex items-center gap-1 rounded-btn px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-bg-tertiary hover:text-fg-primary"
+          className="flex items-center gap-1 rounded-btn px-2 py-1 text-xs font-medium text-fg-secondary transition-all hover:bg-bg-tertiary hover:text-fg-primary"
         >
           <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-bg-primary">
             {active.length}
@@ -51,7 +51,7 @@ export function TaskBar() {
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
-                  <span className="truncate text-[11px] text-fg-secondary">
+                  <span className="truncate text-[11px] font-medium text-fg-secondary">
                     {TASK_TYPE_LABEL[t.task.type]}
                   </span>
                   <span className="text-[11px] tabular-nums text-fg-muted">

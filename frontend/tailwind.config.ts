@@ -37,19 +37,41 @@ export default {
           '-apple-system',
           'BlinkMacSystemFont',
           'Segoe UI',
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'Microsoft YaHei',
+          'Noto Sans SC',
           'sans-serif',
         ],
       },
+      fontSize: {
+        'xs': ['0.75rem', { lineHeight: '1.125rem', letterSpacing: '0.01em' }],
+        'sm': ['0.875rem', { lineHeight: '1.3125rem', letterSpacing: '0' }],
+        'base': ['1rem', { lineHeight: '1.5rem', letterSpacing: '0' }],
+        'lg': ['1.125rem', { lineHeight: '1.6875rem', letterSpacing: '-0.01em' }],
+        'xl': ['1.25rem', { lineHeight: '1.875rem', letterSpacing: '-0.02em' }],
+      },
+      letterSpacing: {
+        tightest: '-0.03em',
+      },
+      lineHeight: {
+        relaxed: '1.625',
+      },
       borderRadius: {
-        card: '8px',
-        btn: '6px',
-        dialog: '12px',
+        card: '10px',
+        btn: '8px',
+        dialog: '14px',
+      },
+      boxShadow: {
+        soft: '0 2px 8px -2px rgba(0, 0, 0, 0.12)',
+        elevated: '0 8px 24px -8px rgba(0, 0, 0, 0.2)',
+        glow: '0 0 20px -4px var(--glow-color, rgba(255,255,255,0.35))',
       },
       transitionDuration: {
         DEFAULT: '200ms',
       },
       transitionTimingFunction: {
-        DEFAULT: 'ease',
+        DEFAULT: 'cubic-bezier(0.4, 0, 0.2, 1)',
       },
       keyframes: {
         'breath-glow': {

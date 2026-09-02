@@ -27,7 +27,7 @@ export function Progress({ value, className, glow }: ProgressProps) {
   return (
     <div
       className={cn(
-        'relative h-1.5 w-full overflow-hidden rounded-full bg-bg-tertiary',
+        'relative h-1.5 w-full overflow-hidden rounded-full bg-border/60',
         className,
       )}
       role="progressbar"

@@ -92,10 +92,10 @@ export function CanvasListPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-5">
         <div>
-          <h1 className="text-lg font-medium text-fg-primary">画布工作流</h1>
-          <p className="text-xs text-fg-secondary">
+          <h1 className="text-xl font-semibold tracking-tight text-fg-primary">画布工作流</h1>
+          <p className="mt-1 text-sm text-fg-secondary">
             节点式创作画布，自由编排生成流程
           </p>
         </div>
@@ -122,7 +122,7 @@ export function CanvasListPage() {
       <div className="flex-1 overflow-auto p-6">
         {isLoading ? (
           <div className="py-20 text-center text-sm text-fg-secondary">
-            加载中...
+            <span className="animate-pulse">加载中...</span>
           </div>
         ) : !data?.items?.length ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20">
@@ -131,19 +131,19 @@ export function CanvasListPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
             {data.items.map((canvas) => (
               <Card
                 key={canvas.id}
-                className="group flex cursor-pointer flex-col gap-3 p-4 transition-colors hover:border-fg-muted"
+                className="group flex cursor-pointer flex-col gap-3 p-5 transition-all hover:border-fg-muted hover:shadow-soft"
                 onClick={() => navigate(`/canvas/${canvas.id}`)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-medium text-fg-primary">
+                    <h3 className="truncate text-sm font-semibold text-fg-primary">
                       {canvas.name}
                     </h3>
-                    <p className="mt-0.5 truncate text-xs text-fg-secondary">
+                    <p className="mt-0.5 truncate text-xs leading-relaxed text-fg-secondary">
                       {canvas.description || '无描述'}
                     </p>
                   </div>
@@ -183,7 +183,7 @@ export function CanvasListPage() {
                   </div>
                 )}
 
-                <div className="mt-auto flex items-center justify-between border-t border-border pt-2 text-xs text-fg-muted">
+                <div className="mt-auto flex items-center justify-between border-t border-border pt-3 text-xs text-fg-muted tabular-nums">
                   <span>{canvas.node_count} 节点</span>
                   <span>v{canvas.version}</span>
                   <span>{formatRelativeTime(canvas.updated_at)}</span>
@@ -217,7 +217,7 @@ export function CanvasListPage() {
                 <button
                   key={t.id}
                   onClick={() => setTemplateId(t.id)}
-                  className={`rounded-btn border px-3 py-2 text-sm transition-colors ${
+                  className={`rounded-btn border px-3 py-2 text-sm font-medium transition-all ${
                     templateId === t.id
                       ? 'border-accent bg-accent/10 text-accent'
                       : 'border-border text-fg-secondary hover:bg-bg-tertiary'

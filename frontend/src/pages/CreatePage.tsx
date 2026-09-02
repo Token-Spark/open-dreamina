@@ -459,7 +459,7 @@ export function CreatePage() {
   if (!currentTopic) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-fg-muted">
-        正在加载对话…
+        <span className="animate-pulse">正在加载对话…</span>
       </div>
     )
   }
@@ -470,22 +470,22 @@ export function CreatePage() {
 
       <div className="flex flex-1 flex-col">
         {/* Header */}
-        <header className="flex h-14 shrink-0 items-center justify-between px-6">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-6">
           <div>
-            <h1 className="text-sm font-medium text-fg-primary">{currentTopic.title}</h1>
-            <p className="text-xs text-fg-muted">
+            <h1 className="text-base font-semibold leading-tight text-fg-primary">{currentTopic.title}</h1>
+            <p className="mt-0.5 text-xs text-fg-muted">
               {currentTopic.message_count} 条生成记录
             </p>
           </div>
           <div className="flex items-center gap-3">
             {templates && templates.length > 0 && (
               <div className="hidden items-center gap-2 md:flex">
-                <span className="text-xs text-fg-muted">模板：</span>
+                <span className="text-xs font-medium text-fg-muted">模板</span>
                 {templates.slice(0, 4).map((t) => (
                   <button
                     key={t.id}
                     onClick={() => applyTemplate(t)}
-                    className="rounded-full border border-border bg-bg-secondary px-3 py-1 text-xs text-fg-secondary transition-colors hover:border-fg-muted hover:text-fg-primary"
+                    className="rounded-full border border-border bg-bg-secondary px-3 py-1 text-xs font-medium text-fg-secondary transition-all hover:border-fg-muted hover:text-fg-primary active:scale-95"
                   >
                     {t.name}
                   </button>
@@ -503,9 +503,9 @@ export function CreatePage() {
             pinnedToBottomRef.current =
               el.scrollHeight - el.scrollTop - el.clientHeight < 80
           }}
-          className="flex-1 overflow-auto p-4 scrollbar-thin"
+          className="flex-1 overflow-auto p-6 scrollbar-thin"
         >
-          <div className="mx-auto max-w-4xl space-y-6">
+          <div className="mx-auto max-w-4xl space-y-8">
             {messages.length === 0 && <EmptyFeed />}
             {messages.map((message) => (
               <GenMessageCard
@@ -564,8 +564,13 @@ export function CreatePage() {
 function EmptyFeed() {
   return (
     <div className="flex h-full min-h-[40vh] flex-col items-center justify-center rounded-card border border-dashed border-border text-center">
-      <p className="text-sm text-fg-secondary">从下方输入提示词开始创作</p>
-      <p className="mt-1 text-xs text-fg-muted">对话与生成记录会自动持久保存</p>
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-bg-tertiary">
+        <svg className="h-6 w-6 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 11.715 18 12l.259.285a3.75 3.75 0 0 0 1.536 1.028l.259.088-.259.088a3.75 3.75 0 0 0-1.536 1.028L18 15l-.259-.285a3.75 3.75 0 0 0-1.536-1.028l-.259-.088.259-.088a3.75 3.75 0 0 0 1.536-1.028L18 12l-.259-.285a3.75 3.75 0 0 0-1.536-1.028l-.259-.088.259-.088a3.75 3.75 0 0 0 1.536-1.028Z" />
+        </svg>
+      </div>
+      <p className="text-sm font-medium text-fg-secondary">从下方输入提示词开始创作</p>
+      <p className="mt-1.5 text-xs text-fg-muted">对话与生成记录会自动持久保存</p>
     </div>
   )
 }

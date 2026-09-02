@@ -234,20 +234,20 @@ export function CreationAssetsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-6 py-6">
       {/* 顶部：标题 + 同步/新建入口 */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-medium tracking-tight text-fg-primary">素材库</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-fg-primary">素材库</h1>
             {autoSyncConfig?.enabled && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] text-success">
+              <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
                 <Zap className="h-3 w-3" />
                 自动同步中
               </span>
             )}
           </div>
-          <p className="text-xs text-fg-secondary">
+          <p className="mt-1 text-sm text-fg-secondary">
             集中管理人物、场景、道具等可复用创作资产，按项目同步共享给团队成员
           </p>
         </div>
@@ -277,9 +277,9 @@ export function CreationAssetsPage() {
               key={c}
               type="button"
               onClick={() => setCategory(c)}
-              className={`rounded-btn px-3 py-1 text-xs transition-colors ${
+              className={`rounded-btn px-3 py-1 text-xs font-medium transition-all ${
                 category === c
-                  ? 'bg-bg-tertiary text-fg-primary'
+                  ? 'bg-bg-tertiary text-fg-primary shadow-soft'
                   : 'text-fg-secondary hover:text-fg-primary'
               }`}
             >
@@ -302,7 +302,7 @@ export function CreationAssetsPage() {
           <button
             type="button"
             onClick={toggleSelectAll}
-            className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-xs text-fg-secondary transition-colors hover:text-fg-primary"
+            className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-xs font-medium text-fg-secondary transition-colors hover:text-fg-primary"
           >
             <span
               className={`flex h-4 w-4 items-center justify-center rounded border ${
@@ -321,7 +321,7 @@ export function CreationAssetsPage() {
           <button
             type="button"
             onClick={() => setTagFilter(null)}
-            className="rounded-full border border-accent bg-accent/10 px-2.5 py-1 text-xs text-fg-primary"
+            className="rounded-full border border-accent bg-accent/10 px-2.5 py-1 text-xs font-medium text-fg-primary"
           >
             {tagFilter} ×
           </button>
@@ -334,7 +334,7 @@ export function CreationAssetsPage() {
                 key={t.name}
                 type="button"
                 onClick={() => setTagFilter(t.name)}
-                className="rounded-full border border-border px-2.5 py-1 text-xs text-fg-secondary transition-colors hover:border-fg-muted hover:text-fg-primary"
+                className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-fg-secondary transition-all hover:border-fg-muted hover:text-fg-primary"
               >
                 {t.name}（{t.count}）
               </button>
@@ -345,7 +345,7 @@ export function CreationAssetsPage() {
 
       {/* 批量操作工具条 */}
       {selected.size > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-btn border border-accent/30 bg-accent/5 px-3 py-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-btn border border-accent/30 bg-accent/5 px-4 py-2.5">
           <span className="text-xs font-medium text-fg-primary">已选 {selected.size} 项</span>
           <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setBatchTagOpen(true)}>
@@ -369,7 +369,9 @@ export function CreationAssetsPage() {
 
       {/* 资产网格 */}
       {isLoading ? (
-        <div className="py-16 text-center text-sm text-fg-muted">加载中…</div>
+        <div className="py-16 text-center text-sm text-fg-muted">
+          <span className="animate-pulse">加载中…</span>
+        </div>
       ) : assets.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <p className="text-sm text-fg-secondary">

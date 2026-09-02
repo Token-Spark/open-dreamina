@@ -39,9 +39,12 @@ export function SettingsPage() {
   const tab = location.pathname.includes('general') ? 'general' : 'providers'
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
-      <h1 className="mb-4 text-lg font-medium tracking-tight">设置</h1>
-      <div className="mb-4 flex gap-1 rounded-btn border border-border bg-bg-secondary p-1">
+    <div className="mx-auto max-w-5xl px-6 py-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold tracking-tight text-fg-primary">设置</h1>
+        <p className="mt-1 text-sm text-fg-secondary">管理模型接入与系统配置</p>
+      </div>
+      <div className="mb-5 flex gap-1 rounded-btn border border-border bg-bg-secondary p-1">
         <TabBtn active={tab === 'providers'} onClick={() => navigate('/settings/providers')}>
           模型接入
         </TabBtn>
@@ -59,8 +62,8 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     <button
       onClick={onClick}
       className={cn(
-        'rounded-btn px-4 py-1.5 text-sm transition-colors',
-        active ? 'bg-bg-tertiary text-fg-primary' : 'text-fg-secondary hover:text-fg-primary',
+        'rounded-btn px-4 py-1.5 text-sm font-medium transition-all',
+        active ? 'bg-bg-tertiary text-fg-primary shadow-soft' : 'text-fg-secondary hover:text-fg-primary',
       )}
     >
       {children}
@@ -94,12 +97,12 @@ function GeneralTab() {
     onError: (e) => toast(toApiError(e).message, 'error'),
   })
 
-  if (!form) return <p className="py-12 text-center text-sm text-fg-muted">加载中…</p>
+  if (!form) return <p className="py-12 text-center text-sm text-fg-muted"><span className="animate-pulse">加载中…</span></p>
 
   return (
-    <div className="space-y-4">
-      <Card className="space-y-4 p-4">
-        <h2 className="flex items-center gap-2 text-sm font-medium text-fg-primary">
+    <div className="space-y-5">
+      <Card className="space-y-4 p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-fg-primary">
           <ShieldCheck className="h-4 w-4" />
           系统状态
         </h2>
@@ -110,8 +113,8 @@ function GeneralTab() {
         </div>
       </Card>
 
-      <Card className="space-y-4 p-4">
-        <h2 className="text-sm font-medium text-fg-primary">默认配置</h2>
+      <Card className="space-y-4 p-5">
+        <h2 className="text-sm font-semibold text-fg-primary">默认配置</h2>
         <div className="grid grid-cols-2 gap-3">
           <Field label="最大并发任务数">
             <Input
@@ -130,12 +133,12 @@ function GeneralTab() {
         </div>
       </Card>
 
-      <Card className="space-y-3 p-4">
-        <h2 className="flex items-center gap-2 text-sm font-medium text-fg-primary">
+      <Card className="space-y-3 p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-fg-primary">
           <Database className="h-4 w-4" />
           数据备份
         </h2>
-        <p className="text-xs text-fg-secondary">
+        <p className="text-xs leading-relaxed text-fg-secondary">
           手动创建一次数据库快照，保留最近 3 份手动备份。
         </p>
         <div className="flex justify-end">
@@ -150,9 +153,9 @@ function GeneralTab() {
 
 function HealthItem({ label, ok }: { label: string; ok: boolean }) {
   return (
-    <div className="rounded-btn border border-border bg-bg-tertiary p-3">
+    <div className="rounded-btn border border-border bg-bg-tertiary p-3.5">
       <p className="text-xs text-fg-muted">{label}</p>
-      <p className={cn('mt-1 text-sm font-medium', ok ? 'text-success' : 'text-error')}>
+      <p className={cn('mt-1 text-sm font-semibold', ok ? 'text-success' : 'text-error')}>
         {ok ? '正常' : '异常'}
       </p>
     </div>

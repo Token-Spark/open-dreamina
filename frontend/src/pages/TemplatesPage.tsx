@@ -107,9 +107,12 @@ export function TemplatesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-medium tracking-tight">模板库</h1>
+    <div className="mx-auto max-w-7xl px-6 py-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-fg-primary">模板库</h1>
+          <p className="mt-1 text-sm text-fg-secondary">保存常用提示词以快速复用</p>
+        </div>
         <Button size="sm" onClick={openCreate}>
           <Plus className="h-4 w-4" />
           新建模板
@@ -117,27 +120,29 @@ export function TemplatesPage() {
       </div>
 
       {isLoading ? (
-        <div className="py-16 text-center text-sm text-fg-muted">加载中…</div>
+        <div className="py-16 text-center text-sm text-fg-muted">
+          <span className="animate-pulse">加载中…</span>
+        </div>
       ) : !templates || templates.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-card border border-dashed border-border py-16">
-          <p className="text-sm text-fg-secondary">暂无模板</p>
-          <p className="mt-1 text-xs text-fg-muted">保存常用提示词以快速复用</p>
+          <p className="text-sm font-medium text-fg-secondary">暂无模板</p>
+          <p className="mt-1 text-xs text-fg-muted">点击「新建模板」开始保存常用提示词</p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
-            <Card key={t.id} className="flex flex-col p-4">
+            <Card key={t.id} className="flex flex-col p-5 transition-all hover:shadow-soft">
               <div className="mb-2 flex items-center justify-between">
                 <Badge variant="outline">{t.category === 'image' ? '图片' : '视频'}</Badge>
-                <span className="text-[11px] text-fg-muted">
+                <span className="text-[11px] tabular-nums text-fg-muted">
                   {formatRelativeTime(t.updated_at)}
                 </span>
               </div>
-              <h3 className="text-sm font-medium text-fg-primary">{t.name}</h3>
-              <p className="mt-1 line-clamp-3 flex-1 text-xs text-fg-secondary">
+              <h3 className="text-sm font-semibold text-fg-primary">{t.name}</h3>
+              <p className="mt-1.5 line-clamp-3 flex-1 text-xs leading-relaxed text-fg-secondary">
                 {t.prompt_text}
               </p>
-              <div className="mt-3 flex items-center gap-1">
+              <div className="mt-4 flex items-center gap-1">
                 <Button
                   variant="primary"
                   size="sm"

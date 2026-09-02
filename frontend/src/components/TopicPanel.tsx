@@ -42,12 +42,12 @@ export function TopicPanel({ className }: TopicPanelProps) {
 
   return (
     <aside className={cn('flex w-64 shrink-0 flex-col bg-bg-secondary', className)}>
-      <div className="flex h-14 items-center justify-between px-3">
-        <h2 className="text-sm font-medium text-fg-primary">内容生成 - 对话列表</h2>
+      <div className="flex h-16 items-center justify-between border-b border-border px-3">
+        <h2 className="text-sm font-semibold text-fg-primary">对话列表</h2>
         <button
           type="button"
           onClick={handleNew}
-          className="flex h-7 items-center gap-1 rounded-btn bg-accent px-2 text-xs font-medium text-bg-primary transition-colors hover:bg-fg-primary/90"
+          className="flex h-7 items-center gap-1 rounded-btn bg-accent px-2.5 text-xs font-medium text-bg-primary transition-all hover:bg-fg-primary/90 active:scale-95"
         >
           <Plus className="h-3.5 w-3.5" />
           新对话
@@ -123,7 +123,7 @@ function TopicItem({
   return (
     <div
       className={cn(
-        'group relative flex items-center gap-2 rounded-btn border border-transparent p-2 transition-colors',
+        'group relative flex items-center gap-2 rounded-btn border border-transparent p-2 transition-all',
         isActive
           ? 'bg-bg-tertiary text-fg-primary'
           : 'text-fg-secondary hover:bg-bg-tertiary/60 hover:text-fg-primary',
@@ -155,8 +155,8 @@ function TopicItem({
             </form>
           ) : (
             <>
-              <p className="truncate text-xs font-medium">{topic.title}</p>
-              <p className="truncate text-[11px] text-fg-muted">
+              <p className="truncate text-xs font-medium leading-tight">{topic.title}</p>
+              <p className="truncate text-[11px] leading-tight text-fg-muted">
                 {lastPrompt ? lastPrompt : topic.message_count > 0 ? `${topic.message_count} 条记录` : '暂无生成内容'}
               </p>
             </>
@@ -178,11 +178,11 @@ function TopicItem({
             <MoreHorizontal className="h-3.5 w-3.5" />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-full z-10 mt-1 w-28 rounded-card border border-border bg-bg-tertiary py-1 shadow-lg animate-scale-in">
+            <div className="absolute right-0 top-full z-10 mt-1 w-28 rounded-card border border-border bg-bg-tertiary py-1 shadow-elevated animate-scale-in">
               <button
                 type="button"
                 onClick={startEdit}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-fg-secondary transition-colors hover:bg-bg-secondary hover:text-fg-primary"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium text-fg-secondary transition-colors hover:bg-bg-secondary hover:text-fg-primary"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 重命名
@@ -190,7 +190,7 @@ function TopicItem({
               <button
                 type="button"
                 onClick={onDelete}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-error transition-colors hover:bg-error/10"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 删除

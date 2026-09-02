@@ -52,12 +52,12 @@ export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEd
   return (
     <div id={`msg-${message.id}`} className="animate-slide-up scroll-mt-4">
       <div className="mb-3 flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-tertiary text-xs font-medium text-fg-secondary">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-tertiary text-xs font-semibold text-fg-secondary">
           U
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <div className="space-y-1">
-            <p className="whitespace-pre-wrap text-sm text-fg-primary">{message.prompt}</p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-fg-primary">{message.prompt}</p>
             {message.negativePrompt && (
               <p className="text-xs text-fg-muted">排除：{message.negativePrompt}</p>
             )}
@@ -105,7 +105,7 @@ function ResultCard({
         {running && <Loader2 className="h-4 w-4 animate-spin text-fg-secondary" />}
         {message.status === 'completed' && <CheckCircle2 className="h-4 w-4 text-success" />}
         {message.status === 'failed' && <AlertCircle className="h-4 w-4 text-error" />}
-        <span className="text-sm font-medium text-fg-primary">{TASK_TYPE_LABEL[message.type]}</span>
+        <span className="text-sm font-semibold text-fg-primary">{TASK_TYPE_LABEL[message.type]}</span>
       </div>
 
       {running && (
@@ -119,25 +119,25 @@ function ResultCard({
       )}
 
       {message.status === 'pending' && (
-        <p className="text-xs text-fg-muted">任务已提交，等待分配执行资源…</p>
+        <p className="text-xs text-fg-muted animate-pulse">任务已提交，等待分配执行资源…</p>
       )}
       {message.status === 'queued' && (
-        <p className="text-xs text-fg-muted">任务已入队，排队等待执行…</p>
+        <p className="text-xs text-fg-muted animate-pulse">任务已入队，排队等待执行…</p>
       )}
 
       {message.status === 'failed' && (
-        <div className="space-y-1.5 rounded-btn border border-border bg-bg-secondary/50 p-3">
+        <div className="space-y-1.5 rounded-btn border border-border bg-bg-secondary/50 p-3.5">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm text-fg-primary">{errorTitle(message.error)}</p>
-              <p className="text-xs text-fg-muted">{errorDetail(message.error)}</p>
+              <p className="text-sm font-medium text-fg-primary">{errorTitle(message.error)}</p>
+              <p className="text-xs leading-relaxed text-fg-muted">{errorDetail(message.error)}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 pl-6">
             <button
               onClick={onRetry}
-              className="inline-flex items-center gap-1 text-xs text-fg-secondary transition-colors hover:text-fg-primary"
+              className="inline-flex items-center gap-1 text-xs font-medium text-fg-secondary transition-colors hover:text-fg-primary"
             >
               <RefreshCw className="h-3 w-3" />
               重新生成
@@ -145,7 +145,7 @@ function ResultCard({
             <span className="text-border" />
             <button
               onClick={onEdit}
-              className="inline-flex items-center gap-1 text-xs text-fg-secondary transition-colors hover:text-fg-primary"
+              className="inline-flex items-center gap-1 text-xs font-medium text-fg-secondary transition-colors hover:text-fg-primary"
             >
               <Pencil className="h-3 w-3" />
               重新编辑
@@ -201,7 +201,7 @@ function ResultCard({
       {message.status === 'completed' && !message.resultUrl && (
         <div className="flex flex-col items-center justify-center gap-2 rounded-btn border border-dashed border-border py-8 text-fg-muted">
           <ImagePlus className="h-6 w-6" />
-          <p className="text-xs">任务已完成，但未返回结果</p>
+          <p className="text-xs">生成已完成，但未返回结果</p>
         </div>
       )}
     </div>
