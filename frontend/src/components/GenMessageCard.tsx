@@ -58,9 +58,6 @@ export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEd
         <div className="min-w-0 flex-1 space-y-3">
           <div className="space-y-1">
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-fg-primary">{message.prompt}</p>
-            {message.negativePrompt && (
-              <p className="text-xs text-fg-muted">排除：{message.negativePrompt}</p>
-            )}
           </div>
 
           <ResultCard

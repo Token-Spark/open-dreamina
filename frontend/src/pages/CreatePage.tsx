@@ -154,7 +154,6 @@ export function CreatePage() {
       appliedTemplateRef.current = tpl.id
       setMode(tpl.category === 'image' ? 'image' : 'video')
       setPrompt(tpl.prompt_text)
-      setNegativePrompt(tpl.negative_prompt ?? '')
       if (tpl.params && Object.keys(tpl.params).length) {
         setParams(tpl.params as Record<string, number | string>)
       }
@@ -433,7 +432,6 @@ export function CreatePage() {
   }) {
     setMode(t.category === 'image' ? 'image' : 'video')
     setPrompt(t.prompt_text)
-    setNegativePrompt(t.negative_prompt ?? '')
     if (t.params && Object.keys(t.params).length) {
       setParams(t.params as Record<string, number | string>)
     }

@@ -27,7 +27,6 @@ import {
 export interface GenMessage {
   id: string
   prompt: string
-  negativePrompt: string
   type: TaskType
   status: TaskStatus
   progress: number
@@ -50,7 +49,6 @@ export interface GenMessage {
 /** 将后端 Task 记录重建为对话消息（任务即消息，无数据冗余）。 */
 export function taskToMessage(task: Task): GenMessage {
   const params = (task.params ?? {}) as Record<string, unknown>
-  const negativePrompt = (params.negative_prompt as string) ?? ''
   // 多图参考：优先读 params.input_asset_ids，回退到 input_asset_id 单图（兼容旧任务）
   const rawIds = Array.isArray(params.input_asset_ids)
     ? (params.input_asset_ids as unknown[]).filter((id): id is string => typeof id === 'string')
@@ -63,7 +61,6 @@ export function taskToMessage(task: Task): GenMessage {
   return {
     id: task.id,
     prompt: task.prompt ?? '',
-    negativePrompt,
     type: task.type,
     status: task.status,
     progress: task.progress,
