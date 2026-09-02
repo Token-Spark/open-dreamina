@@ -76,7 +76,6 @@ export function CreatePage() {
     readStored<ContentMode>(LAST_MODE_KEY, 'image'),
   )
   const [prompt, setPrompt] = useState('')
-  const [negativePrompt, setNegativePrompt] = useState('')
   const [providerSlug, setProviderSlug] = useState(() =>
     readStored<string>(LAST_PROVIDER_KEY, ''),
   )
@@ -255,7 +254,6 @@ export function CreatePage() {
 
   async function submitGeneration(
     requestPrompt: string,
-    requestNegative: string,
     requestMode: ContentMode,
     requestParams: Record<string, number | string>,
     requestRefAssets: ReferenceAsset[],
@@ -308,7 +306,6 @@ export function CreatePage() {
         provider: providerSlug,
         model_id: requestModelId || undefined,
         prompt: requestPrompt,
-        negative_prompt: requestNegative || undefined,
         params: sendParams as Record<string, unknown>,
         input_asset_id: requestRefAssetIds[0] ?? undefined,
         input_asset_ids: hasRef ? requestRefAssetIds : undefined,
@@ -320,7 +317,6 @@ export function CreatePage() {
       addMessage(currentTopicId, {
         id: task_id,
         prompt: requestPrompt,
-        negativePrompt: requestNegative,
         type: requestType,
         status: task.status,
         progress: task.progress,
@@ -344,7 +340,7 @@ export function CreatePage() {
   }
 
   function handleGenerate() {
-    submitGeneration(prompt, negativePrompt, mode, params, refAssets, modelId)
+    submitGeneration(prompt, mode, params, refAssets, modelId)
   }
 
   // 重试：后端复用同一 task_id 与 conversation_id，本地更新消息状态即可
@@ -400,7 +396,6 @@ export function CreatePage() {
       setParams(nextParams)
     }
     setPrompt(message.prompt)
-    setNegativePrompt(message.negativePrompt)
     if (message.provider) setProviderSlug(message.provider)
     if (message.modelId) setModelId(message.modelId)
     // 复用参考素材：回填 assetId 与预览地址列表；从后端资产记录恢复类型（图片/视频/音频）
@@ -525,9 +520,7 @@ export function CreatePage() {
           mode={mode}
           onModeChange={handleModeChange}
           prompt={prompt}
-          negativePrompt={negativePrompt}
           onPromptChange={setPrompt}
-          onNegativeChange={setNegativePrompt}
           providerSlug={providerSlug}
           modelId={modelId}
           onProviderChange={setProviderSlug}

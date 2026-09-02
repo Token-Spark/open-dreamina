@@ -58,7 +58,6 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
   const [lightboxItem, setLightboxItem] = useState<LightboxItem | null>(null)
 
   const prompt = nodeData.prompt ?? ''
-  const negativePrompt = (nodeData.params?.negative_prompt as string) ?? nodeData.negative_prompt ?? ''
   const providerSlug = nodeData.provider ?? ''
   const modelId = nodeData.model_id ?? ''
   const params = nodeData.params ?? defaultParamsForType(mode === 'image' ? 'text2img' : 'text2video')
@@ -267,8 +266,6 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
           onModeChange={() => {}}
           prompt={prompt}
           onPromptChange={(value) => updateNodeData(id, { prompt: value })}
-          negativePrompt={negativePrompt}
-          onNegativeChange={(value) => updateNodeData(id, { negative_prompt: value })}
           providerSlug={providerSlug}
           modelId={modelId}
           onProviderChange={(value) => updateNodeData(id, { provider: value, model_id: '' })}

@@ -239,9 +239,7 @@ export interface GenerationInputBarProps {
   mode: ContentMode
   onModeChange: (mode: ContentMode) => void
   prompt: string
-  negativePrompt: string
   onPromptChange: (v: string) => void
-  onNegativeChange: (v: string) => void
   providerSlug: string
   modelId: string
   onProviderChange: (slug: string) => void
@@ -266,8 +264,6 @@ export function GenerationInputBar({
   onModeChange,
   prompt,
   onPromptChange,
-  negativePrompt,
-  onNegativeChange,
   providerSlug,
   modelId,
   onProviderChange,
@@ -978,15 +974,6 @@ export function GenerationInputBar({
                   compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
                 )}
               />
-              {!compact && (
-                <input
-                  value={negativePrompt}
-                  onChange={(e) => onNegativeChange(e.target.value)}
-                  disabled={submitting}
-                  placeholder="负面提示词（可选）"
-                  className="nodrag h-8 w-full rounded-btn border border-border bg-bg-tertiary/60 px-2.5 text-xs leading-relaxed text-fg-primary placeholder:text-fg-muted focus:outline-none"
-                />
-              )}
               <input
                 ref={fileInputRef}
                 type="file"
