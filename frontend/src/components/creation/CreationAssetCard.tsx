@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Cloud, Pencil, Trash2, User } from 'lucide-react'
+import { Check, Cloud, Pencil, Trash2, User } from 'lucide-react'
 import type { CreationAsset } from '@/api/creationAssets'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -26,15 +26,31 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 export interface CreationAssetCardProps {
   asset: CreationAsset
+  /** 是否处于批量选择状态。 */
+  selected?: boolean
+  /** 提供则显示多选 checkbox；不提供则卡片不可多选。 */
+  onToggleSelect?: () => void
   onEdit: (asset: CreationAsset) => void
   onDelete: (asset: CreationAsset) => void
 }
 
 /** 素材卡片：图片预览 + 音色试听 + 设定文本 + 标签 + 同步状态。
  * 可信团队模型：所有资产（含云端拉取）均可编辑，编辑后推送回原版本链。 */
-export function CreationAssetCard({ asset, onEdit, onDelete }: CreationAssetCardProps) {
+export function CreationAssetCard({
+  asset,
+  selected = false,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+}: CreationAssetCardProps) {
   return (
-    <div className="group flex flex-col overflow-hidden rounded-dialog border border-border bg-bg-secondary transition-colors hover:border-fg-muted/40">
+    <div
+      className={`group flex flex-col overflow-hidden rounded-dialog border bg-bg-secondary transition-colors ${
+        selected
+          ? 'border-accent ring-1 ring-accent/60'
+          : 'border-border hover:border-fg-muted/40'
+      }`}
+    >
       {/* 图片预览 */}
       <div className="relative aspect-[4/3] overflow-hidden bg-bg-tertiary">
         {asset.image_thumbnail_url ? (
@@ -64,6 +80,20 @@ export function CreationAssetCard({ asset, onEdit, onDelete }: CreationAssetCard
             </Badge>
           )}
         </div>
+        {onToggleSelect && (
+          <button
+            type="button"
+            onClick={onToggleSelect}
+            aria-label={selected ? '取消选择' : '选择'}
+            className={`absolute right-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded border transition-colors ${
+              selected
+                ? 'border-accent bg-accent text-bg-primary'
+                : 'border-fg-muted/60 bg-bg-secondary/70 text-transparent hover:border-fg-muted hover:text-fg-muted'
+            }`}
+          >
+            <Check className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-3">

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useState } from 'react'
-import { Cloud, Plus, Search, Zap } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, Cloud, Loader2, Plus, Search, Tag, Trash2, Zap } from 'lucide-react'
 import {
   CATEGORY_OPTIONS,
   type CreationAsset,
@@ -45,6 +45,7 @@ import {
   type CreationAssetFormValues,
 } from '@/components/creation/CreationAssetFormDialog'
 import { CreationAssetSyncDialog } from '@/components/creation/CreationAssetSyncDialog'
+import { CreationAssetBatchTagDialog } from '@/components/creation/CreationAssetBatchTagDialog'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Input'
@@ -62,6 +63,11 @@ export function CreationAssetsPage() {
   const [editing, setEditing] = useState<CreationAsset | null>(null)
   const [syncOpen, setSyncOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<CreationAsset | null>(null)
+  // 批量操作：选中 id 集合 + 弹窗/忙碌状态
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [batchTagOpen, setBatchTagOpen] = useState(false)
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false)
+  const [batchBusy, setBatchBusy] = useState(false)
 
   const query = {
     category: category === 'all' ? undefined : category,
@@ -89,6 +95,31 @@ export function CreationAssetsPage() {
 
   const assets = data?.items ?? []
   const tagSummaries = tagData?.tags ?? []
+
+  // 批量选择相关派生值
+  const selectedAssets = assets.filter((a) => selected.has(a.id))
+  const allSelected = assets.length > 0 && assets.every((a) => selected.has(a.id))
+  const selectedTagSet = new Set<string>()
+  for (const a of selectedAssets) for (const t of a.tags) selectedTagSet.add(t)
+  const selectedTags = Array.from(selectedTagSet)
+
+  // 筛选条件变化时清空选择，避免选中项不在当前列表中造成困惑
+  useEffect(() => {
+    setSelected(new Set())
+  }, [category, tagFilter, search])
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    setSelected(allSelected ? new Set() : new Set(assets.map((a) => a.id)))
+  }
 
   /** 根据后端返回的单资产同步结果显示对应的 toast。 */
   function showSyncToast(
@@ -141,6 +172,64 @@ export function CreationAssetsPage() {
       toast(toApiError(e).message, 'error')
     } finally {
       setConfirmDelete(null)
+    }
+  }
+
+  /** 批量修改标签：为选中素材统一添加/移除标签，仅在标签变化时更新。 */
+  async function handleBatchTagSubmit(addTags: string[], removeTags: string[]) {
+    if (addTags.length === 0 && removeTags.length === 0) {
+      toast('请选择要添加或移除的标签', 'warning')
+      return
+    }
+    setBatchBusy(true)
+    try {
+      const results = await Promise.allSettled(
+        selectedAssets.map(async (a) => {
+          const cur = a.tags
+          const merged = [...new Set([...cur, ...addTags])].filter(
+            (t) => !removeTags.includes(t),
+          )
+          const unchanged =
+            cur.length === merged.length && cur.every((t) => merged.includes(t))
+          if (!unchanged) {
+            await updateAsset.mutateAsync({ id: a.id, payload: { tags: merged } })
+          }
+        }),
+      )
+      const ok = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.length - ok
+      setSelected(new Set())
+      if (failed > 0) {
+        toast(`已更新 ${ok} 项，${failed} 项失败`, 'warning')
+      } else {
+        toast(`已更新 ${ok} 项素材的标签`, 'success')
+      }
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    } finally {
+      setBatchBusy(false)
+    }
+  }
+
+  /** 批量删除选中的素材（逐个删除，汇总成功/失败数量）。 */
+  async function handleBatchDelete() {
+    if (selected.size === 0) return
+    setBatchBusy(true)
+    try {
+      const results = await Promise.allSettled(
+        Array.from(selected).map((id) => deleteAsset.mutateAsync(id)),
+      )
+      const ok = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.length - ok
+      setSelected(new Set())
+      if (failed > 0) {
+        toast(`已删除 ${ok} 项，${failed} 项失败`, 'warning')
+      } else {
+        toast(`已删除 ${ok} 项素材`, 'success')
+      }
+    } finally {
+      setBatchBusy(false)
+      setConfirmBatchDelete(false)
     }
   }
 
@@ -209,6 +298,25 @@ export function CreationAssetsPage() {
           />
         </div>
 
+        {assets.length > 0 && (
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-xs text-fg-secondary transition-colors hover:text-fg-primary"
+          >
+            <span
+              className={`flex h-4 w-4 items-center justify-center rounded border ${
+                allSelected
+                  ? 'border-accent bg-accent text-bg-primary'
+                  : 'border-fg-muted/60'
+              }`}
+            >
+              {allSelected && <Check className="h-3 w-3" />}
+            </span>
+            全选
+          </button>
+        )}
+
         {tagFilter && (
           <button
             type="button"
@@ -235,6 +343,30 @@ export function CreationAssetsPage() {
         )}
       </div>
 
+      {/* 批量操作工具条 */}
+      {selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-btn border border-accent/30 bg-accent/5 px-3 py-2">
+          <span className="text-xs font-medium text-fg-primary">已选 {selected.size} 项</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setBatchTagOpen(true)}>
+              <Tag className="h-4 w-4" />
+              修改标签
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setConfirmBatchDelete(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+              批量删除
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+              取消选择
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* 资产网格 */}
       {isLoading ? (
         <div className="py-16 text-center text-sm text-fg-muted">加载中…</div>
@@ -258,6 +390,8 @@ export function CreationAssetsPage() {
             <CreationAssetCard
               key={a.id}
               asset={a}
+              selected={selected.has(a.id)}
+              onToggleSelect={() => toggleSelect(a.id)}
               onEdit={(asset) => {
                 setEditing(asset)
                 setFormOpen(true)
@@ -316,6 +450,41 @@ export function CreationAssetsPage() {
             </Button>
             <Button variant="danger" onClick={handleDelete}>
               删除
+            </Button>
+          </>
+        }
+      >
+        <p className="py-2 text-sm text-fg-secondary">
+          仅删除本地副本，云端已同步的版本不受影响，其他成员仍可拉取。
+        </p>
+      </Dialog>
+
+      <CreationAssetBatchTagDialog
+        open={batchTagOpen}
+        count={selected.size}
+        existingTags={tagSummaries.map((t) => t.name)}
+        selectedTags={selectedTags}
+        onSubmit={handleBatchTagSubmit}
+        onClose={() => setBatchTagOpen(false)}
+      />
+
+      <Dialog
+        open={confirmBatchDelete}
+        onOpenChange={(o) => !o && setConfirmBatchDelete(false)}
+        title="批量删除"
+        description={`将删除选中的 ${selected.size} 个资产及其关联文件，且无法恢复。`}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmBatchDelete(false)}
+              disabled={batchBusy}
+            >
+              取消
+            </Button>
+            <Button variant="danger" onClick={handleBatchDelete} disabled={batchBusy}>
+              {batchBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+              删除 {selected.size} 项
             </Button>
           </>
         }
