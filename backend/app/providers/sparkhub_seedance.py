@@ -180,6 +180,9 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
         duration: int = 5,
         **kwargs: Any,
     ) -> GenerationResult:
+        # worker 以 **kwargs 展开调用时 duration 会绑定到上面的具名形参而非进入 kwargs，
+        # 需回填，否则 _build_create_payload 读取不到并退化为默认 5 秒。
+        kwargs["duration"] = duration
         payload = self._build_create_payload(prompt, kwargs)
         return await self._run_task(payload, self._extract_result_urls, self._result_mime())
 
@@ -203,6 +206,8 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
                 "（first_image_url / image_urls / video_urls / audio_urls），"
                 "当前本地资产暂不支持，请选择文生视频，或提供公网参考素材 URL"
             )
+        # 同 text_to_video：回填被具名形参吞掉的 duration，避免退化为默认 5 秒。
+        kwargs["duration"] = duration
         payload = self._build_create_payload(prompt, kwargs)
         # 兼容旧入口 image_url：归入多模态 image_urls（first_image_url 由 _build_create_payload 顶层处理）
         legacy_url = kwargs.get("image_url")

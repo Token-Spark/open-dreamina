@@ -282,6 +282,9 @@ class SeedanceProvider(BaseProvider):
         duration: int = 5,
         **kwargs: Any,
     ) -> GenerationResult:
+        # worker 以 **kwargs 展开调用时 duration 会绑定到具名形参而非进入 kwargs，
+        # 需回填，否则 _build_params 读取不到并省略该参数（上游退化为默认时长）。
+        kwargs["duration"] = duration
         content = [{"type": "text", "text": prompt}]
         return await self._generate(content, kwargs)
 
@@ -306,6 +309,8 @@ class SeedanceProvider(BaseProvider):
         if not image_bytes:
             raise ProviderError("Seedance 图生视频缺少输入图片")
 
+        # 同 text_to_video：回填被具名形参吞掉的 duration。
+        kwargs["duration"] = duration
         frame_mode = kwargs.pop("frame_mode", "first")
         content: list[dict[str, Any]] = []
         if prompt:
