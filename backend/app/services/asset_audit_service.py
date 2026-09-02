@@ -66,7 +66,7 @@ def _load_sparkhub_provider(db: Session, provider_slug: str):
     )
 
 
-async def _asset_public_url(asset: Asset) -> str:
+async def asset_public_url(asset: Asset) -> str:
     """构造素材的公网访问 URL（供 Spark Hub 拉取审核）。
 
     优先使用七牛云临时存储（14 天自动过期）；未配置七牛云时回退到
@@ -107,7 +107,7 @@ def _raise_business_error(data: dict, context: str) -> None:
 async def submit_asset_audit(db: Session, asset: Asset, provider_slug: str) -> Asset:
     """提交素材审核，返回更新后的 asset（status=pending）。"""
     provider = _load_sparkhub_provider(db, provider_slug)
-    url = await _asset_public_url(asset)
+    url = await asset_public_url(asset)
     asset_type = "Video" if asset.type == "video" else "Image"
     payload = {"url": url, "AssetType": asset_type}
     async with httpx.AsyncClient(timeout=60) as client:

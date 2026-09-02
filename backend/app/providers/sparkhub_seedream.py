@@ -74,6 +74,11 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
         count = int(kwargs.get("count") or 1)
         if count > 1:
             pl.setdefault("kwargs", {})["count"] = count
+        image_urls = kwargs.get("image_urls")
+        if image_urls:
+            if not isinstance(image_urls, list) or not all(isinstance(url, str) and url for url in image_urls):
+                raise ProviderError("Spark Hub Seedream 参考图链接格式无效")
+            pl["image_urls"] = image_urls
         return pl
 
     def _extract_result_urls(self, polled: dict[str, Any]) -> list[str]:
@@ -114,11 +119,20 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
         strength: float = 0.7,
         **kwargs: Any,
     ) -> GenerationResult:
-        # Spark Hub 生图需参考图公网 URL；本地资产默认无公网链接，明示原因避免用户困惑。
-        raise ProviderError(
-            "Spark Hub Seedream 图生图需要参考图公网链接，当前本地资产暂不支持，"
-            "请选择文生图，或使用支持图生的其他服务"
-        )
+        image_urls = kwargs.get("image_urls")
+        if not isinstance(image_urls, list) or not image_urls:
+            raise ProviderError(
+                "Spark Hub Seedream 图生图缺少参考图公网链接，"
+                "请配置 QINIU_* 或可被 Spark Hub 访问的 public_base_url"
+            )
+        kwargs["width"] = kwargs.get("width") or 1024
+        kwargs["height"] = kwargs.get("height") or 1024
+        payload = self._build_create_payload(prompt, kwargs)
+        result = await self._run_task(payload, self._extract_result_urls, self._result_mime())
+        from .sparkhub_base import _detect_mime
+        result.mime_type = _detect_mime(result.file_bytes)
+        result.files = [(b, _detect_mime(b)) for b, _ in result.files]
+        return result
 
     async def text_to_video(
         self,

@@ -46,6 +46,11 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ASSETS_DIR=/app/data/assets
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
+      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY:-}
+      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY:-}
+      - QINIU_BUCKET=${QINIU_BUCKET:-}
+      - QINIU_DOMAIN=${QINIU_DOMAIN:-}
+      - QINIU_AUDIT_EXPIRE_DAYS=${QINIU_AUDIT_EXPIRE_DAYS:-14}
       # 即梦 CLI：HOME 指向挂载卷内的持久化目录，CLI 二进制与 ~/.dreamina_cli 登录态
       # 在容器重建后不丢失（安装/登录引导见 设置 → 服务管理 → 即梦 CLI）
       - HOME=/app/data/dreamina-home
@@ -55,7 +60,7 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
-    command: sh -c "mkdir -p /app/data/dreamina-home && exec celery -A app.worker worker --loglevel=info --concurrency=2"
+    command: sh -c "mkdir -p /app/data/dreamina-home && exec celery -A app.worker worker --loglevel=info --concurrency=4"
 
   celery-beat:
     build: ./backend

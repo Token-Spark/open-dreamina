@@ -35,6 +35,7 @@ from .models import ApiProvider, Asset, Task
 from .providers import ProviderError, get_provider
 from .providers.sparkhub_base import SparkHubBaseProvider
 from .services import task_service
+from .services.asset_audit_service import asset_public_url
 from .services.asset_service import (
     create_asset_record,
     delete_asset_files,
@@ -251,6 +252,18 @@ def _build_sparkhub_seedance_ref_kwargs(
     return kwargs_out
 
 
+async def _build_sparkhub_seedream_ref_kwargs(db, raw_ids: list[str]) -> dict[str, Any]:
+    assets = [db.get(Asset, aid) for aid in raw_ids]
+    assets = [a for a in assets if a is not None]
+    if not assets:
+        return {}
+    invalid = [a.id for a in assets if a.type != "image"]
+    if invalid:
+        raise ProviderError(f"Seedream 图生图仅支持图片参考素材：{', '.join(invalid)}")
+    urls = [await asset_public_url(asset) for asset in assets]
+    return {"image_urls": urls}
+
+
 @celery_app.task(name="app.worker.run_generation_task", bind=True)
 def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
     """执行生成任务。"""
@@ -324,6 +337,12 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             elif task_type == "img2img":
                 if not image_bytes_list:
                     raise ProviderError("图生图缺少输入图片")
+                if slug == "sparkhub-seedream":
+                    with db_session() as db:
+                        ref_kwargs = loop.run_until_complete(
+                            _build_sparkhub_seedream_ref_kwargs(db, raw_ids)
+                        )
+                    kwargs.update(ref_kwargs)
                 result = loop.run_until_complete(provider.image_to_image(image_bytes=image_bytes_list, prompt=prompt, **_filter_kwargs(provider.image_to_image, kwargs)))
             elif task_type == "text2video":
                 result = loop.run_until_complete(provider.text_to_video(prompt=prompt, **_filter_kwargs(provider.text_to_video, kwargs)))

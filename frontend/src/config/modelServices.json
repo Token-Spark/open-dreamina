@@ -186,8 +186,8 @@
         }
       ],
       "models": [
-        { "id": "doubao_seedream_5", "label": "Seedream 5", "types": ["text2img"] },
-        { "id": "doubao_seedream_5_pro", "label": "Seedream 5 Pro", "types": ["text2img"] }
+        { "id": "doubao_seedream_5", "label": "Seedream 5", "types": ["text2img", "img2img"] },
+        { "id": "doubao_seedream_5_pro", "label": "Seedream 5 Pro", "types": ["text2img", "img2img"] }
       ]
     },
     {
