@@ -14,8 +14,8 @@
 
 import { apiClient, type Paginated } from './client'
 
-/** 创作资产类别：人物（图片+音色+设定）/ 场景（图片+设定）/ 道具（图片） */
-export type CreationAssetCategory = 'character' | 'scene' | 'prop'
+/** 创作资产类别：人物（图片+音色+设定）/ 场景（图片+设定）/ 道具（图片）/ 关键帧（图片） */
+export type CreationAssetCategory = 'character' | 'scene' | 'prop' | 'keyframe'
 
 export const CATEGORY_OPTIONS: {
   value: CreationAssetCategory
@@ -25,6 +25,7 @@ export const CATEGORY_OPTIONS: {
   { value: 'character', label: '人物', hasAudio: true },
   { value: 'scene', label: '场景', hasAudio: false },
   { value: 'prop', label: '道具', hasAudio: false },
+  { value: 'keyframe', label: '关键帧', hasAudio: false },
 ]
 
 export interface CreationAsset {

@@ -111,7 +111,7 @@ class Asset(Base):
 
 
 class CreationAsset(Base):
-    """创作资产：人物/场景/道具等可复用素材，聚合图片、音色音频与文本设定。
+    """创作资产：人物/场景/道具/关键帧等可复用素材，聚合图片、音色音频与文本设定。
 
     - origin=local：本实例创建，可编辑/删除/同步；
       origin=remote：从云端拉取的他人资产，本地只读，可另存为副本。
@@ -122,7 +122,7 @@ class CreationAsset(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    category: Mapped[str] = mapped_column(String, nullable=False)  # character|scene|prop
+    category: Mapped[str] = mapped_column(String, nullable=False)  # character|scene|prop|keyframe
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     image_asset_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True

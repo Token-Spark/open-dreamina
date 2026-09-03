@@ -95,7 +95,7 @@ def _to_response(ca: CreationAsset, owner_id: str, sync_result: dict | None = No
 
 @router.get("", response_model=CreationAssetListResponse)
 def list_creation_assets(
-    category: str | None = Query(None, pattern="^(character|scene|prop)$"),
+    category: str | None = Query(None, pattern="^(character|scene|prop|keyframe)$"),
     tags: str | None = Query(None, description="逗号分隔，资产需包含任一标签"),
     search: str | None = Query(None, description="按名称/描述模糊搜索"),
     page: int = Query(1, ge=1),

@@ -179,7 +179,7 @@ class BatchDeleteResponse(BaseModel):
 class CreationAssetCreate(BaseModel):
     """新建创作资产。图片/音频先经 /assets/upload 上传，此处传 asset_id。"""
     name: str = Field(..., min_length=1, max_length=100)
-    category: str = Field("character", pattern="^(character|scene|prop)$")
+    category: str = Field("character", pattern="^(character|scene|prop|keyframe)$")
     description: str = ""
     tags: list[str] = Field(default_factory=list)
     image_asset_id: Optional[str] = None
@@ -188,7 +188,7 @@ class CreationAssetCreate(BaseModel):
 
 class CreationAssetUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    category: Optional[str] = Field(None, pattern="^(character|scene|prop)$")
+    category: Optional[str] = Field(None, pattern="^(character|scene|prop|keyframe)$")
     description: Optional[str] = None
     tags: Optional[list[str]] = None
     image_asset_id: Optional[str] = None
