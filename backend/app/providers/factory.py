@@ -26,6 +26,7 @@ from typing import Any, Callable
 from .base import BaseProvider, ProviderError
 from .dashscope_provider import DashScopeProvider
 from .dreamina_cli_provider import DreaminaSeedanceProvider, DreaminaSeedreamProvider
+from .gemini_image_provider import GeminiImageProvider
 from .kling_provider import KlingProvider
 from .mock_provider import MockProvider
 from .openai_provider import OpenAIProvider
@@ -88,6 +89,14 @@ _REGISTRY: dict[str, RegistryEntry] = {
         builtin=False,
         display_name="OpenAI（GPT Image 2）",
         modes=_modes_from_types(OpenAIProvider.SUPPORTED_TYPES),
+    ),
+    "gemini-3-pro-image": RegistryEntry(
+        # OpenRouter Nano Banana Pro（Gemini 3 Pro Image）；Chat Completions + modalities 协议
+        factory=lambda b, k, c: GeminiImageProvider(b or "https://openrouter.ai/api/v1", k, c),
+        default_base_url="https://openrouter.ai/api/v1",
+        builtin=False,
+        display_name="Gemini 3 Pro Image（OpenRouter）",
+        modes=_modes_from_types(GeminiImageProvider.SUPPORTED_TYPES),
     ),
     "dashscope": RegistryEntry(
         factory=lambda b, k, c: DashScopeProvider(b or "https://dashscope.aliyuncs.com", k, c),

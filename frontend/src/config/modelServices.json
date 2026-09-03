@@ -2,6 +2,34 @@
   "$comment": "模型服务目录：驱动设置页服务卡片与激活表单。新增服务只需在此追加一项。",
   "services": [
     {
+      "slug": "gemini-3-pro-image",
+      "name": "Gemini 3 Pro Image",
+      "vendor": "Google",
+      "description": "Google Nano Banana Pro（Gemini 3 Pro Image）图像生成与编辑模型，经 OpenRouter 接入。支持 1K/2K/4K 分辨率与多种宽高比，图生图最多可附加 14 张参考图。",
+      "docsUrl": "https://openrouter.ai/google/gemini-3-pro-image",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 OpenRouter API Key（sk-or-v1-...）"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用 OpenRouter 官方地址",
+          "default": "https://openrouter.ai/api/v1"
+        }
+      ],
+      "models": [
+        { "id": "google/gemini-3-pro-image", "label": "Gemini 3 Pro Image", "types": ["text2img", "img2img"] }
+      ]
+    },
+    {
       "slug": "openai",
       "name": "GPT Image 2",
       "vendor": "OpenAI",
