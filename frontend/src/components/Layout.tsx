@@ -54,7 +54,7 @@ export function Layout() {
     <div className="flex h-screen flex-col bg-bg-primary">
       <div className="flex flex-1 overflow-hidden">
         {/* Left icon rail */}
-        <aside className="flex w-16 shrink-0 flex-col bg-bg-secondary border-r border-border">
+        <aside className="flex w-16 shrink-0 flex-col bg-bg-secondary">
           <div className="flex h-14 items-center justify-center">
             <NavLink to="/" className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-bg-primary transition-transform hover:scale-105 active:scale-95">
               <Sparkles className="h-4 w-4" />

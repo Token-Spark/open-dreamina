@@ -42,7 +42,7 @@ export function TopicPanel({ className }: TopicPanelProps) {
 
   return (
     <aside className={cn('flex w-64 shrink-0 flex-col bg-bg-secondary', className)}>
-      <div className="flex h-16 items-center justify-between border-b border-border px-3">
+      <div className="flex h-16 items-center justify-between px-3">
         <h2 className="text-sm font-semibold text-fg-primary">对话列表</h2>
         <button
           type="button"

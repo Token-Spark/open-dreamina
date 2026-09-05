@@ -463,7 +463,7 @@ export function CreatePage() {
 
       <div className="flex flex-1 flex-col">
         {/* Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-6">
+        <header className="flex h-16 shrink-0 items-center justify-between px-6">
           <div>
             <h1 className="text-base font-semibold leading-tight text-fg-primary">{currentTopic.title}</h1>
             <p className="mt-0.5 text-xs text-fg-muted">

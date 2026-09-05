@@ -300,7 +300,7 @@ function CanvasEditorInner() {
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-2.5">
+      <div className="flex items-center justify-between gap-4 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate('/canvas')}>
             <ArrowLeft className="h-4 w-4" />

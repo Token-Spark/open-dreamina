@@ -92,7 +92,7 @@ export function CanvasListPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-5">
+      <div className="flex items-center justify-between gap-4 px-6 py-5">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-fg-primary">画布工作流</h1>
           <p className="mt-1 text-sm text-fg-secondary">
@@ -106,7 +106,7 @@ export function CanvasListPage() {
       </div>
 
       {/* Search bar */}
-      <div className="border-b border-border px-6 py-3">
+      <div className="px-6 py-3">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
           <Input
