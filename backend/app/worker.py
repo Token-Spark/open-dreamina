@@ -196,7 +196,7 @@ def _read_input_asset_bytes_list(asset_ids: list[str]) -> list[bytes]:
     return out
 
 
-def _build_sparkhub_seedance_ref_kwargs(
+async def _build_sparkhub_seedance_ref_kwargs(
     db, raw_ids: list[str], frame_mode: str | None
 ) -> dict[str, Any]:
     """为 Spark Hub Seedance 图生视频构造参考素材 URL kwargs（审核后 asset:// 地址）。
@@ -204,10 +204,10 @@ def _build_sparkhub_seedance_ref_kwargs(
     按素材类型分别路由到上游 API 对应字段：
     - 图片：first/first_last → first_image_url/last_image_url；reference/text → image_urls
     - 视频：video_urls（使用审核后的 asset:// 地址）
-    - 音频：audio_urls（需公网 URL；暂未接入，跳过）
+    - 音频：audio_urls（无需审核，通过 asset_public_url 生成公网 URL）
 
     图片/视频参考素材需先通过 seedance_asset_audit 审核，未审核或审核未通过的直接报错，
-    避免上游拒绝。
+    避免上游拒绝。音频无需审核，直接生成公网可访问 URL。
     """
     assets = [db.get(Asset, aid) for aid in raw_ids]
     assets = [a for a in assets if a is not None]
@@ -224,7 +224,7 @@ def _build_sparkhub_seedance_ref_kwargs(
             )
 
     kwargs_out: dict[str, Any] = {}
-    # 按素材类型分流：视频 → video_urls，图片按帧模式分发
+    # 按素材类型分流：视频 → video_urls，图片按帧模式分发，音频 → audio_urls（公网 URL）
     image_urls = [
         a.audit_asset_url for a in assets
         if a.type not in ("video", "audio") and a.audit_asset_url
@@ -233,9 +233,17 @@ def _build_sparkhub_seedance_ref_kwargs(
         a.audit_asset_url for a in assets
         if a.type == "video" and a.audit_asset_url
     ]
+    # 音频不走审核接口（AssetType 仅支持 Image/Video），用 asset_public_url 生成公网地址
+    audio_urls = [
+        await asset_public_url(a) for a in assets
+        if a.type == "audio"
+    ]
+    audio_urls = [u for u in audio_urls if u]
 
     if video_urls:
         kwargs_out["video_urls"] = video_urls
+    if audio_urls:
+        kwargs_out["audio_urls"] = audio_urls
 
     if image_urls:
         if frame_mode == "first_last":
@@ -350,9 +358,12 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
                 if slug == "sparkhub-seedance":
                     # Spark Hub Seedance：参考素材需先审核，使用审核后的 asset:// 地址
                     # 作为 first_image_url / last_image_url / image_urls，而非本地字节。
+                    # 音频无需审核，通过 asset_public_url 生成公网 URL。
                     with db_session() as db:
-                        ref_kwargs = _build_sparkhub_seedance_ref_kwargs(
-                            db, raw_ids, kwargs.get("frame_mode")
+                        ref_kwargs = loop.run_until_complete(
+                            _build_sparkhub_seedance_ref_kwargs(
+                                db, raw_ids, kwargs.get("frame_mode")
+                            )
                         )
                     kwargs.update(ref_kwargs)
                     result = loop.run_until_complete(

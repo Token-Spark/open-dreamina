@@ -26,6 +26,8 @@ export interface ReferenceSlotProps {
   kind?: ReferenceKind
   onPick: () => void
   onClear: () => void
+  /** 点击已有素材时触发预览；未传则不响应点击。 */
+  onPreview?: () => void
   /** 角色标注（如“首帧”“尾帧”），展示在格子下方帮助理解用途。 */
   label?: string
   /** Seedance 参考素材审核状态；仅 Spark Hub Seedance 需要展示。 */
@@ -77,16 +79,28 @@ export function ReferenceSlot({
   kind = 'image',
   onPick,
   onClear,
+  onPreview,
   label,
   auditStatus,
   auditError,
 }: ReferenceSlotProps) {
   const slot = previewUrl ? (
-    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-btn border border-border">
+    <div
+      className="relative h-16 w-16 shrink-0 cursor-zoom-in overflow-hidden rounded-btn border border-border transition-shadow hover:shadow-elevated"
+      onClick={onPreview}
+      role={onPreview ? 'button' : undefined}
+      tabIndex={onPreview ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (onPreview && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault()
+          onPreview()
+        }
+      }}
+    >
       {kind === 'video' ? (
         <>
           <video src={previewUrl} muted playsInline className="h-full w-full object-cover" />
-          <span className="absolute bottom-0.5 left-0.5 flex items-center rounded bg-black/60 px-1 py-0.5 text-white">
+          <span className="pointer-events-none absolute bottom-0.5 left-0.5 flex items-center rounded bg-black/60 px-1 py-0.5 text-white">
             <Video className="h-2.5 w-2.5" />
           </span>
         </>
@@ -100,7 +114,10 @@ export function ReferenceSlot({
       <AuditBadge status={auditStatus ?? 'none'} error={auditError} />
       <button
         type="button"
-        onClick={onClear}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClear()
+        }}
         className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
         aria-label="移除"
       >

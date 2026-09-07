@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 export interface LightboxItem {
   url: string
-  type: 'image' | 'video'
+  type: 'image' | 'video' | 'audio'
   title?: string
   meta?: Record<string, unknown>
 }
@@ -107,13 +107,15 @@ export function ImageLightbox({ item, open, onClose }: ImageLightboxProps) {
             className={cn('max-h-full max-w-full object-contain transition-transform duration-200')}
             style={{ transform: `scale(${zoom})` }}
           />
-        ) : (
+        ) : item.type === 'video' ? (
           <video
             src={item.url}
             controls
             autoPlay
             className="max-h-full max-w-full"
           />
+        ) : (
+          <audio src={item.url} controls autoPlay className="w-full max-w-md" />
         )}
       </div>
     </div>,

@@ -9,7 +9,7 @@
 import { useRef, useState, type MouseEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Pause, Play, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
+import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Maximize2, Pause, Play, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAssets } from '@/hooks/useAssets'
@@ -19,6 +19,7 @@ import { getSystemSettings } from '@/api/system'
 import { Dialog } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
+import { PromptFullscreenEditor } from '@/components/PromptFullscreenEditor'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 
@@ -123,6 +124,8 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [directorOpen, setDirectorOpen] = useState(false)
   const [directorUploading, setDirectorUploading] = useState(false)
+  // 全屏沉浸式文本编辑开关（提示词/备注节点）
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const theme = useUIStore((s) => s.theme)
 
   // 导演台 URL 来自后端系统设置；未配置则不显示入口
@@ -195,13 +198,25 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
       </div>
 
       {(nodeType === 'prompt' || nodeType === 'note') && (
-        <textarea
-          className="nodrag nowheel mt-2 w-full resize-none rounded-btn border border-border bg-bg-tertiary px-2 py-1 text-xs text-fg-primary placeholder:text-fg-muted focus:outline-none"
-          rows={3}
-          placeholder={nodeType === 'prompt' ? '输入提示词...' : '备注...'}
-          value={(nodeData.text as string) ?? ''}
-          onChange={(event) => updateNodeData(id, { text: event.target.value })}
-        />
+        <div className="relative nodrag nowheel mt-2">
+          <textarea
+            className="w-full resize-none rounded-btn border border-border bg-bg-tertiary px-2 py-1 pr-7 text-xs text-fg-primary placeholder:text-fg-muted focus:outline-none"
+            rows={3}
+            placeholder={nodeType === 'prompt' ? '输入提示词...' : '备注...'}
+            value={(nodeData.text as string) ?? ''}
+            onChange={(event) => updateNodeData(id, { text: event.target.value })}
+          />
+          {/* 全屏沉浸式编辑入口：小尺寸节点内输入体验受限，点击进入全屏大字号编辑 */}
+          <button
+            type="button"
+            onClick={() => setFullscreenOpen(true)}
+            title="全屏编辑"
+            aria-label="全屏编辑"
+            className="absolute right-1 top-1.5 flex h-5 w-5 items-center justify-center rounded text-fg-muted transition-colors hover:bg-bg-secondary hover:text-fg-primary"
+          >
+            <Maximize2 className="h-3 w-3" />
+          </button>
+        </div>
       )}
 
       {nodeType === 'asset' && (
@@ -280,6 +295,18 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
 
       {nodeType === 'preview' && (
         <p className="mt-1.5 text-xs text-fg-muted">预览产物</p>
+      )}
+
+      {/* 全屏沉浸式文本编辑（提示词/备注节点） */}
+      {(nodeType === 'prompt' || nodeType === 'note') && (
+        <PromptFullscreenEditor
+          open={fullscreenOpen}
+          onClose={() => setFullscreenOpen(false)}
+          prompt={(nodeData.text as string) ?? ''}
+          onPromptChange={(value) => updateNodeData(id, { text: value })}
+          enableMention={false}
+          title={nodeType === 'prompt' ? '编辑提示词' : '编辑备注'}
+        />
       )}
 
       {portSpec.outputs.map((port) => (

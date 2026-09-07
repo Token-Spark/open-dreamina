@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type * as React from 'react'
 import {
   Wand2,
@@ -25,6 +25,7 @@ import {
   Music,
   Video,
   Clapperboard,
+  Maximize2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
@@ -32,15 +33,15 @@ import { ReferenceSlot, type ReferenceKind } from '@/components/ReferenceSlot'
 import { ModelPicker } from '@/components/ModelPicker'
 import { SizePicker } from '@/components/SizePicker'
 import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
+import { ImageLightbox, type LightboxItem } from '@/components/ImageLightbox'
+import { PromptFullscreenEditor } from '@/components/PromptFullscreenEditor'
+import { usePromptMention } from '@/hooks/usePromptMention'
 import {
   uploadAsset,
   assetFileUrl,
   submitAssetAudit,
   getAssetAudit,
 } from '@/api/assets'
-import { listCreationAssets, type CreationAsset } from '@/api/creationAssets'
-import { useQuery } from '@tanstack/react-query'
-import { CREATION_ASSETS_KEY } from '@/hooks/useCreationAssets'
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
@@ -52,187 +53,39 @@ import {
   type AspectRatio,
   type Resolution,
 } from '@/lib/generation'
+import {
+  ACCEPT_VIDEO_MODE,
+  FRAME_MODES,
+  KIND_CAPS,
+  KIND_LABELS,
+  KIND_SIZE_CAPS,
+  VIDEO_EXTS,
+  AUDIO_EXTS,
+  frameModeSpec,
+  isSeedanceProvider,
+  isSparkHubSeedance,
+  normalizeFrameMode,
+  type FrameMode,
+  type ReferenceAsset,
+} from '@/lib/promptMention'
 import { toast, useUIStore } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { cn } from '@/lib/utils'
 
-/** 一个参考素材（图片/视频/音频）：assetId 用于提交任务，previewUrl 用于本地预览。 */
-export interface ReferenceAsset {
-  assetId: string
-  previewUrl: string
-  /** 素材类型；旧数据缺省按图片处理。 */
-  kind?: ReferenceKind
-  /** Seedance 参考素材审核状态（仅 Spark Hub Seedance 需要）；undefined 表示未提交审核。 */
-  auditStatus?: 'pending' | 'active' | 'failed'
-  /** 审核失败原因。 */
-  auditError?: string | null
-}
-
 /**
- * @ 引用候选项：可引用已上传的参考素材（slot）或素材库中的可复用素材（library）。
- * - slot：已在上传槽位中的素材，token 按类型编号（图1/视频1/音频1…）。
- * - library：素材库（人物/场景/道具）中尚未加入参考列表的素材，选中后自动追加到 refAssets。
+ * 向后兼容 re-export：这些符号已迁至 lib/promptMention.ts，
+ * 但 CreatePage / CanvasGenerationNode / useAssetAudit 等模块仍从本组件导入。
  */
-interface MentionItem {
-  /** 候选项来源：已上传参考槽位 / 素材库。 */
-  source: 'slot' | 'library'
-  /** 主资产：slot 为现有参考项；library 为素材库待加入项中的图片资产（无图时取音频）。 */
-  asset: ReferenceAsset
-  /** 待加入参考列表的资产（slot 恒为单元素；人物素材可能同时含图片与音频）。 */
-  assets: ReferenceAsset[]
-  kind: ReferenceKind
-  /** 实际插入提示词的引用 token 列表，如 @图1，或 @图2、@音频1。 */
-  tokens: string[]
-  /** 展示名称。slot 为类型编号（参考图 1），library 为素材名称。 */
-  label: string
-  /** 缩略图地址；slot 用 file 原图，library 用素材缩略图。 */
-  thumbUrl: string
-}
-
-/**
- * 视频模式多模态参考限制（火山方舟 Seedance 2.0 系列：参考图 0-9 + 参考视频 0-3 + 参考音频 0-3）。
- * 参考: 创建视频生成任务 API（.trae/docs/火山方舟 - 视频生成 API）。
- */
-const MAX_REF_IMAGES = 9
-const MAX_REF_VIDEOS = 3
-const MAX_REF_AUDIOS = 3
-const MAX_IMAGE_BYTES = 30 * 1024 * 1024 // 单张图片 < 30 MB
-const MAX_VIDEO_BYTES = 200 * 1024 * 1024 // 单个视频 ≤ 200 MB
-const MAX_AUDIO_BYTES = 15 * 1024 * 1024 // 单个音频 ≤ 15 MB
-/** API 仅接受 mp4/mov 参考视频、wav/mp3 参考音频（按扩展名兑底，部分浏览器 MIME 缺失）。 */
-const VIDEO_EXTS = ['.mp4', '.mov']
-const AUDIO_EXTS = ['.wav', '.mp3']
-const KIND_CAPS: Record<ReferenceKind, number> = {
-  image: MAX_REF_IMAGES,
-  video: MAX_REF_VIDEOS,
-  audio: MAX_REF_AUDIOS,
-}
-const KIND_SIZE_CAPS: Record<ReferenceKind, number> = {
-  image: MAX_IMAGE_BYTES,
-  video: MAX_VIDEO_BYTES,
-  audio: MAX_AUDIO_BYTES,
-}
-const KIND_LABELS: Record<ReferenceKind, string> = {
-  image: '参考图',
-  video: '参考视频',
-  audio: '参考音频',
-}
-/** 视频模式下文件选择器接受：图片 + mp4/mov 视频 + wav/mp3 音频。 */
-const ACCEPT_VIDEO_MODE =
-  'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
-
-/**
- * Seedance 视频生成帧模式（需求1：文生视频与参考图合二为一）。
- * auto 为合并模式：无参考图时按文生视频生成，上传图片后自动按参考图模式生成；
- * 提交时由 effectiveFrameMode 解析为后端接受的 text / reference。
- */
-export type FrameMode = 'auto' | 'first' | 'first_last'
-
-/** 解析后的后端帧模式（text / reference 仅作为 auto 的解析结果，不直接存储）。 */
-export type EffectiveFrameMode = 'text' | 'first' | 'first_last' | 'reference'
-
-/** 合并模式解析：无参考图 → 文生视频（text）；有参考图 → 多模态参考（reference）。 */
-export function effectiveFrameMode(frameMode: FrameMode, hasImage: boolean): EffectiveFrameMode {
-  if (frameMode === 'auto') return hasImage ? 'reference' : 'text'
-  return frameMode
-}
-
-/** 归一化历史/外部传入的 frame_mode：旧数据中的 text / reference 均映射为合并模式 auto。 */
-export function normalizeFrameMode(v: unknown): FrameMode {
-  return v === 'first' || v === 'first_last' ? v : 'auto'
-}
-
-/**
- * 各帧模式对参考图片数量的要求（required 为提交任务所需张数）。
- * slots 为固定图片格子的角色标注（首帧/尾帧），用于在输入区渲染指定数量的上传格子；
- * auto（合并模式，含参考图状态）走多模态参考，不设固定格子，上限沿用 MAX_REF_IMAGES。
- * allowMultimodal 表示是否允许图片之外的视频/音频参考。
- */
-const FRAME_MODES: {
-  mode: FrameMode
-  label: string
-  hint: string
-  maxImages: number
-  required: number
-  allowMultimodal: boolean
-  slots?: string[]
-  icon: React.ComponentType<{ className?: string }>
-}[] = [
-  {
-    mode: 'auto',
-    label: '文生视频/参考图',
-    hint: '无需图片可直接生成，上传图片自动转为参考图',
-    maxImages: MAX_REF_IMAGES,
-    required: 0,
-    allowMultimodal: true,
-    icon: Wand2,
-  },
-  { mode: 'first', label: '首帧', hint: '上传 1 张图片作为视频首帧', maxImages: 1, required: 1, allowMultimodal: false, slots: ['首帧'], icon: ImageIcon },
-  {
-    mode: 'first_last',
-    label: '首尾帧',
-    hint: '上传 2 张图片，分别作为首帧与尾帧',
-    maxImages: 2,
-    required: 2,
-    allowMultimodal: false,
-    slots: ['首帧', '尾帧'],
-    icon: Images,
-  },
-]
-
-/** 当前帧模式配置；非 Seedance 视频/图片模式返回 null（走通用多模态限制）。 */
-export function frameModeSpec(
-  mode: ContentMode,
-  isSeedance: boolean,
-  frameMode: FrameMode,
-): (typeof FRAME_MODES)[number] | null {
-  if (mode !== 'video' || !isSeedance) return null
-  return FRAME_MODES.find((m) => m.mode === frameMode) ?? null
-}
-
-/** 判断当前 provider 是否为 Seedance 系列（slug 含 seedance，或已知遗留别名 dreamina-cli）。 */
-export function isSeedanceProvider(slug: string): boolean {
-  const s = slug.toLowerCase()
-  // dreamina-cli 是遗留 slug，后端实际使用 DreaminaSeedanceProvider（Seedance 系列），
-  // 见 backend/app/providers/factory.py 中 "dreamina-cli" 注册项。
-  return s.includes('seedance') || s === 'dreamina-cli'
-}
-
-/**
- * 判断是否为 Spark Hub Seedance 中转（唯一需要参考素材审核的 provider）。
- * 参考素材需先通过 seedance_asset_audit 审核，审核通过后才能用于视频生成。
- */
-export function isSparkHubSeedance(slug: string): boolean {
-  return slug === 'sparkhub-seedance'
-}
-
-/**
- * 素材库素材 → 待加入参考列表的资产：
- * 图片模式仅取图片；视频模式取图片 + 音频（人物音色）；单帧/首尾帧模式不允许音频。
- * 顺序固定为图片在前、音频在后，便于后续按加入顺序编号。
- */
-function pendingAssetsOf(
-  ca: CreationAsset,
-  mode: ContentMode,
-  allowAudio: boolean,
-): ReferenceAsset[] {
-  const list: ReferenceAsset[] = []
-  if (ca.image_asset_id) {
-    list.push({
-      assetId: ca.image_asset_id,
-      previewUrl: assetFileUrl(ca.image_asset_id),
-      kind: 'image',
-    })
-  }
-  if (mode === 'video' && allowAudio && ca.audio_asset_id) {
-    list.push({
-      assetId: ca.audio_asset_id,
-      previewUrl: assetFileUrl(ca.audio_asset_id),
-      kind: 'audio',
-    })
-  }
-  return list
-}
+export {
+  effectiveFrameMode,
+  frameModeSpec,
+  isSeedanceProvider,
+  isSparkHubSeedance,
+  normalizeFrameMode,
+  type EffectiveFrameMode,
+  type FrameMode,
+  type ReferenceAsset,
+} from '@/lib/promptMention'
 
 export interface GenerationInputBarProps {
   /** 内容模式：图片 / 视频（需求1：合并文生图/图生图、文生视频/图生视频）。 */
@@ -282,6 +135,10 @@ export function GenerationInputBar({
   const fileInputRef = useRef<HTMLInputElement>(null)
   // 导演台弹窗开关 & 当前主题（传给 iframe）
   const [directorOpen, setDirectorOpen] = useState(false)
+  // 素材预览灯箱：点击参考素材缩略图时打开
+  const [previewItem, setPreviewItem] = useState<LightboxItem | null>(null)
+  // 全屏沉浸式提示词编辑器开关
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const theme = useUIStore((s) => s.theme)
   // 镜像 refAssets，供异步审核轮询读取最新列表，避免闭包捕获过期状态。
   const refAssetsRef = useRef(refAssets)
@@ -294,244 +151,25 @@ export function GenerationInputBar({
   const isSeedance = isSeedanceProvider(providerSlug)
 
   // @ 引用：在提示词中键入 @ 触发悬浮选择器，引用已上传参考素材作为生成提示词。
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const mentionRef = useRef<HTMLDivElement>(null)
-  const [mention, setMention] = useState<{
-    open: boolean
-    /** @ 字符在提示词中的起始下标，选中后用于替换 @ 及其后已输入的查询文本。 */
-    start: number
-    /** @ 之后已输入的文本，用于过滤候选项。 */
-    query: string
-    /** 当前键盘高亮的候选项下标。 */
-    activeIndex: number
-  }>({ open: false, start: -1, query: '', activeIndex: 0 })
-
-  /**
-   * 素材库查询：仅在 @ 选择器打开时请求。
-   * staleTime 1 分钟避免重复请求；useQuery 自带缓存，与素材库页面共享 CREATION_ASSETS_KEY。
-   */
-  const { data: libData } = useQuery({
-    queryKey: [...CREATION_ASSETS_KEY, { mention: true }],
-    queryFn: () => listCreationAssets({ page: 1, page_size: 50 }),
-    enabled: mention.open,
-    staleTime: 60_000,
+  // 内联输入条与全屏沉浸式编辑器共用同一份状态逻辑，保证交互一致。
+  const {
+    textareaRef,
+    mentionRef,
+    mention,
+    mentionItems,
+    hasLibraryAssets,
+    handlePromptInputChange,
+    handlePromptKeyDown,
+    insertMention,
+  } = usePromptMention({
+    prompt,
+    onPromptChange,
+    refAssets,
+    onRefAssetsChange,
+    mode,
+    providerSlug,
+    params,
   })
-
-  /**
-   * 候选项：已上传参考素材（slot）+ 素材库中尚未加入参考列表的素材（library）。
-   * slot 项 token 按类型编号（@图1/@视频1…）；library 项选中后追加到 refAssets，
-   * token 同样按"加入后的序号"编号，保证与 slot 引用风格一致。
-   * 人物素材可能同时含图片与音频，会展开为多个 token。
-   */
-  const mentionItems = useMemo<MentionItem[]>(() => {
-    if (!mention.open) return []
-    const refIds = new Set(refAssets.map((a) => a.assetId))
-
-    // —— slot：已上传参考素材 ——
-    const counts: Record<ReferenceKind, number> = { image: 0, video: 0, audio: 0 }
-    const slotItems: MentionItem[] = refAssets
-      .filter((a) => (mode === 'image' ? (a.kind ?? 'image') === 'image' : true))
-      .map((a) => {
-        const kind = a.kind ?? 'image'
-        counts[kind] += 1
-        const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
-        return {
-          source: 'slot',
-          asset: a,
-          assets: [a],
-          kind,
-          tokens: [`@${short}${counts[kind]}`],
-          label: `${KIND_LABELS[kind]} ${counts[kind]}`,
-          thumbUrl: a.previewUrl,
-        }
-      })
-
-    // —— library：素材库中尚未加入的素材（人物/场景/道具） ——
-    // 首帧/首尾帧模式仅图片，不允许音频；auto 合并模式与图片模式允许图片与音频。
-    const spec = frameModeSpec(mode, isSeedance, frameMode)
-    const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
-    // 预计算 library 项加入后每种类型的起始编号
-    const libStart: Record<ReferenceKind, number> = { ...counts }
-    const libItems: MentionItem[] = (libData?.items ?? [])
-      .filter((ca) => !refIds.has(ca.image_asset_id ?? ca.audio_asset_id ?? ''))
-      .map((ca) => {
-        const pending = pendingAssetsOf(ca, mode, allowAudio).filter(
-          (pa) => !refIds.has(pa.assetId),
-        )
-        const tokens = pending.map((pa) => {
-          libStart[pa.kind ?? 'image'] += 1
-          const short = pa.kind === 'image' ? '图' : pa.kind === 'video' ? '视频' : '音频'
-          return `@${short}${libStart[pa.kind ?? 'image']}`
-        })
-        const primary = pending[0]
-        return {
-          source: 'library' as const,
-          asset: primary,
-          assets: pending,
-          kind: (primary?.kind ?? 'image') as ReferenceKind,
-          tokens,
-          label: ca.name,
-          thumbUrl: ca.image_thumbnail_url ?? '',
-        }
-      })
-      .filter((it) => it.assets.length > 0)
-
-    const all = [...slotItems, ...libItems]
-    if (!mention.query) return all
-    const q = mention.query.toLowerCase()
-    return all.filter(
-      (it) => it.tokens.some((t) => t.toLowerCase().includes(q)) || it.label.toLowerCase().includes(q),
-    )
-  }, [mention.open, mention.query, refAssets, mode, libData, isSeedance, frameMode])
-
-  // 点击浮层外部关闭引用选择器
-  useEffect(() => {
-    if (!mention.open) return
-    function onClick(e: MouseEvent) {
-      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
-        setMention({ open: false, start: -1, query: '', activeIndex: 0 })
-      }
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [mention.open])
-
-  // 候选项变化时重置高亮，避免越界
-  useEffect(() => {
-    setMention((m) => (m.activeIndex === 0 ? m : { ...m, activeIndex: 0 }))
-  }, [mentionItems])
-
-  /**
-   * 扫描光标前的文本，判断是否处于 @ 触发态：
-   * 找到位于行首或空白之后的 @，且从 @ 到光标之间不含空白。
-   */
-  function detectMention(value: string, pos: number): { start: number; query: string } | null {
-    const before = value.slice(0, pos)
-    for (let i = before.length - 1; i >= 0; i--) {
-      const ch = before[i]
-      if (ch === '@') {
-        const prev = before[i - 1]
-        if (i === 0 || /\s/.test(prev ?? '')) {
-          return { start: i, query: before.slice(i + 1) }
-        }
-        return null
-      }
-      if (/\s/.test(ch)) return null
-    }
-    return null
-  }
-
-  function handlePromptInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const value = e.target.value
-    const pos = e.target.selectionStart ?? value.length
-    onPromptChange(value)
-    const detected = detectMention(value, pos)
-    if (detected) {
-      setMention({ open: true, start: detected.start, query: detected.query, activeIndex: 0 })
-    } else if (mention.open) {
-      setMention({ open: false, start: -1, query: '', activeIndex: 0 })
-    }
-  }
-
-  function handlePromptKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // ⌘/Ctrl + Enter：提交生成（与底部生成按钮逻辑保持一致）
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault()
-      if (!submitting && !atConcurrencyLimit) {
-        onGenerate()
-      }
-      return
-    }
-
-    if (!mention.open || mentionItems.length === 0) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setMention((m) => ({ ...m, activeIndex: (m.activeIndex + 1) % mentionItems.length }))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setMention((m) => ({
-        ...m,
-        activeIndex: (m.activeIndex - 1 + mentionItems.length) % mentionItems.length,
-      }))
-    } else if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      insertMention(mentionItems[mention.activeIndex])
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      setMention({ open: false, start: -1, query: '', activeIndex: 0 })
-    }
-  }
-
-  /**
-   * 将引用 token 插入到 @ 起始处，替换 @ 及其后已输入的查询文本，并追加一个空格。
-   * 若选择的是素材库项（library），先将其追加到 refAssets（含上限校验），再按加入后的序号生成 token。
-   * 人物素材可能同时含图片与音频，会插入多个 token（如 @图2 @音频1）。
-   */
-  function insertMention(item: MentionItem) {
-    let tokens = item.tokens
-
-    // 素材库项：追加到参考列表，并按加入后的实际序号重新编号 token
-    if (item.source === 'library') {
-      const spec = frameModeSpec(mode, isSeedance, frameMode)
-      const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
-      // 校验并收集可加入的资产（已过滤掉已存在的）
-      const toAdd: ReferenceAsset[] = []
-      for (const pa of item.assets) {
-        const kind = pa.kind ?? 'image'
-        // 首帧/首尾帧模式仅接受图片
-        if (spec && !spec.allowMultimodal && kind !== 'image') {
-          toast(`${spec.label}模式仅支持图片参考`, 'error')
-          setMention({ open: false, start: -1, query: '', activeIndex: 0 })
-          return
-        }
-        // 上限校验：与上传流程保持一致
-        const cap = KIND_CAPS[kind]
-        const currentCount = refAssetsRef.current.filter(
-          (a) => (a.kind ?? 'image') === kind,
-        ).length
-        if (currentCount + toAdd.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
-          toast(`${KIND_LABELS[kind]}最多 ${cap} 个`, 'error')
-          setMention({ open: false, start: -1, query: '', activeIndex: 0 })
-          return
-        }
-        if (spec && !spec.allowMultimodal && kind === 'image') {
-          const imageCount =
-            refAssetsRef.current.filter((a) => (a.kind ?? 'image') === 'image').length +
-            toAdd.filter((a) => (a.kind ?? 'image') === 'image').length
-          if (imageCount >= spec.maxImages) {
-            toast(`${spec.label}模式最多 ${spec.maxImages} 张参考图`, 'error')
-            setMention({ open: false, start: -1, query: '', activeIndex: 0 })
-            return
-          }
-        }
-        toAdd.push(pa)
-      }
-      // 按加入后的列表重新编号
-      const next = [...refAssetsRef.current, ...toAdd]
-      refAssetsRef.current = next
-      onRefAssetsChange(next)
-      tokens = toAdd.map((pa) => {
-        const kind = pa.kind ?? 'image'
-        const sameKind = next.filter((a) => (a.kind ?? 'image') === kind)
-        const idx = sameKind.findIndex((a) => a.assetId === pa.assetId) + 1
-        const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
-        return `@${short}${idx}`
-      })
-      void allowAudio
-    }
-
-    const textarea = textareaRef.current
-    const pos = textarea?.selectionStart ?? prompt.length
-    const insertion = tokens.join(' ') + ' '
-    const newValue = prompt.slice(0, mention.start) + insertion + prompt.slice(pos)
-    onPromptChange(newValue)
-    const newPos = mention.start + insertion.length
-    setMention({ open: false, start: -1, query: '', activeIndex: 0 })
-    requestAnimationFrame(() => {
-      textarea?.focus()
-      textarea?.setSelectionRange(newPos, newPos)
-    })
-  }
 
   const aspectRatio = (params.aspect_ratio as AspectRatio) ?? '1:1'
   const resolution = (params.resolution as Resolution) ?? '2K'
@@ -843,6 +481,13 @@ export function GenerationInputBar({
                     auditError={ref.auditError}
                     onPick={() => {}}
                     onClear={() => removeRef(i)}
+                    onPreview={() =>
+                      setPreviewItem({
+                        url: ref.previewUrl,
+                        type: (ref.kind ?? 'image') === 'image' ? 'image' : (ref.kind ?? 'image') === 'video' ? 'video' : 'audio',
+                        title: KIND_LABELS[ref.kind ?? 'image'],
+                      })
+                    }
                   />
                 ),
               )}
@@ -864,6 +509,16 @@ export function GenerationInputBar({
                     auditError={frameImages[i]?.auditError}
                     onPick={() => fileInputRef.current?.click()}
                     onClear={() => removeFrameImage(i)}
+                    onPreview={
+                      frameImages[i]
+                        ? () =>
+                            setPreviewItem({
+                              url: frameImages[i]!.previewUrl,
+                              type: 'image',
+                              title: `${label} · 参考图`,
+                            })
+                        : undefined
+                    }
                   />
                 ))
               ) : (
@@ -897,7 +552,7 @@ export function GenerationInputBar({
                   ref={mentionRef}
                   className="absolute bottom-full left-0 z-50 mb-2 w-80 animate-slide-up rounded-card border border-border bg-bg-secondary p-1.5 shadow-elevated"
                 >
-                  {refAssets.length === 0 && (libData?.items ?? []).length === 0 ? (
+                  {refAssets.length === 0 && !hasLibraryAssets ? (
                     <div className="px-3 py-2 text-sm text-fg-muted">
                       暂无可引用的素材，请先上传或在素材库中新建资产
                     </div>
@@ -958,7 +613,9 @@ export function GenerationInputBar({
                 ref={textareaRef}
                 value={prompt}
                 onChange={handlePromptInputChange}
-                onKeyDown={handlePromptKeyDown}
+                onKeyDown={(e) =>
+                  handlePromptKeyDown(e, onGenerate, submitting, atConcurrencyLimit)
+                }
                 disabled={submitting}
                 placeholder={
                   mode === 'video'
@@ -974,6 +631,16 @@ export function GenerationInputBar({
                   compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
                 )}
               />
+              {/* 全屏沉浸式编辑入口：点击后进入全屏大字号编辑提示词 */}
+              <button
+                type="button"
+                onClick={() => setFullscreenOpen(true)}
+                title="全屏编辑"
+                aria-label="全屏编辑提示词"
+                className="absolute bottom-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-bg-tertiary hover:text-fg-primary"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1041,6 +708,25 @@ export function GenerationInputBar({
         url={directorDeskUrl ?? ''}
         theme={theme}
         onCaptureImage={handleDirectorImage}
+      />
+      <ImageLightbox
+        item={previewItem}
+        open={previewItem != null}
+        onClose={() => setPreviewItem(null)}
+      />
+      <PromptFullscreenEditor
+        open={fullscreenOpen}
+        onClose={() => setFullscreenOpen(false)}
+        prompt={prompt}
+        onPromptChange={onPromptChange}
+        refAssets={refAssets}
+        onRefAssetsChange={onRefAssetsChange}
+        mode={mode}
+        providerSlug={providerSlug}
+        params={params}
+        onGenerate={onGenerate}
+        submitting={submitting}
+        atConcurrencyLimit={atConcurrencyLimit}
       />
     </div>
   )
