@@ -31,6 +31,8 @@ export interface ReferenceAsset {
   previewUrl: string
   /** 素材类型；旧数据缺省按图片处理。 */
   kind?: ReferenceKind
+  /** 素材名称（素材库项为素材名，上传项为文件名）；用于 @ 引用标签展示。 */
+  name?: string
   /** Seedance 参考素材审核状态（仅 Spark Hub Seedance 需要）；undefined 表示未提交审核。 */
   auditStatus?: 'pending' | 'active' | 'failed'
   /** 审核失败原因。 */

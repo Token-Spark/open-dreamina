@@ -18,10 +18,11 @@
  * 并复用 usePromptMention 保持 @ 引用素材、⌘/Ctrl+Enter 提交等交互与内联输入条一致。
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, Music, Video, Wand2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { PromptMentionOverlay } from '@/components/PromptMentionOverlay'
 import { usePromptMention } from '@/hooks/usePromptMention'
 import { cn } from '@/lib/utils'
 import type { ContentMode } from '@/lib/generation'
@@ -85,6 +86,9 @@ export function PromptFullscreenEditor({
     params,
     enabled: enableMention,
   })
+
+  // textarea 滚动偏移，同步到 mention overlay 保持对齐
+  const [scrollSync, setScrollSync] = useState({ top: 0, left: 0 })
 
   // Esc 关闭 + body 滚动锁定；打开时自动聚焦编辑器（供键盘直接输入）
   useEffect(() => {
@@ -215,17 +219,36 @@ export function PromptFullscreenEditor({
         )}
 
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
-          <textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={handlePromptInputChange}
-            onKeyDown={(e) =>
-              handlePromptKeyDown(e, onGenerate, submitting, atConcurrencyLimit)
-            }
-            placeholder={placeholder}
-            autoFocus
-            className="flex-1 resize-none bg-transparent text-lg leading-relaxed text-fg-primary placeholder:text-fg-muted focus-visible:outline-none scrollbar-thin"
-          />
+          <div className="relative flex-1">
+            {/* @ 引用高亮覆盖层：textarea 文字设为透明，底层渲染高亮 token */}
+            {enableMention && (
+              <PromptMentionOverlay
+                prompt={prompt}
+                scrollOffset={scrollSync}
+                refAssets={refAssets}
+                className="text-lg leading-relaxed w-full p-[2px]"
+              />
+            )}
+            <textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={handlePromptInputChange}
+              onScroll={() => {
+                const ta = textareaRef.current
+                if (ta) setScrollSync({ top: ta.scrollTop, left: ta.scrollLeft })
+              }}
+              onKeyDown={(e) =>
+                handlePromptKeyDown(e, onGenerate, submitting, atConcurrencyLimit)
+              }
+              placeholder={placeholder}
+              autoFocus
+              className={cn(
+                'relative flex-1 resize-none bg-transparent p-[2px] text-lg leading-relaxed placeholder:text-fg-muted focus-visible:outline-none scrollbar-thin',
+                enableMention ? 'text-transparent caret-fg-primary' : 'text-fg-primary',
+              )}
+              style={{ zIndex: 10 }}
+            />
+          </div>
           <div className="flex items-center justify-between gap-2 pt-4">
             <span className="text-xs text-fg-muted">
               {enableMention

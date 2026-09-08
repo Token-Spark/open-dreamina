@@ -35,6 +35,7 @@ import { SizePicker } from '@/components/SizePicker'
 import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
 import { ImageLightbox, type LightboxItem } from '@/components/ImageLightbox'
 import { PromptFullscreenEditor } from '@/components/PromptFullscreenEditor'
+import { PromptMentionOverlay } from '@/components/PromptMentionOverlay'
 import { usePromptMention } from '@/hooks/usePromptMention'
 import {
   uploadAsset,
@@ -59,7 +60,6 @@ import {
   KIND_CAPS,
   KIND_LABELS,
   KIND_SIZE_CAPS,
-  MAX_AUDIO_TOTAL_DURATION,
   VIDEO_EXTS,
   AUDIO_EXTS,
   frameModeSpec,
@@ -141,6 +141,8 @@ export function GenerationInputBar({
   const [previewItem, setPreviewItem] = useState<LightboxItem | null>(null)
   // 全屏沉浸式提示词编辑器开关
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
+  // textarea 滚动偏移，同步到 mention overlay 保持对齐
+  const [scrollSync, setScrollSync] = useState({ top: 0, left: 0 })
   const theme = useUIStore((s) => s.theme)
   // 镜像 refAssets，供异步审核轮询读取最新列表，避免闭包捕获过期状态。
   const refAssetsRef = useRef(refAssets)
@@ -360,6 +362,7 @@ export function GenerationInputBar({
           assetId: asset.id,
           previewUrl: assetFileUrl(asset.id),
           kind,
+          name: file.name,
           auditStatus: needsAudit ? 'pending' : undefined,
           duration: (kind === 'audio' || kind === 'video') && asset.duration != null
             ? asset.duration
@@ -388,6 +391,7 @@ export function GenerationInputBar({
         assetId: asset.id,
         previewUrl: assetFileUrl(asset.id),
         kind: 'image',
+        name: file.name,
         auditStatus: needsAudit ? 'pending' : undefined,
       }
       onRefAssetsChange([...refAssets, ref])
@@ -625,28 +629,46 @@ export function GenerationInputBar({
                   )}
                 </div>
               )}
-              <textarea
-                ref={textareaRef}
-                value={prompt}
-                onChange={handlePromptInputChange}
-                onKeyDown={(e) =>
-                  handlePromptKeyDown(e, onGenerate, submitting, atConcurrencyLimit)
-                }
-                disabled={submitting}
-                placeholder={
-                  mode === 'video'
-                    ? isSeedance
-                      ? `${refHint()}。支持上传图片、视频、音频作为参考素材（参考视频/音频单个时长 2-15 秒，各最多 3 个）。输入文字或 @ 引用素材，描述你想生成的视频。`
-                      : '上传参考图/视频/音频、输入文字或 @ 引用素材，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
-                    : '上传参考图、输入文字或 @ 引用素材，描述你想生成的图片。支持上传多张参考图融合生成。'
-                }
-                rows={compact ? 3 : 4}
-                className={cn(
-                  'w-full resize-none bg-transparent leading-relaxed text-fg-primary placeholder:text-fg-muted',
-                  'transition-[height] duration-200 focus-visible:outline-none',
-                  compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
-                )}
-              />
+              <div className="relative">
+                {/* @ 引用高亮覆盖层：textarea 文字设为透明，底层渲染高亮 token */}
+                <PromptMentionOverlay
+                  prompt={prompt}
+                  scrollOffset={scrollSync}
+                  refAssets={refAssets}
+                  className={cn(
+                    'leading-relaxed p-[2px]',
+                    compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
+                    'w-full',
+                  )}
+                />
+                <textarea
+                  ref={textareaRef}
+                  value={prompt}
+                  onChange={handlePromptInputChange}
+                  onScroll={() => {
+                    const ta = textareaRef.current
+                    if (ta) setScrollSync({ top: ta.scrollTop, left: ta.scrollLeft })
+                  }}
+                  onKeyDown={(e) =>
+                    handlePromptKeyDown(e, onGenerate, submitting, atConcurrencyLimit)
+                  }
+                  disabled={submitting}
+                  placeholder={
+                    mode === 'video'
+                      ? isSeedance
+                        ? `${refHint()}。支持上传图片、视频、音频作为参考素材（参考视频/音频单个时长 2-15 秒，各最多 3 个）。输入文字或 @ 引用素材，描述你想生成的视频。`
+                        : '上传参考图/视频/音频、输入文字或 @ 引用素材，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
+                      : '上传参考图、输入文字或 @ 引用素材，描述你想生成的图片。支持上传多张参考图融合生成。'
+                  }
+                  rows={compact ? 3 : 4}
+                  className={cn(
+                    'relative w-full resize-none bg-transparent p-[2px] leading-relaxed text-transparent caret-fg-primary placeholder:text-fg-muted',
+                    'transition-[height] duration-200 focus-visible:outline-none',
+                    compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
+                  )}
+                  style={{ zIndex: 10 }}
+                />
+              </div>
               {/* 全屏沉浸式编辑入口：点击后进入全屏大字号编辑提示词 */}
               <button
                 type="button"

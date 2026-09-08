@@ -279,6 +279,10 @@ export function usePromptMention({
         }
         toAdd.push(pa)
       }
+      // 设置素材名称到 ReferenceAsset，便于 overlay 展示
+      toAdd.forEach((pa) => {
+        if (!pa.name) pa.name = item.label
+      })
       // 按加入后的列表重新编号
       const next = [...refAssetsRef.current, ...toAdd]
       refAssetsRef.current = next
