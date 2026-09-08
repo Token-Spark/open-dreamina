@@ -31,6 +31,7 @@ from ..schemas import (
     AssetAuditRequest,
     AssetListResponse,
     AssetResponse,
+    AssetTagResponse,
     AssetUpdate,
     BatchDeleteRequest,
     BatchDeleteResponse,
@@ -138,6 +139,17 @@ def list_assets(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/tags", response_model=AssetTagResponse)
+def list_asset_tags(db: Session = Depends(get_db)) -> AssetTagResponse:
+    """资产标签汇总（含计数），驱动前端素材筛选。"""
+    counter: dict[str, int] = {}
+    for a in db.query(Asset).all():
+        for t in set(json.loads(a.tags_json or "[]")):
+            counter[t] = counter.get(t, 0) + 1
+    tags = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+    return AssetTagResponse(tags=[{"name": n, "count": c} for n, c in tags])
 
 
 @router.get("/{asset_id}", response_model=AssetResponse)

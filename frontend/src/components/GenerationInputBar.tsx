@@ -59,6 +59,7 @@ import {
   KIND_CAPS,
   KIND_LABELS,
   KIND_SIZE_CAPS,
+  MAX_AUDIO_TOTAL_DURATION,
   VIDEO_EXTS,
   AUDIO_EXTS,
   frameModeSpec,
@@ -81,6 +82,7 @@ export {
   frameModeSpec,
   isSeedanceProvider,
   isSparkHubSeedance,
+  MAX_AUDIO_TOTAL_DURATION,
   normalizeFrameMode,
   type EffectiveFrameMode,
   type FrameMode,
@@ -359,6 +361,9 @@ export function GenerationInputBar({
           previewUrl: assetFileUrl(asset.id),
           kind,
           auditStatus: needsAudit ? 'pending' : undefined,
+          duration: (kind === 'audio' || kind === 'video') && asset.duration != null
+            ? asset.duration
+            : undefined,
         }
         next.push(ref)
         added.push(ref)
@@ -576,7 +581,7 @@ export function GenerationInputBar({
                                 : 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
                             )}
                           >
-                            <span className="h-6 w-6 shrink-0 overflow-hidden rounded border border-border">
+                            <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded border border-border">
                               {item.kind === 'image' ? (
                                 <img
                                   src={item.thumbUrl}
@@ -587,6 +592,17 @@ export function GenerationInputBar({
                                 <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
                                   <Video className="h-3.5 w-3.5" />
                                 </span>
+                              ) : item.thumbUrl ? (
+                                <>
+                                  <img
+                                    src={item.thumbUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                  />
+                                  <span className="absolute bottom-0 right-0 flex h-3 w-3 items-center justify-center rounded-tl bg-accent text-bg-primary">
+                                    <Music className="h-2 w-2" />
+                                  </span>
+                                </>
                               ) : (
                                 <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
                                   <Music className="h-3.5 w-3.5" />

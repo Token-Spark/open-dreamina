@@ -6,15 +6,17 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 
-import { useRef, useState, type MouseEvent } from 'react'
+import { useMemo, useRef, useState, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Maximize2, Pause, Play, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
+import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Maximize2, Music, Pause, Play, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { useAssets } from '@/hooks/useAssets'
+import { useAssets, useAssetTags } from '@/hooks/useAssets'
+import { useCreationAssets, useCreationAssetTags } from '@/hooks/useCreationAssets'
 import { useUIStore } from '@/stores/uiStore'
-import { assetFileUrl, assetThumbnailUrl, uploadAsset, type Asset } from '@/api/assets'
+import { assetFileUrl, assetThumbnailUrl, uploadAsset, type Asset, type AssetType } from '@/api/assets'
+import { CATEGORY_OPTIONS, type CreationAsset, type CreationAssetCategory } from '@/api/creationAssets'
 import { getSystemSettings } from '@/api/system'
 import { Dialog } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
@@ -143,6 +145,20 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
       asset_id: asset.id,
       asset_type: asset.type,
       asset_thumb: assetThumbnailUrl(asset.id),
+    })
+    setPickerOpen(false)
+  }
+
+  /** 素材库创作资产 → 节点素材：用底层 image_asset_id 作为节点 asset_id */
+  function handleSelectCreationAsset(ca: CreationAsset) {
+    if (!ca.image_asset_id) {
+      toast('该素材没有关联图片', 'error')
+      return
+    }
+    updateNodeData(id, {
+      asset_id: ca.image_asset_id,
+      asset_type: 'image' as AssetType,
+      asset_thumb: ca.image_thumbnail_url ?? assetThumbnailUrl(ca.image_asset_id),
     })
     setPickerOpen(false)
   }
@@ -279,6 +295,7 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
               open={pickerOpen}
               onOpenChange={setPickerOpen}
               onSelect={handleSelectAsset}
+              onSelectCreationAsset={handleSelectCreationAsset}
             />
           )}
           {directorDeskUrl && (
@@ -324,17 +341,94 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
 
 // ---------------- 素材选择弹窗 ----------------
 
+const ASSET_TYPE_FILTERS = [
+  { type: undefined as AssetType | undefined, label: '全部' },
+  { type: 'image' as AssetType, label: '图片' },
+  { type: 'video' as AssetType, label: '视频' },
+  { type: 'audio' as AssetType, label: '音频' },
+]
+
+const CATEGORY_FILTERS: { value: CreationAssetCategory | undefined; label: string }[] = [
+  { value: undefined, label: '全部' },
+  ...CATEGORY_OPTIONS.map((o) => ({ value: o.value as CreationAssetCategory, label: o.label })),
+]
+
+const CATEGORY_BADGES: Record<CreationAssetCategory, string> = {
+  character: '人物',
+  scene: '场景',
+  prop: '道具',
+  keyframe: '关键帧',
+}
+
 interface AssetPickerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (asset: Asset) => void
+  onSelectCreationAsset: (ca: CreationAsset) => void
 }
 
-function AssetPickerDialog({ open, onOpenChange, onSelect }: AssetPickerDialogProps) {
-  const { data, isLoading } = useAssets({ page_size: 50 })
-  const assets = data?.items ?? []
+type PickerTab = 'library' | 'uploads'
+
+function AssetPickerDialog({
+  open,
+  onOpenChange,
+  onSelect,
+  onSelectCreationAsset,
+}: AssetPickerDialogProps) {
+  const [tab, setTab] = useState<PickerTab>('library')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+
+  // ---- 素材库（creation assets）筛选状态 ----
+  const [category, setCategory] = useState<CreationAssetCategory | undefined>(undefined)
+  const [libSelectedTags, setLibSelectedTags] = useState<Set<string>>(new Set())
+  const [libSearch, setLibSearch] = useState('')
+
+  // ---- 上传文件（raw assets）筛选状态 ----
+  const [typeFilter, setTypeFilter] = useState<AssetType | undefined>(undefined)
+  const [rawSelectedTags, setRawSelectedTags] = useState<Set<string>>(new Set())
+  const [rawSearch, setRawSearch] = useState('')
+
+  // ---- 标签列表 ----
+  const { data: libTagData } = useCreationAssetTags()
+  const { data: rawTagList } = useAssetTags()
+
+  // ---- 素材库数据 ----
+  const libTagsParam = libSelectedTags.size > 0 ? Array.from(libSelectedTags).join(',') : undefined
+  const { data: libData, isLoading: libLoading } = useCreationAssets({
+    category,
+    tags: libTagsParam,
+    search: libSearch.trim() || undefined,
+    page_size: 200,
+  })
+  const libAssets = useMemo(() => libData?.items ?? [], [libData?.items])
+
+  // ---- 上传文件数据 ----
+  const rawTagsParam = rawSelectedTags.size > 0 ? Array.from(rawSelectedTags).join(',') : undefined
+  const { data: rawData, isLoading: rawLoading } = useAssets({
+    type: typeFilter,
+    tags: rawTagsParam,
+    page_size: 200,
+  })
+  const rawAssets = useMemo(() => {
+    const items = rawData?.items ?? []
+    if (!rawSearch.trim()) return items
+    const q = rawSearch.trim().toLowerCase()
+    return items.filter(
+      (a) =>
+        a.tags.some((t) => t.toLowerCase().includes(q)) ||
+        a.file_path.toLowerCase().includes(q),
+    )
+  }, [rawData?.items, rawSearch])
+
+  function toggleTag(tag: string, setter: Dispatch<SetStateAction<Set<string>>>) {
+    setter((prev) => {
+      const next = new Set(prev)
+      if (next.has(tag)) next.delete(tag)
+      else next.add(tag)
+      return next
+    })
+  }
 
   async function handleUpload(file: File) {
     setUploading(true)
@@ -349,15 +443,41 @@ function AssetPickerDialog({ open, onOpenChange, onSelect }: AssetPickerDialogPr
     }
   }
 
+  const search = tab === 'library' ? libSearch : rawSearch
+  const setSearch = tab === 'library' ? setLibSearch : setRawSearch
+  const selectedTags = tab === 'library' ? libSelectedTags : rawSelectedTags
+  const tagSetter = tab === 'library' ? setLibSelectedTags : setRawSelectedTags
+  const tagList = tab === 'library' ? libTagData?.tags : rawTagList
+
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title="选择素材"
-      description="从素材库选择或上传新文件"
+      description="从素材库按分类、标签筛选或上传新文件"
       className="max-w-2xl"
     >
       <div className="space-y-3">
+        {/* Tab 切换 */}
+        <div className="flex items-center gap-1 border-b border-border">
+          {(['library', 'uploads'] as PickerTab[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={cn(
+                '-mb-px border-b-2 px-3 py-1.5 text-xs font-medium transition-colors',
+                tab === t
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-fg-muted hover:text-fg-secondary',
+              )}
+            >
+              {t === 'library' ? '素材库' : '上传文件'}
+            </button>
+          ))}
+        </div>
+
+        {/* 工具栏：上传 + 搜索 */}
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
@@ -370,7 +490,7 @@ function AssetPickerDialog({ open, onOpenChange, onSelect }: AssetPickerDialogPr
             ) : (
               <Upload className="h-3.5 w-3.5" />
             )}
-            上传新素材
+            上传
           </Button>
           <input
             ref={fileInputRef}
@@ -383,51 +503,211 @@ function AssetPickerDialog({ open, onOpenChange, onSelect }: AssetPickerDialogPr
               e.target.value = ''
             }}
           />
+          <input
+            type="text"
+            placeholder={tab === 'library' ? '搜索名称、设定或标签…' : '搜索标签或文件名…'}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="min-w-0 flex-1 rounded-btn border border-border bg-bg-tertiary px-2.5 py-1.5 text-xs text-fg-primary placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-accent"
+          />
         </div>
 
-        {isLoading ? (
-          <div className="py-12 text-center text-sm text-fg-muted">加载中…</div>
-        ) : assets.length === 0 ? (
-          <div className="py-12 text-center text-sm text-fg-muted">
-            素材库为空，请先上传素材
+        {/* 分类 / 类型筛选 */}
+        {tab === 'library' ? (
+          <div className="flex items-center gap-1.5">
+            {CATEGORY_FILTERS.map((f) => (
+              <button
+                key={f.label}
+                type="button"
+                onClick={() => setCategory(f.value)}
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+                  category === f.value
+                    ? 'bg-accent text-white'
+                    : 'bg-bg-tertiary text-fg-secondary hover:bg-bg-secondary',
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
         ) : (
-          <div className="grid max-h-80 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-5">
-            {assets.map((asset) => (
+          <div className="flex items-center gap-1.5">
+            {ASSET_TYPE_FILTERS.map((f) => (
               <button
-                key={asset.id}
+                key={f.label}
                 type="button"
-                className="group relative aspect-square overflow-hidden rounded-btn border border-border bg-bg-tertiary transition-all hover:ring-1 hover:ring-accent"
-                onClick={() => onSelect(asset)}
+                onClick={() => setTypeFilter(f.type)}
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+                  typeFilter === f.type
+                    ? 'bg-accent text-white'
+                    : 'bg-bg-tertiary text-fg-secondary hover:bg-bg-secondary',
+                )}
               >
-                {asset.type === 'audio' ? (
-                  <AudioPreview
-                    src={assetFileUrl(asset.id)}
-                    className="h-full w-full"
-                  />
-                ) : (
-                  <img
-                    src={assetThumbnailUrl(asset.id)}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform group-hover:scale-[1.05]"
-                  />
-                )}
-                {asset.type === 'video' && (
-                  <span className="absolute bottom-1 right-1 rounded-btn bg-black/60 px-1 text-[10px] text-white">
-                    视频
-                  </span>
-                )}
-                {asset.type === 'audio' && (
-                  <span className="absolute bottom-1 right-1 rounded-btn bg-black/60 px-1 text-[10px] text-white">
-                    音频
-                  </span>
-                )}
+                {f.label}
               </button>
             ))}
           </div>
         )}
+
+        {/* 标签筛选 */}
+        {tagList && tagList.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {tagList.map((tag) => (
+              <button
+                key={tag.name}
+                type="button"
+                onClick={() => toggleTag(tag.name, tagSetter)}
+                className={cn(
+                  'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                  selectedTags.has(tag.name)
+                    ? 'border-accent bg-accent/10 text-accent'
+                    : 'border-border text-fg-muted hover:border-fg-muted hover:text-fg-secondary',
+                )}
+              >
+                {tag.name}
+                <span className="ml-1 opacity-60">{tag.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 素材网格 */}
+        {tab === 'library' ? (
+          <LibraryGrid
+            assets={libAssets}
+            loading={libLoading}
+            hasFilters={!!category || libSelectedTags.size > 0 || !!libSearch.trim()}
+            onSelect={onSelectCreationAsset}
+          />
+        ) : (
+          <UploadsGrid
+            assets={rawAssets}
+            loading={rawLoading}
+            hasFilters={!!typeFilter || rawSelectedTags.size > 0 || !!rawSearch.trim()}
+            onSelect={onSelect}
+          />
+        )}
       </div>
     </Dialog>
+  )
+}
+
+/** 素材库网格：创作资产（人物/场景/道具/关键帧） */
+function LibraryGrid({
+  assets,
+  loading,
+  hasFilters,
+  onSelect,
+}: {
+  assets: CreationAsset[]
+  loading: boolean
+  hasFilters: boolean
+  onSelect: (ca: CreationAsset) => void
+}) {
+  if (loading) return <div className="py-12 text-center text-sm text-fg-muted">加载中…</div>
+  if (assets.length === 0)
+    return (
+      <div className="py-12 text-center text-sm text-fg-muted">
+        {hasFilters ? '没有匹配的素材，试试调整筛选条件' : '素材库为空，请先在素材库页面创建资产'}
+      </div>
+    )
+  return (
+    <div className="grid max-h-80 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-5">
+      {assets.map((ca) => (
+        <button
+          key={ca.id}
+          type="button"
+          className="group relative aspect-square overflow-hidden rounded-btn border border-border bg-bg-tertiary transition-all hover:ring-1 hover:ring-accent"
+          onClick={() => onSelect(ca)}
+        >
+          {ca.image_thumbnail_url ? (
+            <img
+              src={ca.image_thumbnail_url}
+              alt={ca.name}
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform group-hover:scale-[1.05]"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <ImageIcon className="h-8 w-8 text-fg-muted" />
+            </div>
+          )}
+          <span className="absolute bottom-1 left-1 rounded-btn bg-black/60 px-1 text-[10px] text-white">
+            {CATEGORY_BADGES[ca.category]}
+          </span>
+          <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-1 pb-0.5 pt-2 text-[10px] text-white">
+            {ca.name}
+          </span>
+          {ca.tags.length > 0 && (
+            <span className="absolute left-1 top-1 max-w-[calc(100%-2rem)] truncate rounded-btn bg-black/60 px-1 text-[10px] text-white">
+              {ca.tags.join(', ')}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** 上传文件网格：原始素材（图片/视频/音频） */
+function UploadsGrid({
+  assets,
+  loading,
+  hasFilters,
+  onSelect,
+}: {
+  assets: Asset[]
+  loading: boolean
+  hasFilters: boolean
+  onSelect: (asset: Asset) => void
+}) {
+  if (loading) return <div className="py-12 text-center text-sm text-fg-muted">加载中…</div>
+  if (assets.length === 0)
+    return (
+      <div className="py-12 text-center text-sm text-fg-muted">
+        {hasFilters ? '没有匹配的素材，试试调整筛选条件' : '暂无上传文件'}
+      </div>
+    )
+  return (
+    <div className="grid max-h-80 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-5">
+      {assets.map((asset) => (
+        <button
+          key={asset.id}
+          type="button"
+          className="group relative aspect-square overflow-hidden rounded-btn border border-border bg-bg-tertiary transition-all hover:ring-1 hover:ring-accent"
+          onClick={() => onSelect(asset)}
+        >
+          {asset.type === 'audio' ? (
+            <div className="flex h-full w-full items-center justify-center bg-bg-tertiary">
+              <Music className="h-8 w-8 text-fg-muted" />
+            </div>
+          ) : (
+            <img
+              src={assetThumbnailUrl(asset.id)}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform group-hover:scale-[1.05]"
+            />
+          )}
+          {asset.type === 'video' && (
+            <span className="absolute bottom-1 right-1 rounded-btn bg-black/60 px-1 text-[10px] text-white">
+              视频
+            </span>
+          )}
+          {asset.type === 'audio' && (
+            <span className="absolute bottom-1 right-1 rounded-btn bg-black/60 px-1 text-[10px] text-white">
+              音频
+            </span>
+          )}
+          {asset.tags.length > 0 && (
+            <span className="absolute left-1 top-1 max-w-[calc(100%-2rem)] truncate rounded-btn bg-black/60 px-1 text-[10px] text-white">
+              {asset.tags.join(', ')}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
   )
 }

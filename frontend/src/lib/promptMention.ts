@@ -35,6 +35,8 @@ export interface ReferenceAsset {
   auditStatus?: 'pending' | 'active' | 'failed'
   /** 审核失败原因。 */
   auditError?: string | null
+  /** 素材时长（秒），仅视频/音频有值；用于提交前校验音频总时长限制。 */
+  duration?: number
 }
 
 /**
@@ -86,6 +88,12 @@ export const KIND_LABELS: Record<ReferenceKind, string> = {
   video: '参考视频',
   audio: '参考音频',
 }
+
+/**
+ * Seedance 2.0 视频生成：引用音频素材总时长上限（秒）。
+ * 多段参考音频时长累加不得超过此值，否则提交时拦截并提示用户。
+ */
+export const MAX_AUDIO_TOTAL_DURATION = 15
 /** 视频模式下文件选择器接受：图片 + mp4/mov 视频 + wav/mp3 音频。 */
 export const ACCEPT_VIDEO_MODE =
   'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'

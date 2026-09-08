@@ -169,7 +169,7 @@ export function PromptFullscreenEditor({
                           : 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
                       )}
                     >
-                      <span className="h-6 w-6 shrink-0 overflow-hidden rounded border border-border">
+                      <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded border border-border">
                         {item.kind === 'image' ? (
                           <img
                             src={item.thumbUrl}
@@ -180,6 +180,17 @@ export function PromptFullscreenEditor({
                           <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
                             <Video className="h-3.5 w-3.5" />
                           </span>
+                        ) : item.thumbUrl ? (
+                          <>
+                            <img
+                              src={item.thumbUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                            <span className="absolute bottom-0 right-0 flex h-3 w-3 items-center justify-center rounded-tl bg-accent text-bg-primary">
+                              <Music className="h-2 w-2" />
+                            </span>
+                          </>
                         ) : (
                           <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
                             <Music className="h-3.5 w-3.5" />

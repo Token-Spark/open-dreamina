@@ -20,6 +20,7 @@ import {
 import {
   batchDeleteAssets,
   deleteAsset,
+  listAssetTags,
   listAssets,
   updateAsset,
   type Asset,
@@ -29,12 +30,22 @@ import {
 import type { Paginated } from '@/api/client'
 
 export const ASSETS_KEY = ['assets'] as const
+export const ASSET_TAGS_KEY = ['assets', 'tags'] as const
 
 /** List assets with reactive filters. */
 export function useAssets(query: ListAssetsQuery) {
   return useQuery({
     queryKey: [...ASSETS_KEY, query],
     queryFn: () => listAssets(query),
+  })
+}
+
+/** All available asset tags with counts, for filter UI. */
+export function useAssetTags() {
+  return useQuery({
+    queryKey: ASSET_TAGS_KEY,
+    queryFn: listAssetTags,
+    staleTime: 30 * 1000,
   })
 }
 

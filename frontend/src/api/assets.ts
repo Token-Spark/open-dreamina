@@ -53,9 +53,19 @@ export interface UpdateAssetPayload {
   is_favorite?: boolean
 }
 
+export interface AssetTag {
+  name: string
+  count: number
+}
+
 export async function listAssets(query: ListAssetsQuery = {}): Promise<Paginated<Asset>> {
   const { data } = await apiClient.get<Paginated<Asset>>('/assets', { params: query })
   return data
+}
+
+export async function listAssetTags(): Promise<AssetTag[]> {
+  const { data } = await apiClient.get<{ tags: AssetTag[] }>('/assets/tags')
+  return data.tags
 }
 
 export async function getAsset(assetId: string): Promise<Asset> {

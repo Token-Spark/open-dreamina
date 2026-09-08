@@ -136,29 +136,28 @@ export function usePromptMention({
     const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
     // 预计算 library 项加入后每种类型的起始编号
     const libStart: Record<ReferenceKind, number> = { ...counts }
+    // 人物素材的图片与音频拆分为独立候选项，用户可按需引用形象或音色。
+    // 音频候选项展示角色形象缩略图+Music角标，标签追加「· 音色」后缀。
     const libItems: MentionItem[] = (libData?.items ?? [])
-      .filter((ca) => !refIds.has(ca.image_asset_id ?? ca.audio_asset_id ?? ''))
-      .map((ca) => {
+      .flatMap((ca) => {
         const pending = pendingAssetsOf(ca, mode, allowAudio).filter(
           (pa) => !refIds.has(pa.assetId),
         )
-        const tokens = pending.map((pa) => {
-          libStart[pa.kind ?? 'image'] += 1
-          const short = pa.kind === 'image' ? '图' : pa.kind === 'video' ? '视频' : '音频'
-          return `@${short}${libStart[pa.kind ?? 'image']}`
+        return pending.map((pa) => {
+          const kind = (pa.kind ?? 'image') as ReferenceKind
+          libStart[kind] += 1
+          const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
+          return {
+            source: 'library' as const,
+            asset: pa,
+            assets: [pa],
+            kind,
+            tokens: [`@${short}${libStart[kind]}`],
+            label: kind === 'audio' && ca.category === 'character' ? `${ca.name} · 音色` : ca.name,
+            thumbUrl: ca.image_thumbnail_url ?? '',
+          }
         })
-        const primary = pending[0]
-        return {
-          source: 'library' as const,
-          asset: primary,
-          assets: pending,
-          kind: (primary?.kind ?? 'image') as ReferenceKind,
-          tokens,
-          label: ca.name,
-          thumbUrl: ca.image_thumbnail_url ?? '',
-        }
       })
-      .filter((it) => it.assets.length > 0)
 
     const all = [...slotItems, ...libItems]
     if (!mention.query) return all

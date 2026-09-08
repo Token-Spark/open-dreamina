@@ -165,6 +165,11 @@ class AssetListResponse(BaseModel):
     page_size: int
 
 
+class AssetTagResponse(BaseModel):
+    """资产标签汇总（含计数），驱动前端素材筛选。"""
+    tags: list[dict] = Field(default_factory=list)  # [{name, count}]
+
+
 class BatchDeleteRequest(BaseModel):
     asset_ids: list[str]
 

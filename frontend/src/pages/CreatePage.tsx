@@ -21,6 +21,7 @@ import type { Template } from '@/api/templates'
 import { listTemplates } from '@/api/templates'
 import { getSystemSettings } from '@/api/system'
 import { useProviders } from '@/hooks/useProviders'
+import { useAssetAudit } from '@/hooks/useAssetAudit'
 import { useTaskStore } from '@/stores/taskStore'
 import { useConversationStore, useCurrentTopic, type GenMessage } from '@/stores/conversationStore'
 import { toast } from '@/stores/uiStore'
@@ -33,7 +34,7 @@ import {
   effectiveFrameMode,
   frameModeSpec,
   isSeedanceProvider,
-  isSparkHubSeedance,
+  MAX_AUDIO_TOTAL_DURATION,
   normalizeFrameMode,
   type ReferenceAsset,
 } from '@/components/GenerationInputBar'
@@ -85,6 +86,14 @@ export function CreatePage() {
   )
   const [refAssets, setRefAssets] = useState<ReferenceAsset[]>([])
   const [submitting, setSubmitting] = useState(false)
+
+  // Spark Hub Seedance：@ 引用素材库添加的参考素材未经上传流程，缺少审核状态。
+  // 此 hook 自动为其提审并轮询，与 GenerationInputBar 内联管理的审核状态合并。
+  const { ensureAudited, augmentRefAssets, checkAuditGate } = useAssetAudit(providerSlug)
+  const auditedRefAssets = augmentRefAssets(refAssets)
+  useEffect(() => {
+    ensureAudited(refAssets)
+  }, [refAssets, ensureAudited])
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxMessage, setLightboxMessage] = useState<
     { url: string; type: 'image' | 'video'; meta: Record<string, unknown> } | null
@@ -277,14 +286,17 @@ export function CreatePage() {
       }
     }
     // Spark Hub Seedance：参考素材需先通过审核才能用于视频生成，未通过时阻止提交。
-    // 音频参考无需审核，不参与校验。
-    if (isSparkHubSeedance(providerSlug) && hasRef) {
-      const auditable = requestRefAssets.filter((a) => (a.kind ?? 'image') !== 'audio')
-      const unaudited = auditable.filter((a) => a.auditStatus !== 'active')
-      if (unaudited.length) {
-        const pending = unaudited.some((a) => a.auditStatus === 'pending')
+    // 音频参考无需审核，不参与校验。审核状态由 useAssetAudit 统一管理，
+    // 覆盖直接上传（GenerationInputBar 内联）与 @ 引用素材库（hook 自动提审）两条路径。
+    if (!checkAuditGate(requestRefAssets)) return
+    // Seedance 2.0 视频生成：引用音频素材总时长不得超过 15 秒。
+    // 多段参考音频时长累加，超出时阻止提交并提示用户移除或替换过长的音频。
+    if (isSeedanceProvider(providerSlug) && requestMode === 'video') {
+      const audioAssets = requestRefAssets.filter((a) => (a.kind ?? 'image') === 'audio')
+      const totalAudioDuration = audioAssets.reduce((sum, a) => sum + (a.duration ?? 0), 0)
+      if (totalAudioDuration > MAX_AUDIO_TOTAL_DURATION) {
         return toast(
-          pending ? '参考素材正在审核中，请等待审核通过后再生成' : '参考素材未通过审核，无法生成',
+          `参考音频总时长 ${totalAudioDuration.toFixed(1)} 秒，超过 ${MAX_AUDIO_TOTAL_DURATION} 秒上限，请移除或替换较短的音频`,
           'error',
         )
       }
@@ -339,7 +351,7 @@ export function CreatePage() {
   }
 
   function handleGenerate() {
-    submitGeneration(prompt, mode, params, refAssets, modelId)
+    submitGeneration(prompt, mode, params, auditedRefAssets, modelId)
   }
 
   // 重试：后端复用同一 task_id 与 conversation_id，本地更新消息状态即可
@@ -407,9 +419,12 @@ export function CreatePage() {
             kind: a.type,
             auditStatus: a.audit_status ?? undefined,
             auditError: a.audit_error,
+            duration: (a.type === 'audio' || a.type === 'video') && a.duration != null
+              ? a.duration
+              : undefined,
           }
         } catch {
-          return { kind: 'image' as const, auditStatus: undefined, auditError: null }
+          return { kind: 'image' as const, auditStatus: undefined, auditError: null, duration: undefined }
         }
       }),
     )
@@ -420,6 +435,7 @@ export function CreatePage() {
         kind: metas[i].kind,
         auditStatus: metas[i].auditStatus,
         auditError: metas[i].auditError,
+        duration: metas[i].duration,
       })),
     )
   }
@@ -525,7 +541,7 @@ export function CreatePage() {
           onModelChange={setModelId}
           params={params}
           onParamsChange={setParams}
-          refAssets={refAssets}
+          refAssets={auditedRefAssets}
           onRefAssetsChange={setRefAssets}
           onGenerate={handleGenerate}
           submitting={submitting}
