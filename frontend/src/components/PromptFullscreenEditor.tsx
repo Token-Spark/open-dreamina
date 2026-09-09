@@ -219,7 +219,7 @@ export function PromptFullscreenEditor({
         )}
 
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
-          <div className="relative flex-1">
+          <div className="relative min-h-0 flex-1">
             {/* @ 引用高亮覆盖层：textarea 文字设为透明，底层渲染高亮 token */}
             {enableMention && (
               <PromptMentionOverlay
@@ -243,7 +243,7 @@ export function PromptFullscreenEditor({
               placeholder={placeholder}
               autoFocus
               className={cn(
-                'relative flex-1 resize-none bg-transparent p-[2px] text-lg leading-relaxed placeholder:text-fg-muted focus-visible:outline-none scrollbar-thin',
+                'absolute inset-0 resize-none bg-transparent p-[2px] text-lg leading-relaxed placeholder:text-fg-muted focus-visible:outline-none scrollbar-thin',
                 enableMention ? 'text-transparent caret-fg-primary' : 'text-fg-primary',
               )}
               style={{ zIndex: 10 }}
