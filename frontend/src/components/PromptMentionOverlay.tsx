@@ -16,13 +16,14 @@
  * 提示词 @ 引用高亮覆盖层。
  *
  * 在 textarea 下方叠加一层同样式 div，将提示词中已被引用的 @ token（如 @图1、@视频1）
- * 渲染为带高亮背景的独立标签，并显示对应的素材名称，让用户直观区分「普通文本」与「已绑定的引用素材」。
+ * 渲染为带高亮背景的独立标签，让用户直观区分「普通文本」与「已绑定的引用素材」。
  *
  * 原理：
  *   - 覆盖层与 textarea 共享相同的字体度量、padding 和换行规则
  *   - textarea 文字设为透明（text-transparent），仅显示光标（caret-fg-primary）
  *   - 覆盖层位于 textarea 下方（z-0），textarea 位于上方（z-10）
  *   - 覆盖层随 textarea 滚动同步偏移
+ *   - 覆盖层文本与 textarea 文本完全一致（token 原样渲染），通过 title 属性显示素材名
  */
 
 import { useMemo, type CSSProperties } from 'react'
@@ -48,7 +49,7 @@ export interface PromptMentionOverlayProps {
   className?: string
   /** textarea 滚动偏移，保持覆盖层内容与 textarea 对齐。 */
   scrollOffset?: { top: number; left: number }
-  /** 参考素材列表，用于将 @图1 token 解析为素材名称展示。 */
+  /** 参考素材列表，用于将 @图1 token 解析为素材名称（title 展示）。 */
   refAssets?: ReferenceAsset[]
   style?: CSSProperties
 }
@@ -75,7 +76,8 @@ export function PromptMentionOverlay({
   refAssets,
   style,
 }: PromptMentionOverlayProps) {
-  // 将提示词按 @ token 拆分：token 部分渲染为高亮标签（含素材名），其余为普通文本。
+  // 将提示词按 @ token 拆分：token 部分渲染为高亮标签（title 显示素材名），其余为普通文本。
+  // 注意：标签内文本必须与 textarea 中的 token 完全一致，否则换行位置不同导致光标错位。
   const segments = useMemo(() => {
     if (!enabled || !prompt) return null
     const parts: Array<{ type: 'text' | 'mention'; value: string; name?: string }> = []
@@ -113,14 +115,14 @@ export function PromptMentionOverlay({
         seg.type === 'mention' ? (
           <span
             key={i}
+            title={seg.name ?? undefined}
             style={{
               backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
               color: 'var(--accent)',
               borderRadius: '3px',
-              padding: '0 2px',
             }}
           >
-            {seg.name ? `${seg.value}（${seg.name}）` : seg.value}
+            {seg.value}
           </span>
         ) : (
           <span key={i}>{seg.value}</span>
