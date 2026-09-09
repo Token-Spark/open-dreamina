@@ -201,53 +201,57 @@ export function PromptMentionOverlay({
       {/* 视觉高亮层（textarea 下方，z-0） */}
       <div
         aria-hidden
-        className={cn(
-          'pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words',
-          className,
-        )}
-        style={{ ...style, zIndex: 0, transform }}
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+        style={{ ...style, zIndex: 0 }}
       >
-        {segments?.map((seg, i) =>
-          seg.type === 'mention' ? (
-            <span
-              key={i}
-              title={seg.name ?? undefined}
-              style={{
-                backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
-                color: 'var(--accent)',
-                borderRadius: '3px',
-              }}
-            >
-              {seg.value}
-            </span>
-          ) : (
-            <span key={i}>{seg.value}</span>
-          ),
-        )}
+        <div
+          className={cn('whitespace-pre-wrap break-words', className)}
+          style={{ transform }}
+        >
+          {segments?.map((seg, i) =>
+            seg.type === 'mention' ? (
+              <span
+                key={i}
+                title={seg.name ?? undefined}
+                style={{
+                  backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
+                  color: 'var(--accent)',
+                  borderRadius: '3px',
+                }}
+              >
+                {seg.value}
+              </span>
+            ) : (
+              <span key={i}>{seg.value}</span>
+            ),
+          )}
+        </div>
       </div>
       {/* 交互层（textarea 上方，z-15）：透明文字，仅 mention span 可交互 */}
       <div
         aria-hidden
-        className={cn(
-          'absolute inset-0 overflow-hidden whitespace-pre-wrap break-words',
-          className,
-        )}
-        style={{ zIndex: 15, color: 'transparent', pointerEvents: 'none', transform }}
+        className="absolute inset-0 overflow-hidden"
+        style={{ zIndex: 15, color: 'transparent', pointerEvents: 'none' }}
       >
-        {segments?.map((seg, i) =>
-          seg.type === 'mention' ? (
-            <span
-              key={i}
-              style={{ pointerEvents: 'auto' }}
-              onMouseEnter={(e) => handleMentionEnter(e, seg.value)}
-              onMouseLeave={handleMentionLeave}
-            >
-              {seg.value}
-            </span>
-          ) : (
-            <span key={i}>{seg.value}</span>
-          ),
-        )}
+        <div
+          className={cn('whitespace-pre-wrap break-words', className)}
+          style={{ transform }}
+        >
+          {segments?.map((seg, i) =>
+            seg.type === 'mention' ? (
+              <span
+                key={i}
+                style={{ pointerEvents: 'auto' }}
+                onMouseEnter={(e) => handleMentionEnter(e, seg.value)}
+                onMouseLeave={handleMentionLeave}
+              >
+                {seg.value}
+              </span>
+            ) : (
+              <span key={i}>{seg.value}</span>
+            ),
+          )}
+        </div>
       </div>
       {hoverAsset && hoverRect && (
         <MentionHoverPreview asset={hoverAsset} anchorRect={hoverRect} />

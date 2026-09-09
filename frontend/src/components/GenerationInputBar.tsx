@@ -466,7 +466,7 @@ export function GenerationInputBar({
   }
 
   return (
-    <div className={cn('bg-transparent', compact ? 'p-0' : 'p-4')}>
+    <div className={cn('bg-transparent shrink-0', compact ? 'p-0' : 'p-4')}>
       <div className={cn(!compact && 'mx-auto max-w-5xl')}>
         <div
           className={cn(
@@ -638,7 +638,7 @@ export function GenerationInputBar({
                   className={cn(
                     'leading-relaxed p-[2px]',
                     compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
-                    'w-full',
+                    'max-h-[240px] w-full',
                   )}
                 />
                 <textarea
@@ -665,6 +665,7 @@ export function GenerationInputBar({
                     'relative w-full resize-none bg-transparent p-[2px] leading-relaxed text-transparent caret-fg-primary placeholder:text-fg-muted',
                     'transition-[height] duration-200 focus-visible:outline-none',
                     compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
+                    'max-h-[240px]',
                   )}
                   style={{ zIndex: 10 }}
                 />
@@ -694,7 +695,7 @@ export function GenerationInputBar({
           </div>
 
           {/* 底部工具栏 */}
-          <div className={cn('mt-4 flex flex-wrap items-center gap-2', !compact && 'pr-36')}>
+          <div className={cn('mt-4 flex flex-wrap items-center gap-2')}>
             {!compact && <ModeDropdown mode={mode} onChange={onModeChange} disabled={submitting} placement="top" />}
             <ModelPicker
               mode={mode}
@@ -731,7 +732,7 @@ export function GenerationInputBar({
               disabled={submitting || atConcurrencyLimit}
               className={cn(
                 'transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]',
-                compact ? 'ml-auto' : 'absolute bottom-5 right-5',
+                'ml-auto',
               )}
             >
               <Wand2 className="h-4 w-4" />
