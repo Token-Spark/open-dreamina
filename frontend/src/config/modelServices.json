@@ -58,6 +58,34 @@
       ]
     },
     {
+      "slug": "openai-gpt-image-2-5-flare",
+      "name": "GPT Image 2.5 Flare",
+      "vendor": "OpenAI",
+      "description": "OpenAI GPT Image 2.5 Flare 图片生成与编辑模型，速度优先，适合高吞吐日常生成与快速原型。经 OpenRouter 接入，支持文生图与图生图（最多 16 张参考图）。",
+      "docsUrl": "https://openrouter.ai/openai/gpt-image-2.5-flare",
+      "modes": ["image"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入 OpenRouter API Key（sk-or-v1-...）"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用 OpenRouter 官方地址",
+          "default": "https://openrouter.ai/api/v1"
+        }
+      ],
+      "models": [
+        { "id": "gpt-image-2.5-flare", "label": "GPT Image 2.5 Flare", "types": ["text2img", "img2img"] }
+      ]
+    },
+    {
       "slug": "seedream",
       "name": "Seedream 5.0",
       "vendor": "Volcengine",

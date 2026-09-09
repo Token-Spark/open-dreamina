@@ -75,7 +75,7 @@ STEP 11 最终验收评分（Production Score）       → references/11-princip
 2. 每个 Shot 必须通过 "一个镜头只解决一个主要视觉任务" 校验；复杂动作必须拆镜头。
 3. 每个 Scene 必须满足 **Scene Start ≠ Scene End**；每个 Beat 必须产生 Information / Emotion / Action / Decision 至少一种变化。
 4. 一致性资产（Character Lock / Location Lock / Visual Bible）必须先行建立，后续 Prompt 引用 ID，禁止每次重新描述。
-5. Image Prompt 与 Video Prompt 必须分离设计，禁止复制。
+5. Image Prompt 与 Video Prompt 必须分离设计，禁止复制；Video Prompt 必须使用 `references/06-prompt-architecture.md` 中的结构化模板输出。
 6. 先 Keyframe，后 Video；关键帧失败必须先修 Keyframe，不要直接生成 Video。
 7. 镜头评分 < 70 重新生成；< 60 重新设计 Shot，不得简单重新抽卡。
 8. 始终遵循 **Don't generate what you cannot control**，优先简单可靠镜头 + 剪辑组合。

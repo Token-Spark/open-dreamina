@@ -38,6 +38,9 @@ from .base import BaseProvider, GenerationResult, ProviderError
 # OpenAI 默认图片生成模型（GPT Image 2）
 MODEL_GPT_IMAGE_2 = "gpt-image-2"
 
+# GPT Image 2.5 Flare — 速度优先的图片生成与编辑模型（经 OpenRouter 接入）
+MODEL_GPT_IMAGE_2_5_FLARE = "gpt-image-2.5-flare"
+
 # 生成耗时随画质/尺寸上升（OpenRouter p95 约 120s），对齐 Gemini provider 放宽超时
 _REQUEST_TIMEOUT = 300
 

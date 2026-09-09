@@ -29,7 +29,7 @@ from .dreamina_cli_provider import DreaminaSeedanceProvider, DreaminaSeedreamPro
 from .gemini_image_provider import GeminiImageProvider
 from .kling_provider import KlingProvider
 from .mock_provider import MockProvider
-from .openai_provider import OpenAIProvider
+from .openai_provider import MODEL_GPT_IMAGE_2_5_FLARE, OpenAIProvider
 from .seedance_provider import MODEL_SEEDANCE_2_0, MODEL_SEEDANCE_2_5, SeedanceProvider
 from .seedream_provider import SeedreamProvider
 from .sparkhub_seedance import SparkHubSeedanceProvider
@@ -88,6 +88,19 @@ _REGISTRY: dict[str, RegistryEntry] = {
         default_base_url="https://api.openai.com/v1",
         builtin=False,
         display_name="OpenAI（GPT Image 2）",
+        modes=_modes_from_types(OpenAIProvider.SUPPORTED_TYPES),
+    ),
+    "openai-gpt-image-2-5-flare": RegistryEntry(
+        # GPT Image 2.5 Flare — 速度优先的图片生成与编辑模型，经 OpenRouter 接入。
+        # 复用 OpenAIProvider，协议自动适配统一网关（模型 ID 补 openai/ 前缀）。
+        factory=lambda b, k, c: OpenAIProvider(
+            b or "https://openrouter.ai/api/v1",
+            k,
+            {**c, "model_id": MODEL_GPT_IMAGE_2_5_FLARE},
+        ),
+        default_base_url="https://openrouter.ai/api/v1",
+        builtin=False,
+        display_name="OpenAI GPT Image 2.5 Flare（OpenRouter）",
         modes=_modes_from_types(OpenAIProvider.SUPPORTED_TYPES),
     ),
     "gemini-3-pro-image": RegistryEntry(

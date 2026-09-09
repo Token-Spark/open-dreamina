@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, Loader2, Music, Plus, Video, X } from 'lucide-react'
 
 /** 参考素材类型：图片 / 视频 / 音频（视频模式支持多模态参考，见火山方舟视频生成 API）。 */
@@ -74,6 +76,51 @@ function AuditBadge({ status, error }: { status: AuditStatus; error?: string | n
   return null
 }
 
+/** 鼠标悬浮预览弹层：展示素材大图/视频缩略图/音频信息。 */
+function HoverPreview({
+  previewUrl,
+  kind,
+  label,
+  anchorRect,
+}: {
+  previewUrl: string
+  kind: ReferenceKind
+  label?: string
+  anchorRect: DOMRect
+}) {
+  // 根据锚点位置计算弹层放置方向（上方/下方），避免溢出视口
+  const spaceAbove = anchorRect.top
+  const placeBelow = spaceAbove < 220
+  const top = placeBelow ? anchorRect.bottom + 8 : anchorRect.top - 8
+  const left = anchorRect.left + anchorRect.width / 2
+
+  return createPortal(
+    <div
+      className="fixed z-[80] flex -translate-x-1/2 flex-col gap-1 rounded-card border border-border bg-bg-secondary p-2 shadow-elevated animate-fade-in"
+      style={{
+        top,
+        left,
+        transform: `translate(-50%, ${placeBelow ? '0' : '-100%'})`,
+      }}
+    >
+      <div className="h-32 w-32 overflow-hidden rounded-btn border border-border">
+        {kind === 'video' ? (
+          <video src={previewUrl} muted playsInline className="h-full w-full object-cover" />
+        ) : kind === 'audio' ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-bg-tertiary">
+            <Music className="h-8 w-8 text-fg-muted" />
+            <span className="text-[10px] text-fg-muted">音频素材</span>
+          </div>
+        ) : (
+          <img src={previewUrl} alt={label ?? KIND_LABEL[kind]} className="h-full w-full object-cover" />
+        )}
+      </div>
+      <span className="text-center text-xs text-fg-muted">{label ?? KIND_LABEL[kind]}</span>
+    </div>,
+    document.body,
+  )
+}
+
 export function ReferenceSlot({
   previewUrl,
   kind = 'image',
@@ -84,10 +131,40 @@ export function ReferenceSlot({
   auditStatus,
   auditError,
 }: ReferenceSlotProps) {
+  const [hoverPreview, setHoverPreview] = useState(false)
+  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null)
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 清理挂起的定时器，防止组件卸载后回调执行
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    }
+  }, [])
+
+  /** 显示悬浮预览：延迟 200ms 触发，避免鼠标快速掠过时闪烁。 */
+  function handleMouseEnter(e: React.MouseEvent) {
+    if (!previewUrl) return
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = null
+    }
+    setHoverRect(e.currentTarget.getBoundingClientRect())
+    setHoverPreview(true)
+  }
+
+  /** 隐藏悬浮预览：延迟 100ms 关闭，避免鼠标移动到弹层时的间隙抖动。 */
+  function handleMouseLeave() {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    hideTimerRef.current = setTimeout(() => setHoverPreview(false), 100)
+  }
+
   const slot = previewUrl ? (
     <div
       className="relative h-16 w-16 shrink-0 cursor-zoom-in overflow-hidden rounded-btn border border-border transition-shadow hover:shadow-elevated"
       onClick={onPreview}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       role={onPreview ? 'button' : undefined}
       tabIndex={onPreview ? 0 : undefined}
       onKeyDown={(e) => {
@@ -135,11 +212,30 @@ export function ReferenceSlot({
     </button>
   )
 
-  if (!label) return slot
+  if (!label) return (
+    <>
+      {slot}
+      {hoverPreview && hoverRect && (
+        <HoverPreview
+          previewUrl={previewUrl!}
+          kind={kind}
+          anchorRect={hoverRect}
+        />
+      )}
+    </>
+  )
   return (
     <div className="flex w-16 shrink-0 flex-col items-center gap-1">
       {slot}
       <span className="text-xs text-fg-muted">{label}</span>
+      {hoverPreview && hoverRect && (
+        <HoverPreview
+          previewUrl={previewUrl!}
+          kind={kind}
+          label={label}
+          anchorRect={hoverRect}
+        />
+      )}
     </div>
   )
 }

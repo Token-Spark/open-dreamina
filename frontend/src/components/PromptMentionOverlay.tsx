@@ -19,14 +19,17 @@
  * 渲染为带高亮背景的独立标签，让用户直观区分「普通文本」与「已绑定的引用素材」。
  *
  * 原理：
- *   - 覆盖层与 textarea 共享相同的字体度量、padding 和换行规则
+ *   - 视觉层（z-0）与 textarea 共享相同的字体度量、padding 和换行规则
  *   - textarea 文字设为透明（text-transparent），仅显示光标（caret-fg-primary）
- *   - 覆盖层位于 textarea 下方（z-0），textarea 位于上方（z-10）
+ *   - 交互层（z-15）位于 textarea 上方，透明文字，仅 mention span 可交互
+ *   - 鼠标悬浮 mention span 时弹出预览弹层（图片大图 / 视频缩略图 / 音频占位）
  *   - 覆盖层随 textarea 滚动同步偏移
  *   - 覆盖层文本与 textarea 文本完全一致（token 原样渲染），通过 title 属性显示素材名
  */
 
-import { useMemo, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
+import { Music } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ReferenceAsset } from '@/lib/promptMention'
 
@@ -34,10 +37,16 @@ import type { ReferenceAsset } from '@/lib/promptMention'
 const MENTION_RE = /@(图|视频|音频)(\d+)/g
 
 /** token 中的类型前缀 → ReferenceKind 映射 */
-const TOKEN_KIND: Record<string, ReferenceAsset['kind']> = {
+const TOKEN_KIND: Record<string, NonNullable<ReferenceAsset['kind']>> = {
   '图': 'image',
   '视频': 'video',
   '音频': 'audio',
+}
+
+const KIND_LABEL: Record<NonNullable<ReferenceAsset['kind']>, string> = {
+  image: '参考图',
+  video: '参考视频',
+  audio: '参考音频',
 }
 
 export interface PromptMentionOverlayProps {
@@ -68,6 +77,59 @@ function resolveTokenName(token: string, refAssets: ReferenceAsset[]): string | 
   return asset?.name ?? null
 }
 
+/** 解析 @ token 对应的参考素材（用于悬浮预览）。 */
+function resolveTokenAsset(token: string, refAssets: ReferenceAsset[]): ReferenceAsset | null {
+  const m = token.match(/^@(图|视频|音频)(\d+)$/)
+  if (!m) return null
+  const kind = TOKEN_KIND[m[1]]
+  const idx = parseInt(m[2], 10)
+  const sameKind = refAssets.filter((a) => (a.kind ?? 'image') === kind)
+  return sameKind[idx - 1] ?? null
+}
+
+/** mention token 悬浮预览弹层：展示素材大图/视频缩略图/音频信息。 */
+function MentionHoverPreview({
+  asset,
+  anchorRect,
+}: {
+  asset: ReferenceAsset
+  anchorRect: DOMRect
+}) {
+  const kind = (asset.kind ?? 'image') as NonNullable<ReferenceAsset['kind']>
+  const name = asset.name ?? KIND_LABEL[kind]
+
+  // 根据锚点位置计算弹层放置方向（上方/下方），避免溢出视口
+  const placeBelow = anchorRect.top < 220
+  const top = placeBelow ? anchorRect.bottom + 8 : anchorRect.top - 8
+  const left = anchorRect.left + anchorRect.width / 2
+
+  return createPortal(
+    <div
+      className="fixed z-[80] flex -translate-x-1/2 flex-col gap-1 rounded-card border border-border bg-bg-secondary p-2 shadow-elevated animate-fade-in"
+      style={{
+        top,
+        left,
+        transform: `translate(-50%, ${placeBelow ? '0' : '-100%'})`,
+      }}
+    >
+      <div className="h-32 w-32 overflow-hidden rounded-btn border border-border">
+        {kind === 'video' ? (
+          <video src={asset.previewUrl} muted playsInline className="h-full w-full object-cover" />
+        ) : kind === 'audio' ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-bg-tertiary">
+            <Music className="h-8 w-8 text-fg-muted" />
+            <span className="text-[10px] text-fg-muted">音频素材</span>
+          </div>
+        ) : (
+          <img src={asset.previewUrl} alt={name} className="h-full w-full object-cover" />
+        )}
+      </div>
+      <span className="block max-w-32 truncate text-center text-xs text-fg-muted">{name}</span>
+    </div>,
+    document.body,
+  )
+}
+
 export function PromptMentionOverlay({
   prompt,
   enabled = true,
@@ -76,6 +138,17 @@ export function PromptMentionOverlay({
   refAssets,
   style,
 }: PromptMentionOverlayProps) {
+  const [hoverAsset, setHoverAsset] = useState<ReferenceAsset | null>(null)
+  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null)
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 清理挂起的定时器，防止组件卸载后回调执行
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    }
+  }, [])
+
   // 将提示词按 @ token 拆分：token 部分渲染为高亮标签（title 显示素材名），其余为普通文本。
   // 注意：标签内文本必须与 textarea 中的 token 完全一致，否则换行位置不同导致光标错位。
   const segments = useMemo(() => {
@@ -96,38 +169,89 @@ export function PromptMentionOverlay({
 
   if (!enabled) return null
 
+  /** 鼠标进入 mention span：清除隐藏定时器，显示预览。 */
+  function handleMentionEnter(e: React.MouseEvent, token: string) {
+    if (!refAssets) return
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = null
+    }
+    const asset = resolveTokenAsset(token, refAssets)
+    if (asset) {
+      setHoverAsset(asset)
+      setHoverRect(e.currentTarget.getBoundingClientRect())
+    }
+  }
+
+  /** 鼠标离开 mention span：延迟 100ms 关闭，避免鼠标移动抖动。 */
+  function handleMentionLeave() {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    hideTimerRef.current = setTimeout(() => {
+      setHoverAsset(null)
+      setHoverRect(null)
+    }, 100)
+  }
+
+  const transform = scrollOffset
+    ? `translate(${-scrollOffset.left}px, ${-scrollOffset.top}px)`
+    : undefined
+
   return (
-    <div
-      aria-hidden
-      className={cn(
-        'pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words',
-        className,
+    <>
+      {/* 视觉高亮层（textarea 下方，z-0） */}
+      <div
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words',
+          className,
+        )}
+        style={{ ...style, zIndex: 0, transform }}
+      >
+        {segments?.map((seg, i) =>
+          seg.type === 'mention' ? (
+            <span
+              key={i}
+              title={seg.name ?? undefined}
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
+                color: 'var(--accent)',
+                borderRadius: '3px',
+              }}
+            >
+              {seg.value}
+            </span>
+          ) : (
+            <span key={i}>{seg.value}</span>
+          ),
+        )}
+      </div>
+      {/* 交互层（textarea 上方，z-15）：透明文字，仅 mention span 可交互 */}
+      <div
+        aria-hidden
+        className={cn(
+          'absolute inset-0 overflow-hidden whitespace-pre-wrap break-words',
+          className,
+        )}
+        style={{ zIndex: 15, color: 'transparent', pointerEvents: 'none', transform }}
+      >
+        {segments?.map((seg, i) =>
+          seg.type === 'mention' ? (
+            <span
+              key={i}
+              style={{ pointerEvents: 'auto' }}
+              onMouseEnter={(e) => handleMentionEnter(e, seg.value)}
+              onMouseLeave={handleMentionLeave}
+            >
+              {seg.value}
+            </span>
+          ) : (
+            <span key={i}>{seg.value}</span>
+          ),
+        )}
+      </div>
+      {hoverAsset && hoverRect && (
+        <MentionHoverPreview asset={hoverAsset} anchorRect={hoverRect} />
       )}
-      style={{
-        ...style,
-        zIndex: 0,
-        transform: scrollOffset
-          ? `translate(${-scrollOffset.left}px, ${-scrollOffset.top}px)`
-          : undefined,
-      }}
-    >
-      {segments?.map((seg, i) =>
-        seg.type === 'mention' ? (
-          <span
-            key={i}
-            title={seg.name ?? undefined}
-            style={{
-              backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
-              color: 'var(--accent)',
-              borderRadius: '3px',
-            }}
-          >
-            {seg.value}
-          </span>
-        ) : (
-          <span key={i}>{seg.value}</span>
-        ),
-      )}
-    </div>
+    </>
   )
 }
