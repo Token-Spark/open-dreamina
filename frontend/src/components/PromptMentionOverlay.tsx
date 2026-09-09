@@ -198,10 +198,12 @@ export function PromptMentionOverlay({
 
   return (
     <>
-      {/* 视觉高亮层（textarea 下方，z-0） */}
+      {/* 视觉高亮层（textarea 下方，z-0）
+          overflow-y-auto + scrollbar-gutter-only：预留与 textarea 相同的滚动条宽度，
+          确保两层文本排版宽度一致，避免换行点偏移导致光标/选区错位。 */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden"
+        className="pointer-events-none absolute inset-0 overflow-y-auto scrollbar-gutter-only"
         style={{ ...style, zIndex: 0 }}
       >
         <div

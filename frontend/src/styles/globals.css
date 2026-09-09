@@ -105,6 +105,22 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: var(--scrollbar-thumb-hover);
   }
+
+  /* 仅预留滚动条宽度、不显示滚动条的容器。
+     用于 mention overlay 外层：与带 scrollbar-thin 的 textarea 保持相同的内容排版宽度，
+     避免两层因滚动条占位不同导致换行点偏移、光标/选区错位。 */
+  .scrollbar-gutter-only {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scrollbar-gutter-only::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-gutter-only::-webkit-scrollbar-track,
+  .scrollbar-gutter-only::-webkit-scrollbar-thumb {
+    background: transparent;
+  }
 }
 
 /* Progress bar breathing glow (spec 10.1 动效) */

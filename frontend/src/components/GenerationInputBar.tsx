@@ -662,7 +662,7 @@ export function GenerationInputBar({
                   }
                   rows={compact ? 3 : 4}
                   className={cn(
-                    'relative w-full resize-none bg-transparent p-[2px] leading-relaxed text-transparent caret-fg-primary placeholder:text-fg-muted',
+                    'relative w-full resize-none bg-transparent p-[2px] leading-relaxed text-transparent caret-fg-primary placeholder:text-fg-muted scrollbar-thin',
                     'transition-[height] duration-200 focus-visible:outline-none',
                     compact ? 'min-h-20 text-sm' : 'min-h-[120px] text-base',
                     'max-h-[240px]',
