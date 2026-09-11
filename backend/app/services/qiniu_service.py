@@ -72,7 +72,12 @@ def _upload_sync(asset_id: str, file_path: Path, filename: str) -> str:
     bucket = _bucket()
     key = f"audit/{asset_id}/{filename}"
     token = auth.upload_token(bucket, key)
-    ret, info = put_file(token, key, str(file_path))
+    try:
+        ret, info = put_file(token, key, str(file_path))
+    except Exception as exc:
+        raise ProviderError(
+            f"七牛云上传失败（区域查询/网络异常）：{exc}"
+        ) from exc
     if info.status_code != 200:
         raise ProviderError(
             f"七牛云上传失败（HTTP {info.status_code}）：{info.error or ret}"
@@ -120,7 +125,12 @@ def upload_team_object(key: str, data: bytes) -> str:
     """上传字节内容到指定 key（团队资产，无生命周期），返回公网 URL。"""
     auth = _auth()
     token = auth.upload_token(_bucket(), key)
-    ret, info = put_data(token, key, data)
+    try:
+        ret, info = put_data(token, key, data)
+    except Exception as exc:
+        raise ProviderError(
+            f"七牛云上传失败（区域查询/网络异常）：{exc}"
+        ) from exc
     if info.status_code != 200:
         raise ProviderError(f"七牛云上传失败（HTTP {info.status_code}）：{info.error or ret}")
     return public_url(key)

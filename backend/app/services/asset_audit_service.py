@@ -23,10 +23,15 @@
 """
 from __future__ import annotations
 
+import asyncio
+import io
 import json
 import logging
+import tempfile
+from pathlib import Path
 
 import httpx
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -40,6 +45,53 @@ logger = logging.getLogger(__name__)
 
 _SUBMIT_PATH = "/task/seedance_asset_audit/submit"
 _STATUS_PATH = "/task/seedance_asset_audit/status"
+
+# 火山引擎审核 API 对图片有两个限制：
+# 1) 宽高比 ≤ 2.5（宽/高），超出返回 asset_api_http_400
+# 2) 最大边 ≤ 6000px，超出返回 asset_api_http_400
+_MAX_AUDIT_ASPECT_RATIO = 2.5
+_MAX_AUDIT_DIMENSION = 6000
+
+
+def _normalize_audit_image(asset: Asset, path: Path) -> Path:
+    """检查图片是否超出审核限制，超出时生成缩放后的临时文件。
+
+    火山引擎审核 API 要求：
+    - 图片宽高比 ≤ 2.5（宽/高）
+    - 图片最大边 ≤ 6000px
+    超出任一限制时等比缩放到合规尺寸。
+    返回原始路径或临时文件路径。
+    """
+    if asset.type != "image":
+        return path
+    w = asset.width or 0
+    h = asset.height or 0
+    if w <= 0 or h <= 0:
+        return path
+    ratio = w / h
+    needs_resize = False
+    new_w, new_h = w, h
+    if max(w, h) > _MAX_AUDIT_DIMENSION:
+        scale = _MAX_AUDIT_DIMENSION / max(w, h)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        needs_resize = True
+    # 缩放后重新检查宽高比（可能因最大边限制缩放后仍超比）
+    if new_w / new_h > _MAX_AUDIT_ASPECT_RATIO:
+        new_w = int(new_h * _MAX_AUDIT_ASPECT_RATIO)
+        needs_resize = True
+    if not needs_resize:
+        return path
+    logger.info(
+        "图片 %dx%d（ratio=%.2f）超出审核限制，缩放至 %dx%d（asset_id=%s）",
+        w, h, ratio, new_w, new_h, asset.id,
+    )
+    img = Image.open(path)
+    img = img.convert("RGB").resize((new_w, new_h), Image.LANCZOS)
+    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+    img.save(tmp, format="JPEG", quality=95)
+    img.close()
+    return Path(tmp.name)
 
 
 def _load_sparkhub_provider(db: Session, provider_slug: str):
@@ -71,12 +123,21 @@ async def asset_public_url(asset: Asset) -> str:
 
     优先使用七牛云临时存储（14 天自动过期）；未配置七牛云时回退到
     public_base_url 指向本服务的地址。
+    图片宽高比超出火山引擎审核限制时自动缩放。
     """
     if is_configured():
         path = resolve_relative(asset.file_path)
         if not path.exists():
             raise ProviderError(f"素材文件不存在：{asset.file_path}")
-        return await upload_asset_to_qiniu(asset.id, path, path.name)
+        upload_path = _normalize_audit_image(asset, path)
+        try:
+            return await upload_asset_to_qiniu(asset.id, upload_path, upload_path.name)
+        finally:
+            if upload_path is not path:
+                try:
+                    upload_path.unlink()
+                except OSError:
+                    pass
     base = (settings.public_base_url or "").rstrip("/")
     if not base:
         raise ProviderError(
@@ -113,9 +174,10 @@ def _raise_business_error(data: dict, context: str) -> None:
 _AUDIT_ERROR_HINTS: dict[str, str] = {
     "asset_api_http_400": (
         "素材 URL 不可访问或格式不合规。常见原因："
-        "1) URL 使用了 HTTP 而非 HTTPS（火山引擎审核 API 要求 HTTPS）；"
-        "2) 文件格式/大小/时长超出限制（视频需 MP4/MOV、2~30s、≤200MB）；"
-        "3) URL 不可公网访问"
+        "1) 图片宽高比超出限制（宽/高 ≤ 2.5）；"
+        "2) URL 使用了 HTTP 而非 HTTPS（火山引擎审核 API 要求 HTTPS）；"
+        "3) 文件格式/大小/时长超出限制（视频需 MP4/MOV、2~30s、≤200MB）；"
+        "4) URL 不可公网访问"
     ),
 }
 

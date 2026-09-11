@@ -27,8 +27,13 @@ data/
 # Env
 .env
 
+# ACME certs (Let's Encrypt private key)
+.acme-sh/
+
 # OS
 .DS_Store
 Thumbs.db
 
 .trae/
+.acme-sh/
+.acme-sh-certs/
