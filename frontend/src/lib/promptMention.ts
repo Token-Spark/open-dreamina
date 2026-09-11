@@ -43,7 +43,7 @@ export interface ReferenceAsset {
 
 /**
  * @ 引用候选项：可引用已上传的参考素材（slot）或素材库中的可复用素材（library）。
- * - slot：已在上传槽位中的素材，token 按类型编号（图1/视频1/音频1…）。
+ * - slot：已在上传槽位中的素材，token 使用素材名称（@{素材名}）。
  * - library：素材库（人物/场景/道具）中尚未加入参考列表的素材，选中后自动追加到 refAssets。
  */
 export interface MentionItem {
@@ -54,9 +54,9 @@ export interface MentionItem {
   /** 待加入参考列表的资产（slot 恒为单元素；人物素材可能同时含图片与音频）。 */
   assets: ReferenceAsset[]
   kind: ReferenceKind
-  /** 实际插入提示词的引用 token 列表，如 @图1，或 @图2、@音频1。 */
+  /** 实际插入提示词的引用 token 列表，如 @{素材名}。 */
   tokens: string[]
-  /** 展示名称。slot 为类型编号（参考图 1），library 为素材名称。 */
+  /** 展示名称。slot 为素材名称，library 为素材名称。 */
   label: string
   /** 缩略图地址；slot 用 file 原图，library 用素材缩略图。 */
   thumbUrl: string

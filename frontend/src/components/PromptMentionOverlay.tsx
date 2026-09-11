@@ -15,7 +15,7 @@
 /**
  * 提示词 @ 引用高亮覆盖层。
  *
- * 在 textarea 下方叠加一层同样式 div，将提示词中已被引用的 @ token（如 @图1、@视频1）
+ * 在 textarea 下方叠加一层同样式 div，将提示词中已被引用的 @ token（如 @{素材名}）
  * 渲染为带高亮背景的独立标签，让用户直观区分「普通文本」与「已绑定的引用素材」。
  *
  * 原理：
@@ -33,15 +33,8 @@ import { Music } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ReferenceAsset } from '@/lib/promptMention'
 
-/** 匹配提示词中的 @ 引用 token，如 @图1、@视频2、@音频3 */
-const MENTION_RE = /@(图|视频|音频)(\d+)/g
-
-/** token 中的类型前缀 → ReferenceKind 映射 */
-const TOKEN_KIND: Record<string, NonNullable<ReferenceAsset['kind']>> = {
-  '图': 'image',
-  '视频': 'video',
-  '音频': 'audio',
-}
+/** 匹配提示词中的 @ 引用 token，如 @{素材名} */
+const MENTION_RE = /@\{([^}]+)\}/g
 
 const KIND_LABEL: Record<NonNullable<ReferenceAsset['kind']>, string> = {
   image: '参考图',
@@ -58,33 +51,30 @@ export interface PromptMentionOverlayProps {
   className?: string
   /** textarea 滚动偏移，保持覆盖层内容与 textarea 对齐。 */
   scrollOffset?: { top: number; left: number }
-  /** 参考素材列表，用于将 @图1 token 解析为素材名称（title 展示）。 */
+  /** 参考素材列表，用于将 @{素材名} token 解析为素材（title 展示 & 悬浮预览）。 */
   refAssets?: ReferenceAsset[]
   style?: CSSProperties
 }
 
 /**
- * 将 @图1 token 解析为对应的素材名称。
- * token 格式：@ + 类型（图/视频/音频）+ 序号（按同类型上传顺序从 1 开始）
+ * 将 @{素材名} token 解析为对应的素材名称。
+ * token 格式：@{ + 素材名称 + }
+ * 通过名称匹配 refAssets 中的素材。
  */
 function resolveTokenName(token: string, refAssets: ReferenceAsset[]): string | null {
-  const m = token.match(/^@(图|视频|音频)(\d+)$/)
+  const m = token.match(/^@\{([^}]+)\}$/)
   if (!m) return null
-  const kind = TOKEN_KIND[m[1]]
-  const idx = parseInt(m[2], 10)
-  const sameKind = refAssets.filter((a) => (a.kind ?? 'image') === kind)
-  const asset = sameKind[idx - 1]
+  const name = m[1]
+  const asset = refAssets.find((a) => a.name === name)
   return asset?.name ?? null
 }
 
-/** 解析 @ token 对应的参考素材（用于悬浮预览）。 */
+/** 解析 @{素材名} token 对应的参考素材（用于悬浮预览）。 */
 function resolveTokenAsset(token: string, refAssets: ReferenceAsset[]): ReferenceAsset | null {
-  const m = token.match(/^@(图|视频|音频)(\d+)$/)
+  const m = token.match(/^@\{([^}]+)\}$/)
   if (!m) return null
-  const kind = TOKEN_KIND[m[1]]
-  const idx = parseInt(m[2], 10)
-  const sameKind = refAssets.filter((a) => (a.kind ?? 'image') === kind)
-  return sameKind[idx - 1] ?? null
+  const name = m[1]
+  return refAssets.find((a) => a.name === name) ?? null
 }
 
 /** mention token 悬浮预览弹层：展示素材大图/视频缩略图/音频信息。 */

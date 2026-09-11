@@ -101,13 +101,36 @@ def _raise_business_error(data: dict, context: str) -> None:
     if code in (None, 200):
         return
     message = data.get("error") or data.get("message") or ""
-    raise ProviderError(f"{context}失败（code={code}）：{message}".strip())
+    # asset_api_http_400 等上游错误码附带修复建议
+    hint = _AUDIT_ERROR_HINTS.get(str(message), "")
+    raise ProviderError(
+        f"{context}失败（code={code}）：{message}".strip()
+        + (f"。\n{hint}" if hint else "")
+    )
+
+
+# 上游审核 API 常见错误码 → 修复建议
+_AUDIT_ERROR_HINTS: dict[str, str] = {
+    "asset_api_http_400": (
+        "素材 URL 不可访问或格式不合规。常见原因："
+        "1) URL 使用了 HTTP 而非 HTTPS（火山引擎审核 API 要求 HTTPS）；"
+        "2) 文件格式/大小/时长超出限制（视频需 MP4/MOV、2~30s、≤200MB）；"
+        "3) URL 不可公网访问"
+    ),
+}
 
 
 async def submit_asset_audit(db: Session, asset: Asset, provider_slug: str) -> Asset:
     """提交素材审核，返回更新后的 asset（status=pending）。"""
     provider = _load_sparkhub_provider(db, provider_slug)
     url = await asset_public_url(asset)
+    # 火山引擎审核 API 要求 HTTPS URL，HTTP 链接会被拒绝（asset_api_http_400）
+    if url.startswith("http://"):
+        raise ProviderError(
+            "素材公网 URL 使用了 HTTP，火山引擎审核 API 要求 HTTPS。"
+            "请在 .env 中将 QINIU_DOMAIN 配置为 https:// 开头的域名，"
+            "或配置 public_base_url 为 https:// 地址"
+        )
     asset_type = "Video" if asset.type == "video" else "Image"
     payload = {"url": url, "AssetType": asset_type}
     async with httpx.AsyncClient(timeout=60) as client:
@@ -117,6 +140,16 @@ async def submit_asset_audit(db: Session, asset: Asset, provider_slug: str) -> A
             json=payload,
         )
         data = _parse_json(resp)
+    # Spark Hub 可能以非 200 HTTP 状态码返回业务错误，解析响应体统一处理
+    if resp.status_code != 200:
+        logger.error(
+            "素材提审 HTTP 异常 provider=%s asset_id=%s url=%s http_status=%s resp=%s",
+            provider_slug, asset.id, url, resp.status_code, data,
+        )
+        message = data.get("error") or data.get("message") or resp.text
+        raise ProviderError(
+            f"素材提审失败（HTTP {resp.status_code}）：{message}".strip()
+        )
     try:
         _raise_business_error(data, "素材提审")
     except ProviderError:
@@ -153,6 +186,15 @@ async def check_asset_audit(db: Session, asset: Asset, provider_slug: str) -> As
             json=payload,
         )
         data = _parse_json(resp)
+    if resp.status_code != 200:
+        logger.error(
+            "查询审核状态 HTTP 异常 provider=%s asset_id=%s audit_asset_id=%s http_status=%s resp=%s",
+            provider_slug, asset.id, asset.audit_asset_id, resp.status_code, data,
+        )
+        message = data.get("error") or data.get("message") or resp.text
+        raise ProviderError(
+            f"查询审核状态失败（HTTP {resp.status_code}）：{message}".strip()
+        )
     try:
         _raise_business_error(data, "查询审核状态")
     except ProviderError:

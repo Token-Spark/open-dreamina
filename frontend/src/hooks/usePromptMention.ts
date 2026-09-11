@@ -103,29 +103,26 @@ export function usePromptMention({
 
   /**
    * 候选项：已上传参考素材（slot）+ 素材库中尚未加入参考列表的素材（library）。
-   * slot 项 token 按类型编号（@图1/@视频1…）；library 项选中后追加到 refAssets，
-   * token 同样按"加入后的序号"编号，保证与 slot 引用风格一致。
-   * 人物素材可能同时含图片与音频，会展开为多个 token。
+   * token 使用素材名称（@{name}），而非序号编号，这样移除某个引用不会影响其他引用的文本。
+   * 人物素材可能同时含图片与音频，会展开为多个候选项。
    */
   const mentionItems = useMemo<MentionItem[]>(() => {
     if (!enabled || !mention.open) return []
     const refIds = new Set(refAssets.map((a) => a.assetId))
 
     // —— slot：已上传参考素材 ——
-    const counts: Record<ReferenceKind, number> = { image: 0, video: 0, audio: 0 }
     const slotItems: MentionItem[] = refAssets
       .filter((a) => (mode === 'image' ? (a.kind ?? 'image') === 'image' : true))
       .map((a) => {
         const kind = a.kind ?? 'image'
-        counts[kind] += 1
-        const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
+        const name = a.name ?? KIND_LABELS[kind]
         return {
           source: 'slot' as const,
           asset: a,
           assets: [a],
           kind,
-          tokens: [`@${short}${counts[kind]}`],
-          label: `${KIND_LABELS[kind]} ${counts[kind]}`,
+          tokens: [`@{${name}}`],
+          label: name,
           thumbUrl: a.previewUrl,
         }
       })
@@ -134,8 +131,6 @@ export function usePromptMention({
     // 首帧/首尾帧模式仅图片，不允许音频；auto 合并模式与图片模式允许图片与音频。
     const spec = frameModeSpec(mode, isSeedance, frameMode)
     const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
-    // 预计算 library 项加入后每种类型的起始编号
-    const libStart: Record<ReferenceKind, number> = { ...counts }
     // 人物素材的图片与音频拆分为独立候选项，用户可按需引用形象或音色。
     // 音频候选项展示角色形象缩略图+Music角标，标签追加「· 音色」后缀。
     const libItems: MentionItem[] = (libData?.items ?? [])
@@ -145,15 +140,14 @@ export function usePromptMention({
         )
         return pending.map((pa) => {
           const kind = (pa.kind ?? 'image') as ReferenceKind
-          libStart[kind] += 1
-          const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
+          const label = kind === 'audio' && ca.category === 'character' ? `${ca.name} · 音色` : ca.name
           return {
             source: 'library' as const,
             asset: pa,
             assets: [pa],
             kind,
-            tokens: [`@${short}${libStart[kind]}`],
-            label: kind === 'audio' && ca.category === 'character' ? `${ca.name} · 音色` : ca.name,
+            tokens: [`@{${label}}`],
+            label,
             thumbUrl: ca.image_thumbnail_url ?? '',
           }
         })
@@ -237,13 +231,13 @@ export function usePromptMention({
 
   /**
    * 将引用 token 插入到 @ 起始处，替换 @ 及其后已输入的查询文本，并追加一个空格。
-   * 若选择的是素材库项（library），先将其追加到 refAssets（含上限校验），再按加入后的序号生成 token。
-   * 人物素材可能同时含图片与音频，会插入多个 token（如 @图2 @音频1）。
+   * 若选择的是素材库项（library），先将其追加到 refAssets（含上限校验），再按素材名称生成 token。
+   * 人物素材可能同时含图片与音频，会插入多个 token（如 @{角色名} @{角色名 · 音色}）。
    */
   function insertMention(item: MentionItem) {
     let tokens = item.tokens
 
-    // 素材库项：追加到参考列表，并按加入后的实际序号重新编号 token
+    // 素材库项：追加到参考列表，并按素材名称生成 token
     if (item.source === 'library') {
       const spec = frameModeSpec(mode, isSeedance, frameMode)
       const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
@@ -283,17 +277,11 @@ export function usePromptMention({
       toAdd.forEach((pa) => {
         if (!pa.name) pa.name = item.label
       })
-      // 按加入后的列表重新编号
       const next = [...refAssetsRef.current, ...toAdd]
       refAssetsRef.current = next
       onRefAssetsChange(next)
-      tokens = toAdd.map((pa) => {
-        const kind = pa.kind ?? 'image'
-        const sameKind = next.filter((a) => (a.kind ?? 'image') === kind)
-        const idx = sameKind.findIndex((a) => a.assetId === pa.assetId) + 1
-        const short = kind === 'image' ? '图' : kind === 'video' ? '视频' : '音频'
-        return `@${short}${idx}`
-      })
+      // 按素材名称生成 token，移除某个引用不会影响其他引用
+      tokens = toAdd.map((pa) => `@{${pa.name ?? item.label}}`)
       void allowAudio
     }
 
