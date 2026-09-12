@@ -163,6 +163,7 @@ export function GenerationInputBar({
     mentionItems,
     hasLibraryAssets,
     handlePromptInputChange,
+    handlePromptSelect,
     handlePromptKeyDown,
     insertMention,
   } = usePromptMention({
@@ -649,6 +650,7 @@ export function GenerationInputBar({
                     const ta = textareaRef.current
                     if (ta) setScrollSync({ top: ta.scrollTop, left: ta.scrollLeft })
                   }}
+                  onSelect={handlePromptSelect}
                   onKeyDown={(e) =>
                     handlePromptKeyDown(e, onGenerate, submitting, atConcurrencyLimit)
                   }

@@ -46,7 +46,8 @@
 - **模型灵活接入** —— 自由选择 AIGC 模型服务，提供 API 调用记录统计与分析
 - **画布工作流** —— 节点式可视化画布，自由编排图片/视频生成流程，节点间连线传递参考素材
 - **3D 导演台** —— 内嵌 3D 角色姿态编辑器，采集镜头画面作为生成参考图
-- **内置智能体技能** —— 提供短剧创作、分镜导演、制片编排三套 AI Agent 技能，覆盖从剧本到成片的全流程
+- **内置智能体技能** —— 提供短剧创作、分镜导演、制片编排、提示词优化四套 AI Agent 技能，覆盖从剧本到成片的全流程
+- **MCP 工具服务** —— 内置零依赖 MCP 服务，本地智能体可直接生成图片/视频、管理对话与查询任务
 - **性能与体验领先** —— 核心功能的性能和使用体验达到同类产品领先水平（排除模型服务带来的差异）
 
 ![视频生成示例](frontend/src/static/video-generation-sample-01.png)
@@ -229,9 +230,33 @@ QINIU_AUDIT_EXPIRE_DAYS=14   # 临时素材保留天数，到期自动删除
 
 > 导演台默认使用在线版本，可在 `backend/app/config.py` 中修改 `director_desk_url` 指向自托管部署地址。
 
+### MCP 工具服务（面向本地智能体）
+
+项目内置一套 **MCP（Model Context Protocol）服务**，把图片生成、视频生成、对话管理等能力暴露为标准工具，本地智能体（Codex、Trae 等）可直接调用，无需理解后端 REST 细节。
+
+**纯 Python 标准库实现，零第三方依赖**，不需要在宿主机安装任何包：
+
+```bash
+python mcp/server.py --list-tools   # 查看全部工具（自检，无需后端在线）
+python mcp/server.py                # 以 stdio 方式启动 MCP 服务
+```
+
+共 **18 个工具**，覆盖四类能力：
+
+| 类别 | 工具 |
+| --- | --- |
+| 生成 | `generate_image`、`generate_video`、`create_task`、`upload_asset` |
+| 任务 | `get_task`、`list_tasks`、`wait_task`、`cancel_task`、`retry_task` |
+| 对话 | `create_conversation`、`list_conversations`、`get_conversation`、`update_conversation`、`delete_conversation` |
+| 目录 | `list_templates`、`list_providers`、`list_models`、`get_health` |
+
+典型闭环：`list_providers` 选服务 → `generate_image` / `generate_video` 建任务 → `wait_task` 等待完成 → 读取 `result_urls_absolute` 取结果。
+
+> 安装配置、参数说明、错误排查详见 [`mcp/README.md`](mcp/README.md)。
+
 ### 内置智能体技能
 
-项目内置三套 AI Agent 技能，覆盖从剧本创作到成片交付的完整 AIGC 影视生产流程。技能定义位于 `.skills/` 目录，可被 AI 编码助手（如 Codex、Trae 等）加载使用。
+项目内置四套 AI Agent 技能，覆盖从剧本创作到成片交付的完整 AIGC 影视生产流程。技能定义位于 `.skills/` 目录，可被 AI 编码助手（如 Codex、Trae 等）加载使用。
 
 #### 短剧创作（short-drama-creator）
 
@@ -257,7 +282,15 @@ QINIU_AUDIT_EXPIRE_DAYS=14   # 临时素材保留天数，到期自动删除
 
 **使用方式：** 将 `.skills/production-orchestrator/SKILL.md` 加载给 AI 助手，提供导演台输出的镜头表，技能会输出生产清单（Manifest）、生成任务编排方案和 QC 决策，指导从关键帧到成片的全流程执行。
 
-> 三套技能可串联使用：**短剧创作** 产出剧本 → **分镜导演** 产出镜头表 → **制片编排** 执行生产，形成从创意到成片的完整闭环。
+#### 提示词优化（prompt-optimizer）
+
+把口语化、残缺或风格模糊的描述，按模板重写为结构化的图片/视频提示词，并可**直接生成**——面向日常单张出图、单条出片场景。
+
+**工作流程：** 识别目标模式 → 取模板（`list_templates` 或内置模板）→ 诊断原始提示词 → 按六工位重写正向/负面提示词 → 补充运镜（视频）→ 参数建议与模型能力校验 → 自检打分（< 80 迭代）→ 输出优化结果 → 按需调用 `generate_image` / `generate_video` 直接生成 → `wait_task` 取回结果
+
+**使用方式：** 将 `.skills/prompt-optimizer/SKILL.md` 加载给 AI 助手，直接说「帮我优化这段提示词」或「用我存的模板生成一张图」。技能依赖上文 MCP 工具服务；未明确要求生成时只输出提示词，不擅自创建任务。
+
+> 四套技能可组合使用：**短剧创作** 产出剧本 → **分镜导演** 产出镜头表 → **制片编排** 批量执行生产；**提示词优化** 负责单点提示词的改写与快速出图出片。
 
 ---
 

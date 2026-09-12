@@ -74,6 +74,7 @@ export function PromptFullscreenEditor({
     mentionItems,
     hasLibraryAssets,
     handlePromptInputChange,
+    handlePromptSelect,
     handlePromptKeyDown,
     insertMention,
   } = usePromptMention({
@@ -237,6 +238,7 @@ export function PromptFullscreenEditor({
                 const ta = textareaRef.current
                 if (ta) setScrollSync({ top: ta.scrollTop, left: ta.scrollLeft })
               }}
+              onSelect={handlePromptSelect}
               onKeyDown={(e) =>
                 handlePromptKeyDown(e, onGenerate, submitting, atConcurrencyLimit)
               }

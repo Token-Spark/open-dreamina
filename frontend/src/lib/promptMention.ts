@@ -213,6 +213,46 @@ export function pendingAssetsOf(
   return list
 }
 
+/** 提示词中的 @ 引用 token：@{素材名}。 */
+export const MENTION_TOKEN_RE = /@\{([^}]+)\}/g
+
+/** 一个 @ 引用 token 在提示词中的字符区间 [start, end)。 */
+export interface MentionRange {
+  start: number
+  end: number
+  name: string
+}
+
+/** 扫描提示词中所有 @ 引用 token 的字符区间，用于整体删除与光标吸附。 */
+export function findMentionRanges(prompt: string): MentionRange[] {
+  const ranges: MentionRange[] = []
+  for (const match of prompt.matchAll(MENTION_TOKEN_RE)) {
+    const start = match.index ?? 0
+    ranges.push({ start, end: start + match[0].length, name: match[1] })
+  }
+  return ranges
+}
+
+/**
+ * 将选区 [start, end) 扩展到完整的 @ 引用 token 边界。
+ * 与选区相交（含部分覆盖）的 token 会被整体纳入，避免删除后残留 "@{" 等碎片。
+ */
+export function expandToMentionBounds(
+  prompt: string,
+  start: number,
+  end: number,
+): { start: number; end: number } {
+  let from = start
+  let to = end
+  for (const range of findMentionRanges(prompt)) {
+    if (range.end > from && range.start < to) {
+      from = Math.min(from, range.start)
+      to = Math.max(to, range.end)
+    }
+  }
+  return { start: from, end: to }
+}
+
 /**
  * 扫描光标前的文本，判断是否处于 @ 触发态：
  * 找到任意位置的 @，且从 @ 到光标之间不含空白。

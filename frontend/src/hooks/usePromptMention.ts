@@ -29,6 +29,8 @@ import {
   KIND_CAPS,
   KIND_LABELS,
   detectMention,
+  expandToMentionBounds,
+  findMentionRanges,
   frameModeSpec,
   isSeedanceProvider,
   pendingAssetsOf,
@@ -194,6 +196,22 @@ export function usePromptMention({
     }
   }
 
+  /**
+   * 光标吸附：引用标签在视觉与语义上是一个整体元素，光标不允许落在 token 内部，
+   * 否则会出现 "@{Stel|la}" 这类半截编辑；鼠标点击落到 token 内部时吸附到最近边界。
+   */
+  function handlePromptSelect(e: React.SyntheticEvent<HTMLTextAreaElement>) {
+    if (!enabled) return
+    const textarea = e.currentTarget
+    const start = textarea.selectionStart ?? 0
+    const end = textarea.selectionEnd ?? 0
+    if (start !== end) return
+    const range = findMentionRanges(prompt).find((r) => start > r.start && start < r.end)
+    if (!range) return
+    const snapped = start - range.start <= range.end - start ? range.start : range.end
+    textarea.setSelectionRange(snapped, snapped)
+  }
+
   /** 键盘处理：⌘/Ctrl+Enter 提交；选择器打开时支持方向键/Enter/Escape。 */
   function handlePromptKeyDown(
     e: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -208,6 +226,47 @@ export function usePromptMention({
         onGenerate()
       }
       return
+    }
+
+    // 方向键：光标位于引用标签边界时整体跳过 token。
+    // 否则光标会先落到 token 内部、再被 handlePromptSelect 吸附回原边界，导致左右键卡住。
+    if (enabled && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      const textarea = e.currentTarget
+      const caret = textarea.selectionStart ?? 0
+      if (caret === (textarea.selectionEnd ?? 0)) {
+        const jump =
+          e.key === 'ArrowLeft'
+            ? findMentionRanges(prompt).find((r) => r.end === caret)
+            : findMentionRanges(prompt).find((r) => r.start === caret)
+        if (jump) {
+          e.preventDefault()
+          const next = e.key === 'ArrowLeft' ? jump.start : jump.end
+          textarea.setSelectionRange(next, next)
+          return
+        }
+      }
+    }
+
+    // 退格/删除：与引用 token 相交时把待删区间扩展到 token 完整边界整体删除，
+    // 避免只删掉半个 token 而残留 "@{" / "}" 等碎片。
+    if (enabled && (e.key === 'Backspace' || e.key === 'Delete')) {
+      const textarea = e.currentTarget
+      const collapsed = (textarea.selectionStart ?? 0) === (textarea.selectionEnd ?? 0)
+      let start = textarea.selectionStart ?? 0
+      let end = textarea.selectionEnd ?? 0
+      if (collapsed) {
+        // 折叠光标：先按一个字符确定待删区间，再判断是否落在 token 上
+        if (e.key === 'Backspace') start = Math.max(0, start - 1)
+        else end = Math.min(prompt.length, end + 1)
+      }
+      const bounds = expandToMentionBounds(prompt, start, end)
+      if (bounds.start !== start || bounds.end !== end) {
+        e.preventDefault()
+        onPromptChange(prompt.slice(0, bounds.start) + prompt.slice(bounds.end))
+        setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+        requestAnimationFrame(() => textarea.setSelectionRange(bounds.start, bounds.start))
+        return
+      }
     }
 
     if (!enabled || !mention.open || mentionItems.length === 0) return
@@ -306,6 +365,7 @@ export function usePromptMention({
     /** 素材库中是否有可引用的素材（用于空状态提示）。 */
     hasLibraryAssets: (libData?.items ?? []).length > 0,
     handlePromptInputChange,
+    handlePromptSelect,
     handlePromptKeyDown,
     insertMention,
   }

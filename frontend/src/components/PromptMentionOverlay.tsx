@@ -13,28 +13,28 @@
 // limitations under the License.
 
 /**
- * 提示词 @ 引用高亮覆盖层。
+ * 提示词 @ 引用覆盖层。
  *
  * 在 textarea 下方叠加一层同样式 div，将提示词中已被引用的 @ token（如 @{素材名}）
- * 渲染为带高亮背景的独立标签，让用户直观区分「普通文本」与「已绑定的引用素材」。
+ * 渲染为「小型缩略图 + 素材名」的独立引用标签，让用户直观区分普通文本与已绑定的引用素材。
  *
  * 原理：
  *   - 视觉层（z-0）与 textarea 共享相同的字体度量、padding 和换行规则
  *   - textarea 文字设为透明（text-transparent），仅显示光标（caret-fg-primary）
- *   - 交互层（z-15）位于 textarea 上方，透明文字，仅 mention span 可交互
- *   - 鼠标悬浮 mention span 时弹出预览弹层（图片大图 / 视频缩略图 / 音频占位）
+ *   - 交互层（z-15）位于 textarea 上方，透明文字，仅引用标签可交互
+ *   - 鼠标悬浮引用标签时弹出预览弹层（图片大图 / 视频缩略图 / 音频占位）
  *   - 覆盖层随 textarea 滚动同步偏移
- *   - 覆盖层文本与 textarea 文本完全一致（token 原样渲染），通过 title 属性显示素材名
+ *   - 引用标签宽度与 textarea 的 @{素材名} token 完全一致：把 "@{" 设为透明并以缩略图
+ *     作为其背景（背景盒天然等于这两个字符的排版尺寸），"}" 同样透明隐藏，素材名保持
+ *     原字号/字重仅改色，因此不改变整体排版宽度，光标与选区不会错位。
+ *   - 引用标签是整体元素，删除与光标吸附见 usePromptMention（Backspace/Delete 拦截）。
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Music } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ReferenceAsset } from '@/lib/promptMention'
-
-/** 匹配提示词中的 @ 引用 token，如 @{素材名} */
-const MENTION_RE = /@\{([^}]+)\}/g
+import { MENTION_TOKEN_RE, type ReferenceAsset } from '@/lib/promptMention'
 
 const KIND_LABEL: Record<NonNullable<ReferenceAsset['kind']>, string> = {
   image: '参考图',
@@ -57,19 +57,19 @@ export interface PromptMentionOverlayProps {
 }
 
 /**
- * 将 @{素材名} token 解析为对应的素材名称。
- * token 格式：@{ + 素材名称 + }
- * 通过名称匹配 refAssets 中的素材。
+ * 拆解后的提示词片段：mention 为一条整体引用标签（缩略图 + 素材名），text 为普通文本。
  */
-function resolveTokenName(token: string, refAssets: ReferenceAsset[]): string | null {
-  const m = token.match(/^@\{([^}]+)\}$/)
-  if (!m) return null
-  const name = m[1]
-  const asset = refAssets.find((a) => a.name === name)
-  return asset?.name ?? null
+interface Segment {
+  type: 'text' | 'mention'
+  /** 片段原文，必须与 textarea 中对应位置的文本完全一致。 */
+  value: string
+  /** 引用素材名（token 内 @{ 与 } 之间的名称）；仅 mention 片段有值。 */
+  name?: string
+  /** 缩略图地址；仅图片类引用有值，其余类型回落到纯底色占位。 */
+  thumbUrl?: string
 }
 
-/** 解析 @{素材名} token 对应的参考素材（用于悬浮预览）。 */
+/** 解析 @{素材名} token 对应的参考素材（用于缩略图与悬浮预览）。 */
 function resolveTokenAsset(token: string, refAssets: ReferenceAsset[]): ReferenceAsset | null {
   const m = token.match(/^@\{([^}]+)\}$/)
   if (!m) return null
@@ -139,18 +139,24 @@ export function PromptMentionOverlay({
     }
   }, [])
 
-  // 将提示词按 @ token 拆分：token 部分渲染为高亮标签（title 显示素材名），其余为普通文本。
+  // 将提示词按 @ token 拆分：token 部分渲染为「缩略图 + 素材名」引用标签，其余为普通文本。
   // 注意：标签内文本必须与 textarea 中的 token 完全一致，否则换行位置不同导致光标错位。
   const segments = useMemo(() => {
     if (!enabled || !prompt) return null
-    const parts: Array<{ type: 'text' | 'mention'; value: string; name?: string }> = []
+    const parts: Segment[] = []
     let last = 0
-    for (const m of prompt.matchAll(MENTION_RE)) {
+    for (const m of prompt.matchAll(MENTION_TOKEN_RE)) {
       const idx = m.index ?? 0
       if (idx > last) parts.push({ type: 'text', value: prompt.slice(last, idx) })
       const token = m[0]
-      const name = refAssets ? resolveTokenName(token, refAssets) : null
-      parts.push({ type: 'mention', value: token, name: name ?? undefined })
+      const name = m[1]
+      const asset = refAssets ? resolveTokenAsset(token, refAssets) : null
+      parts.push({
+        type: 'mention',
+        value: token,
+        name,
+        thumbUrl: asset && (asset.kind ?? 'image') === 'image' ? asset.previewUrl : undefined,
+      })
       last = idx + token.length
     }
     if (last < prompt.length) parts.push({ type: 'text', value: prompt.slice(last) })
@@ -202,16 +208,28 @@ export function PromptMentionOverlay({
         >
           {segments?.map((seg, i) =>
             seg.type === 'mention' ? (
-              <span
-                key={i}
-                title={seg.name ?? undefined}
-                style={{
-                  backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
-                  color: 'var(--accent)',
-                  borderRadius: '3px',
-                }}
-              >
-                {seg.value}
+              // 引用标签：缩略图占据 "@{" 的排版盒，素材名替换 token 内的名称，整体宽度与
+              // token 文本一致（"}" 透明隐藏），因此不改变换行与光标位置。
+              <span key={i} title={seg.name}>
+                <span
+                  style={{
+                    color: 'transparent',
+                    padding: '0.1em 0',
+                    borderRadius: '3px',
+                    backgroundColor: 'color-mix(in srgb, var(--accent) 32%, transparent)',
+                    ...(seg.thumbUrl
+                      ? {
+                          backgroundImage: `url("${seg.thumbUrl}")`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }
+                      : {}),
+                  }}
+                >
+                  {'@{'}
+                </span>
+                <span style={{ color: 'var(--accent)' }}>{seg.name}</span>
+                <span style={{ color: 'transparent' }}>{'}'}</span>
               </span>
             ) : (
               <span key={i}>{seg.value}</span>

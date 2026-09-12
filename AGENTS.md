@@ -77,6 +77,21 @@ docker compose up -d --build
 
 ---
 
+## 本地智能体接入（MCP）
+
+仓库内置 MCP 服务（`mcp/`），把生成图片、生成视频、对话管理等能力暴露为 18 个工具，智能体可直接调用：
+
+```bash
+python mcp/server.py --list-tools   # 查看工具清单（自检，不需要后端在线）
+python mcp/server.py                # 以 stdio 启动 MCP 服务
+```
+
+- **纯 Python 标准库实现，零依赖**：不需要在宿主机 `pip install`（不违反第 5 条安全红线）。
+- 需后端已启动且已配置 Provider；`get_health` 工具可查 worker 是否就绪。
+- 完整说明（客户端配置、参数、排查）见 [mcp/README.md](mcp/README.md)；提示词优化技能见 `.skills/prompt-optimizer/`。
+
+---
+
 ## 常用运维命令
 
 ```bash
