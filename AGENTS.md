@@ -92,6 +92,63 @@ python mcp/server.py                # 以 stdio 启动 MCP 服务
 
 ---
 
+## 命令行接入（opendreamina CLI）
+
+仓库内置命令行工具（`cli/opendreamina.py`），把图片 / 视频生成、任务管理、模型目录等能力暴露为 shell 子命令，外部智能体可直接 `opendreamina ...`，无需写 `python cli/opendreamina.py ...`。
+
+- **纯 Python 标准库实现，零依赖**：与 MCP 服务共用 handler 与目录，宿主机无需 `pip install`（不违反第 5 条安全红线）。
+- 完整子命令与参数见 [cli/README.md](cli/README.md)。
+
+### 安装到 PATH
+
+安装脚本只在用户 PATH 目录创建一个调用 `python cli/opendreamina.py` 的 wrapper（约三五行），不安装任何依赖、不需要管理员权限：
+
+```bash
+bash cli/install.sh     # Linux / macOS（安装到 ~/.local/bin）
+pwsh cli/install.ps1    # Windows（安装到 %USERPROFILE%\bin 并写入用户 PATH）
+```
+
+> `install.sh` 若提示 `~/.local/bin` 不在 PATH，按提示把它加进 `~/.bashrc` / `~/.zshrc`；`install.ps1` 写入用户 PATH 后需新开终端生效。仓库移动后重跑对应脚本刷新 wrapper。
+
+### 验证
+
+```bash
+opendreamina --version        # 版本自检（不需后端在线）
+opendreamina health           # 后端 / DB / Redis / worker 状态
+opendreamina providers        # 已配置 Provider
+opendreamina models --mode video
+```
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `OPEN_DREAMINA_API_BASE` | `http://localhost:10130/api/v1` | 后端 API 基地址 |
+| `OPEN_DREAMINA_API_TIMEOUT` | `60` | 单次 HTTP 请求超时秒数 |
+
+远程后端：
+
+```bash
+OPEN_DREAMINA_API_BASE=http://192.168.1.10:10130/api/v1 opendreamina health
+```
+
+### 智能体快速参考
+
+```bash
+# 文生图（全自动选服务/模型 + 等待 + 下载）
+opendreamina text2image "一只橘猫坐在窗台上，清晨柔光" \
+    --auto-provider --auto-model --aspect-ratio 16:9 --resolution 2K \
+    --poll 600 --download-dir ./out
+
+# 进度查询 / 异步结果（对齐即梦 CLI）
+opendreamina progress <task_id> --wait
+opendreamina query_result <task_id> --wait --download-dir ./out
+```
+
+> 与 MCP 的关系：MCP（`mcp/server.py`）面向 IDE / 客户端以 JSON-RPC stdio 接入；CLI 面向 shell / 智能体以子命令接入。两者底层调用同一套 handler，能力等价，按场景选用。
+
+---
+
 ## 常用运维命令
 
 ```bash
