@@ -37,3 +37,6 @@ Thumbs.db
 .trae/
 .acme-sh/
 .acme-sh-certs/
+
+# 本地智能体会话产物（计划 / 草稿），不入库
+.zcode/

@@ -667,3 +667,90 @@ class NodeSpec(BaseModel):
 
 class NodeSpecResponse(BaseModel):
     specs: dict[str, NodeSpec]
+
+
+# ---------------- 制片人审阅 ----------------
+
+class ReviewSessionCreate(BaseModel):
+    """新建审阅会话：指定标题与要审阅的外部文件夹路径。"""
+    title: str = Field(..., min_length=1, max_length=200)
+    folder_path: str = Field(..., min_length=1)
+
+
+class ReviewSessionUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    status: Optional[str] = Field(None, pattern="^(draft|in_review|completed|archived)$")
+
+
+class ReviewItemResponse(BaseModel):
+    id: str
+    session_id: str
+    file_path: str
+    file_name: str
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    duration: Optional[float] = None
+    thumbnail_path: Optional[str] = None
+    status: str  # pending|approved|rejected|needs_revision
+    feedback: str = ""
+    sort_order: int = 0
+    reviewed_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    file_url: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ReviewSessionResponse(BaseModel):
+    id: str
+    title: str
+    folder_path: str
+    status: str
+    summary: dict[str, Any] = Field(default_factory=dict)
+    item_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ReviewSessionListResponse(BaseModel):
+    items: list[ReviewSessionResponse]
+    total: int
+
+
+class ReviewItemUpdate(BaseModel):
+    """更新单个审阅条目的状态与修改意见。"""
+    status: Optional[str] = Field(None, pattern="^(pending|approved|rejected|needs_revision)$")
+    feedback: Optional[str] = None
+
+
+class ReviewBatchUpdateItem(BaseModel):
+    id: str
+    status: Optional[str] = Field(None, pattern="^(pending|approved|rejected|needs_revision)$")
+    feedback: Optional[str] = None
+
+
+class ReviewBatchUpdateRequest(BaseModel):
+    items: list[ReviewBatchUpdateItem]
+
+
+class ReviewBatchUpdateResponse(BaseModel):
+    updated: int
+    failed: int = 0
+
+
+class ReviewFolderListResponse(BaseModel):
+    """列出允许根目录下的可选子文件夹，供前端选择审阅目标。"""
+    roots: list[dict[str, Any]]  # [{path, name, subdirs: [{path, name}]}]
+
+
+class ReviewScanResponse(BaseModel):
+    """重新扫描文件夹后新增/移除的条目统计。"""
+    added: int = 0
+    removed: int = 0
+    total: int = 0

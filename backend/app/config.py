@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     # 默认指向 GitHub Pages 在线版；离线/自托管时改为本地部署地址。
     director_desk_url: str = "https://xiaozangao.github.io/3d-director-desk/"
 
+    # 制片人审阅：允许审阅的外部素材根目录（逗号分隔多个目录）。
+    # 审阅会话只能扫描这些目录下的子目录，避免任意路径遍历。
+    # 留空时默认允许 ./data/review_sources，部署时按需配置实际素材所在目录。
+    review_source_roots: str = ""
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors(cls, v):
@@ -99,6 +104,28 @@ class Settings(BaseSettings):
     @property
     def backup_path(self) -> Path:
         return Path(self.backup_dir)
+
+    @property
+    def review_source_paths(self) -> list[Path]:
+        """审阅允许扫描的外部素材根目录列表。
+
+        优先使用 review_source_roots 配置；留空时回退到 ./data/review_sources。
+        路径解析为绝对路径后去重。
+        """
+        raw = self.review_source_roots.strip()
+        if raw:
+            paths = [Path(p.strip()).resolve() for p in raw.split(",") if p.strip()]
+        else:
+            paths = [Path("./data/review_sources").resolve()]
+        # 去重，保序
+        seen: set[str] = set()
+        result: list[Path] = []
+        for p in paths:
+            key = str(p)
+            if key not in seen:
+                seen.add(key)
+                result.append(p)
+        return result
 
     def ensure_dirs(self) -> None:
         """确保运行时目录存在（db 父目录、assets、backups）。"""

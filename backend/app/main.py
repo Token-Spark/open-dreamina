@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .database import init_db
-from .routers import assets, canvas, conversations, creation_assets, providers, system, tasks, templates
+from .routers import assets, canvas, conversations, creation_assets, providers, reviews, system, tasks, templates
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -76,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(providers.router, prefix=api_v1_prefix)
     app.include_router(conversations.router, prefix=api_v1_prefix)
     app.include_router(templates.router, prefix=api_v1_prefix)
+    app.include_router(reviews.router, prefix=api_v1_prefix)
     app.include_router(system.router, prefix=api_v1_prefix)
 
     @app.on_event("startup")

@@ -277,3 +277,73 @@ class CanvasRun(Base):
         Index("idx_canvas_runs_canvas", "canvas_id", "created_at"),
         Index("idx_canvas_runs_status", "status"),
     )
+
+
+# ---------------- 制片人审阅 ----------------
+
+
+class ReviewSession(Base):
+    """审阅会话：绑定一个外部素材文件夹，记录审阅进度与汇总状态。
+
+    - folder_path：被审阅的外部目录绝对路径（必须在配置允许的根目录下）。
+    - status：draft（未开始）| in_review（审阅中）| completed（已完成）| archived（已归档）。
+    - summary_json：汇总信息（各状态计数），在 recompute_summary 时更新。
+    """
+
+    __tablename__ = "review_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False, default="未命名审阅")
+    folder_path: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
+    summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    items: Mapped[list["ReviewItem"]] = relationship(
+        "ReviewItem", back_populates="session", passive_deletes=True
+    )
+
+    __table_args__ = (
+        Index("idx_review_sessions_status", "status"),
+        Index("idx_review_sessions_created", "created_at"),
+    )
+
+
+class ReviewItem(Base):
+    """审阅条目：外部文件夹中的一个文件，附带审核状态与修改意见。
+
+    - file_path：文件相对于会话 folder_path 的相对路径。
+    - status：pending（待审）| approved（通过）| rejected（驳回）| needs_revision（需修改）。
+    - feedback：制片人的修改意见（纯文本）。
+    - file_size / mime_type / width / height / duration：文件元信息，扫描时提取。
+    - thumbnail_path：缩略图相对路径（扫描时生成，存于 review_thumbs/ 目录下）。
+    """
+
+    __tablename__ = "review_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String, ForeignKey("review_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_name: Mapped[str] = mapped_column(String, nullable=False)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thumbnail_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reviewed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    session: Mapped["ReviewSession"] = relationship("ReviewSession", back_populates="items")
+
+    __table_args__ = (
+        Index("idx_review_items_session", "session_id"),
+        Index("idx_review_items_status", "status"),
+    )

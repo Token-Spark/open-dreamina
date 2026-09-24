@@ -15,6 +15,8 @@ services:
       - "10130:10130"
     volumes:
       - ./data:/app/data
+      # 审阅外部素材目录（只读挂载，容器内路径 /app/external_sources）
+      - ${REVIEW_SOURCES_HOST_PATH:-./data/review_sources}:/app/external_sources:ro
     environment:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0
@@ -30,6 +32,8 @@ services:
       - QINIU_AUDIT_EXPIRE_DAYS=${QINIU_AUDIT_EXPIRE_DAYS:-14}
       # 3D 导演台 iframe 地址（默认使用在线版；离线部署可改为自托管地址）
       - DIRECTOR_DESK_URL=${DIRECTOR_DESK_URL:-https://xiaozangao.github.io/3d-director-desk/}
+      # 制片人审阅：外部素材目录（宿主机路径），留空则默认 /app/data/review_sources
+      - REVIEW_SOURCE_ROOTS=${REVIEW_SOURCE_ROOTS:-}
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"
@@ -41,6 +45,7 @@ services:
     build: ./backend
     volumes:
       - ./data:/app/data
+      - ${REVIEW_SOURCES_HOST_PATH:-./data/review_sources}:/app/external_sources:ro
     environment:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0
@@ -54,6 +59,8 @@ services:
       # 即梦 CLI：HOME 指向挂载卷内的持久化目录，CLI 二进制与 ~/.dreamina_cli 登录态
       # 在容器重建后不丢失（安装/登录引导见 设置 → 服务管理 → 即梦 CLI）
       - HOME=/app/data/dreamina-home
+      # 制片人审阅：与 backend 共用同一外部素材目录配置
+      - REVIEW_SOURCE_ROOTS=${REVIEW_SOURCE_ROOTS:-}
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"

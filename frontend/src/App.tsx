@@ -24,6 +24,7 @@ import { TasksPage } from '@/pages/TasksPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { CanvasListPage } from '@/pages/CanvasListPage'
 import { CanvasEditorPage } from '@/pages/CanvasEditorPage'
+import { ReviewPage } from '@/pages/ReviewPage'
 import { listTasks, ACTIVE_STATUSES } from '@/api/tasks'
 import { useTaskStore } from '@/stores/taskStore'
 
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/canvas" element={<CanvasListPage />} />
             <Route path="/assets" element={<AssetsPage />} />
             <Route path="/creation-assets" element={<CreationAssetsPage />} />
+            <Route path="/review" element={<ReviewPage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/settings/providers" element={<SettingsPage />} />

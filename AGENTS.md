@@ -161,6 +161,35 @@ docker compose down                    # 停止（数据保留在 ./data）
 
 ---
 
+## 制片人审阅（外部素材审核）
+
+审核外部文件夹中批量生成的素材，支持标记审核状态（待审/通过/需修改/驳回）与编辑修改意见。外部目录通过 `.env` 只读挂载进容器：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `REVIEW_SOURCES_HOST_PATH` | `./data/review_sources` | 宿主机素材目录绝对路径，**必须用正斜杠**（如 `C:/Users/me/项目素材库`） |
+| `REVIEW_SOURCE_ROOTS` | `/app/external_sources` | 容器内允许扫描的根目录，逗号分隔可配多个 |
+
+要点：
+
+- 页面入口：侧边栏「审阅」（路由 `/review`）；API 前缀 `/api/v1/reviews`。
+- **只读挂载**：容器内以 `:ro` 挂载外部目录，扫描过程不写入、不修改用户原始素材。
+- 缩略图统一生成在 `./data/review_thumbs/`（图片走 Pillow；视频 ffmpeg 抽帧到系统临时目录），**不在素材目录留任何文件**。
+- 扫描**递归子目录**，条目 `file_path` 保留相对层级（如 `02_scenes/forge/FORGE_interior.png`）。
+- 路径安全：仅允许 `REVIEW_SOURCE_ROOTS` 之下的路径（经 `resolve()` 展开软链接后校验），其余一律拒绝。
+- 删除审阅会话只清理审阅记录与缩略图，**不会删除外部素材文件**。
+
+验证：
+
+```bash
+curl -fsS http://localhost:10130/api/v1/reviews/folders    # 列出可扫描目录（含两层子目录）
+curl -fsS http://localhost:10130/api/v1/reviews/sessions   # 已有审阅会话及汇总
+```
+
+> 改 `docker-compose.yml` 的挂载配置后需 `docker compose up -d --build` 重建；只改 `backend/app` 代码时 backend 有 `--reload` 自动生效。
+
+---
+
 ## 安全红线
 
 1. **绝不提交或打印 `.env`**：`ENCRYPTION_KEY` 用于加密用户的模型 API Key，泄露即等于泄露所有已存密钥。
