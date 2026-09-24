@@ -97,10 +97,13 @@ class TaskListResponse(BaseModel):
 
 class ConversationCreate(BaseModel):
     title: Optional[str] = None
+    is_protected: Optional[int] = None
 
 
 class ConversationUpdate(BaseModel):
-    title: str
+    # 部分更新：title 与 is_protected 至少传一个（路由层校验）
+    title: Optional[str] = None
+    is_protected: Optional[int] = None
 
 
 class ConversationResponse(BaseModel):
@@ -108,6 +111,7 @@ class ConversationResponse(BaseModel):
     title: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    is_protected: int = 0
     message_count: int = 0
     last_prompt: Optional[str] = None
     last_thumbnail_url: Optional[str] = None

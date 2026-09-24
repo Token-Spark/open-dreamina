@@ -134,6 +134,8 @@ def _run_lightweight_migrations() -> None:
     _ensure_column("creation_assets", "base_version", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column("creation_assets", "base_fingerprint", "TEXT NOT NULL DEFAULT ''")
     _ensure_column("creation_assets", "cloud_tag", "TEXT NOT NULL DEFAULT ''")
+    # 对话保护标记（受保护对话不可删除，CLI 默认对话受保护）
+    _ensure_column("conversations", "is_protected", "INTEGER NOT NULL DEFAULT 0")
 
 
 def init_db() -> None:

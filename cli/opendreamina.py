@@ -618,6 +618,18 @@ def cmd_conversations(ns: argparse.Namespace) -> int:
         return _run_tool(
             "update_conversation", {"conversation_id": ns.id, "title": ns.title}
         )
+    if action == "protect":
+        if not ns.id:
+            _die("conversations protect 需要 --id")
+        return _run_tool(
+            "update_conversation", {"conversation_id": ns.id, "is_protected": 1}
+        )
+    if action == "unprotect":
+        if not ns.id:
+            _die("conversations unprotect 需要 --id")
+        return _run_tool(
+            "update_conversation", {"conversation_id": ns.id, "is_protected": 0}
+        )
     if action == "delete":
         return _run_tool("delete_conversation", {"conversation_id": ns.id})
     _die(f"未知 conversations 动作 {action!r}")
@@ -771,8 +783,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # conversations
     cv = sub.add_parser("conversations", help="对话的增删改查", description="对话的增删改查：把多个生成任务分组管理。")
-    cv.add_argument("action", choices=["list", "create", "get", "rename", "delete"], help="操作类型。")
-    cv.add_argument("--id", help="对话 id（get / rename / delete 必填）。")
+    cv.add_argument("action", choices=["list", "create", "get", "rename", "delete", "protect", "unprotect"], help="操作类型。")
+    cv.add_argument("--id", help="对话 id（get / rename / delete / protect / unprotect 必填）。")
     cv.add_argument("--title", help="对话标题（create 可选，rename 必填）。")
     cv.add_argument("--no-messages", action="store_true", help="get 时不附带任务列表。")
 

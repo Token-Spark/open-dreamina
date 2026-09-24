@@ -41,10 +41,13 @@ def get_conversation(args: dict[str, Any], client: ApiClient) -> dict[str, Any]:
 
 
 def update_conversation(args: dict[str, Any], client: ApiClient) -> dict[str, Any]:
-    """重命名对话。"""
-    return client.request(
-        "PATCH", f"/conversations/{args['conversation_id']}", json_body={"title": args["title"]}
-    )
+    """重命名对话或切换保护状态（部分更新：title / is_protected 至少传一个）。"""
+    body: dict[str, Any] = {}
+    if args.get("title") is not None:
+        body["title"] = args["title"]
+    if args.get("is_protected") is not None:
+        body["is_protected"] = args["is_protected"]
+    return client.request("PATCH", f"/conversations/{args['conversation_id']}", json_body=body)
 
 
 def delete_conversation(args: dict[str, Any], client: ApiClient) -> dict[str, Any]:

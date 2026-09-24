@@ -29,6 +29,7 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String, nullable=False, default="新对话")
     created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
     updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    is_protected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     tasks: Mapped[list["Task"]] = relationship(
         "Task", back_populates="conversation", passive_deletes=True

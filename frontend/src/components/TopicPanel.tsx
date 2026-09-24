@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { useState, useRef, useEffect } from 'react'
-import { Plus, MoreHorizontal, Trash2, Pencil, Check, X, MessageSquare } from 'lucide-react'
+import { Plus, MoreHorizontal, Trash2, Pencil, Check, X, MessageSquare, Lock, LockOpen } from 'lucide-react'
 import { useConversationStore } from '@/stores/conversationStore'
 import type { Conversation } from '@/api/conversations'
 import { toast } from '@/stores/uiStore'
@@ -30,6 +30,7 @@ export function TopicPanel({ className }: TopicPanelProps) {
   const addTopic = useConversationStore((s) => s.addTopic)
   const removeTopic = useConversationStore((s) => s.removeTopic)
   const renameTopic = useConversationStore((s) => s.renameTopic)
+  const toggleProtected = useConversationStore((s) => s.toggleProtected)
   const setCurrentTopic = useConversationStore((s) => s.setCurrentTopic)
 
   async function handleNew() {
@@ -64,6 +65,7 @@ export function TopicPanel({ className }: TopicPanelProps) {
               onSelect={() => setCurrentTopic(topic.id)}
               onRename={(title) => renameTopic(topic.id, title)}
               onDelete={() => removeTopic(topic.id)}
+              onToggleProtected={() => toggleProtected(topic.id)}
             />
           ))}
           {topics.length === 0 && (
@@ -81,12 +83,14 @@ function TopicItem({
   onSelect,
   onRename,
   onDelete,
+  onToggleProtected,
 }: {
   topic: Conversation
   isActive: boolean
   onSelect: () => void
   onRename: (title: string) => void
   onDelete: () => void
+  onToggleProtected: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -130,11 +134,16 @@ function TopicItem({
       )}
     >
       <button type="button" onClick={onSelect} className="flex flex-1 items-center gap-2 overflow-hidden text-left">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-btn bg-bg-tertiary">
+        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-btn bg-bg-tertiary">
           {thumbnail ? (
             <img src={thumbnail} alt="" className="h-full w-full object-cover" />
           ) : (
             <MessageSquare className="h-4 w-4 text-fg-muted" />
+          )}
+          {!!topic.is_protected && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-bg-tertiary">
+              <Lock className="h-2.5 w-2.5 text-fg-muted" />
+            </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -189,8 +198,23 @@ function TopicItem({
               </button>
               <button
                 type="button"
+                onClick={() => { setMenuOpen(false); onToggleProtected() }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium text-fg-secondary transition-colors hover:bg-bg-secondary hover:text-fg-primary"
+              >
+                {topic.is_protected ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                {topic.is_protected ? '取消保护' : '保护'}
+              </button>
+              <button
+                type="button"
                 onClick={onDelete}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10"
+                disabled={!!topic.is_protected}
+                className={cn(
+                  'flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors',
+                  topic.is_protected
+                    ? 'cursor-not-allowed text-fg-muted opacity-50'
+                    : 'text-error hover:bg-error/10',
+                )}
+                title={topic.is_protected ? '受保护对话不可删除，请先取消保护' : undefined}
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 删除

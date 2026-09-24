@@ -58,6 +58,7 @@ def _conv_to_response(c: Conversation) -> ConversationResponse:
         title=c.title,
         created_at=c.created_at,
         updated_at=c.updated_at,
+        is_protected=c.is_protected,
         message_count=len(ordered),
         last_prompt=last.prompt if last else None,
         last_thumbnail_url=last_thumbnail_url,
@@ -66,7 +67,12 @@ def _conv_to_response(c: Conversation) -> ConversationResponse:
 
 @router.get("", response_model=ConversationListResponse)
 def list_conversations(db: Session = Depends(get_db)) -> ConversationListResponse:
-    items = db.query(Conversation).order_by(desc(Conversation.created_at)).all()
+    # 受保护对话置顶，其余按创建时间倒序
+    items = (
+        db.query(Conversation)
+        .order_by(desc(Conversation.is_protected), desc(Conversation.created_at))
+        .all()
+    )
     return ConversationListResponse(items=[_conv_to_response(c) for c in items], total=len(items))
 
 
@@ -75,6 +81,7 @@ def create_conversation(payload: ConversationCreate, db: Session = Depends(get_d
     c = Conversation(
         id=str(uuid.uuid4()),
         title=(payload.title or "新对话").strip() or "新对话",
+        is_protected=payload.is_protected or 0,
     )
     db.add(c)
     db.commit()
@@ -99,10 +106,27 @@ def update_conversation(
     c = db.get(Conversation, conversation_id)
     if not c:
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "对话不存在"})
-    title = payload.title.strip()
-    if not title:
-        raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": "标题不能为空"})
-    c.title = title
+    has_title = payload.title is not None
+    has_protected = payload.is_protected is not None
+    if not has_title and not has_protected:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_input", "message": "至少需要提供 title 或 is_protected"},
+        )
+    if has_title:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(
+                status_code=400, detail={"code": "invalid_input", "message": "标题不能为空"}
+            )
+        c.title = title
+    if has_protected:
+        if payload.is_protected not in (0, 1):
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "invalid_input", "message": "is_protected 只能为 0 或 1"},
+            )
+        c.is_protected = payload.is_protected
     c.updated_at = _now()
     db.commit()
     db.refresh(c)
@@ -114,6 +138,11 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)) -> 
     c = db.get(Conversation, conversation_id)
     if not c:
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "对话不存在"})
+    if c.is_protected:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "protected", "message": "受保护对话不可删除，请先取消保护"},
+        )
     # 保留任务：仅解除与对话的绑定，不删除任务记录与资产
     db.query(Task).filter(Task.conversation_id == conversation_id).update(
         {Task.conversation_id: None}, synchronize_session=False

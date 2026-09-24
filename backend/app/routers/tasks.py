@@ -43,6 +43,9 @@ from ..worker import run_generation_task
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
+# CLI 等未指定对话时复用的固定受保护默认会话标题
+DEFAULT_CONVERSATION_TITLE = "CLI 生成内容"
+
 
 def _to_response(task: Task, asset_ids: list[str] | None = None) -> TaskResponse:
     # 优先使用 worker 落库的有序结果资产 id（多图保序）；旧任务回退到查询到的单个资产。
@@ -149,9 +152,24 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskCreat
                 detail={"code": "not_found", "message": f"画布 {payload.canvas_id} 不存在"},
             )
     else:
-        conv = Conversation(id=str(uuid.uuid4()), title="新对话")
-        db.add(conv)
-        db.flush()
+        # CLI 等未指定对话的场景：复用固定的受保护默认会话，避免每次生成新建一次性对话
+        conv = (
+            db.query(Conversation)
+            .filter(
+                Conversation.is_protected == 1,
+                Conversation.title == DEFAULT_CONVERSATION_TITLE,
+            )
+            .order_by(Conversation.created_at)
+            .first()
+        )
+        if not conv:
+            conv = Conversation(
+                id=str(uuid.uuid4()),
+                title=DEFAULT_CONVERSATION_TITLE,
+                is_protected=1,
+            )
+            db.add(conv)
+            db.flush()
         conversation_id = conv.id
 
     task_id = str(uuid.uuid4())

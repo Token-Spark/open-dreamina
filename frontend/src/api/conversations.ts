@@ -20,6 +20,7 @@ export interface Conversation {
   title: string
   created_at: string | null
   updated_at: string | null
+  is_protected: number
   message_count: number
   last_prompt: string | null
   last_thumbnail_url: string | null
@@ -27,6 +28,12 @@ export interface Conversation {
 
 export interface CreateConversationPayload {
   title?: string
+  is_protected?: number
+}
+
+export interface UpdateConversationPayload {
+  title?: string
+  is_protected?: number
 }
 
 export async function listConversations(): Promise<Conversation[]> {
@@ -44,8 +51,8 @@ export async function getConversation(id: string): Promise<Conversation> {
   return data
 }
 
-export async function updateConversation(id: string, title: string): Promise<Conversation> {
-  const { data } = await apiClient.patch<Conversation>(`/conversations/${id}`, { title })
+export async function updateConversation(id: string, payload: UpdateConversationPayload): Promise<Conversation> {
+  const { data } = await apiClient.patch<Conversation>(`/conversations/${id}`, payload)
   return data
 }
 

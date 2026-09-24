@@ -242,12 +242,13 @@ TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "update_conversation",
-        "重命名对话。",
+        "重命名对话或切换保护状态（部分更新：title / is_protected 至少传一个）。",
         {
             "conversation_id": {"type": "string", "description": "对话 id。"},
-            "title": {"type": "string", "description": "新标题，不能为空。"},
+            "title": {"type": "string", "description": "新标题，不能为空（与 is_protected 二选一或同时传）。"},
+            "is_protected": {"type": "integer", "description": "保护标记：1=受保护（不可删除），0=普通。与 title 二选一或同时传。"},
         },
-        ["conversation_id", "title"],
+        ["conversation_id"],
     ),
     _tool(
         "delete_conversation",

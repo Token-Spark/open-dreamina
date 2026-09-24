@@ -90,6 +90,7 @@ interface ConversationState {
   addTopic: (title?: string) => Promise<string>
   removeTopic: (id: string) => Promise<void>
   renameTopic: (id: string, title: string) => Promise<void>
+  toggleProtected: (id: string) => Promise<void>
   setCurrentTopic: (id: string) => Promise<void>
   /** 任务创建后更新本地消息缓存与对话预览（任务已通过后端持久化）。 */
   addMessage: (topicId: string, message: GenMessage) => void
@@ -164,7 +165,17 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   renameTopic: async (id, title) => {
     const nextTitle = title.trim()
     if (!nextTitle) return
-    const updated = await updateConversation(id, nextTitle)
+    const updated = await updateConversation(id, { title: nextTitle })
+    set((state) => ({
+      topics: state.topics.map((t) => (t.id === id ? updated : t)),
+    }))
+  },
+
+  toggleProtected: async (id) => {
+    const topic = get().topics.find((t) => t.id === id)
+    if (!topic) return
+    const next = topic.is_protected ? 0 : 1
+    const updated = await updateConversation(id, { is_protected: next })
     set((state) => ({
       topics: state.topics.map((t) => (t.id === id ? updated : t)),
     }))
