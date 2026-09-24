@@ -20,6 +20,9 @@
 
 审核通过（active）后返回 asset:// 地址，用于创建视频任务时的 image_urls/video_urls。
 真人、虚拟人像等受限参考素材必须提审通过后才能用于视频生成。
+
+提审接口的 AssetType 仅接受 Image / Video 两类素材：音频等类型不在提审范围内，
+其素材直接以公网 URL 参与生成（见 worker 的 audio_urls 分流），提交提审只会被上游拒绝。
 """
 from __future__ import annotations
 
@@ -51,6 +54,31 @@ _STATUS_PATH = "/task/seedance_asset_audit/status"
 # 2) 最大边 ≤ 6000px，超出返回 asset_api_http_400
 _MAX_AUDIT_ASPECT_RATIO = 2.5
 _MAX_AUDIT_DIMENSION = 6000
+
+# 本地素材类型（Asset.type）→ 提审 API 的 AssetType。
+# 提审接口只处理 Image / Video：未登记的素材类型（如 audio）不允许提审。
+_AUDIT_ASSET_TYPE_BY_TYPE: dict[str, str] = {
+    "image": "Image",
+    "video": "Video",
+}
+
+
+def _resolve_audit_asset_type(asset: Asset) -> str:
+    """把本地素材类型映射为提审 API 的 AssetType。
+
+    未登记的类型（音频等）直接抛错：这些素材本就不在提审范围内，
+    若被当作 Image 提交，上游会以 asset_api_http_400 拒绝。
+    """
+    mapped = _AUDIT_ASSET_TYPE_BY_TYPE.get((asset.type or "").lower())
+    if mapped is None:
+        supported = "、".join(sorted(_AUDIT_ASSET_TYPE_BY_TYPE.values()))
+        raise ProviderError(
+            f"素材 {asset.id} 的类型 {asset.type!r} 不在提审范围内："
+            f"提审接口仅支持 {supported} 两类素材。"
+            "音频等类型的素材无需提审，请直接以公网 URL 参与生成"
+            "（后端会将其路由到 audio_urls）。"
+        )
+    return mapped
 
 
 def _normalize_audit_image(asset: Asset, path: Path) -> Path:
@@ -183,7 +211,12 @@ _AUDIT_ERROR_HINTS: dict[str, str] = {
 
 
 async def submit_asset_audit(db: Session, asset: Asset, provider_slug: str) -> Asset:
-    """提交素材审核，返回更新后的 asset（status=pending）。"""
+    """提交素材审核，返回更新后的 asset（status=pending）。
+
+    先校验素材类型（仅 Image / Video 可提审），再解析 provider 与公网 URL，
+    避免为注定被上游拒绝的请求白白上传素材文件。
+    """
+    asset_type = _resolve_audit_asset_type(asset)
     provider = _load_sparkhub_provider(db, provider_slug)
     url = await asset_public_url(asset)
     # 火山引擎审核 API 要求 HTTPS URL，HTTP 链接会被拒绝（asset_api_http_400）
@@ -193,7 +226,6 @@ async def submit_asset_audit(db: Session, asset: Asset, provider_slug: str) -> A
             "请在 .env 中将 QINIU_DOMAIN 配置为 https:// 开头的域名，"
             "或配置 public_base_url 为 https:// 地址"
         )
-    asset_type = "Video" if asset.type == "video" else "Image"
     payload = {"url": url, "AssetType": asset_type}
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(

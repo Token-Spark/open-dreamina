@@ -144,6 +144,10 @@ def _download_results(result: dict[str, Any], download_dir: str) -> list[dict[st
 # 需要参考素材先通过审核的 provider 关键字（Spark Hub Seedance 系列）。
 _AUDIT_PROVIDER_HINTS = ("sparkhub-seedance",)
 
+# 提审接口仅接受 Image / Video 两类素材；音频等类型不在提审范围内，
+# 直接以公网 URL 参与生成（后端 worker 会把它路由到 audio_urls）。
+_AUDITABLE_ASSET_TYPES = frozenset({"image", "video"})
+
 
 def _needs_audit(provider: str, mode: str) -> bool:
     """判断该 provider + mode 是否需要参考素材先通过审核。
@@ -157,6 +161,80 @@ def _needs_audit(provider: str, mode: str) -> bool:
     return any(h in lowered for h in _AUDIT_PROVIDER_HINTS)
 
 
+def _is_auditable(asset: dict[str, Any]) -> bool:
+    """判断素材是否需要走提审：仅 Image / Video，音频等类型直接跳过。"""
+    return str(asset.get("type") or "").lower() in _AUDITABLE_ASSET_TYPES
+
+
+def _audit_one_asset(
+    provider: str,
+    asset_id: str,
+    client: ApiClient,
+    deadline: float,
+    interval: float,
+) -> str | None:
+    """确保单个图片 / 视频素材审核通过，返回该 asset_id。
+
+    已审核通过（active）直接返回；未审核时提交审核并轮询到终态。
+    出错时向 stdout 打印错误 JSON 并返回 None，由调用方终止整个流程。
+    """
+    import time
+
+    # 查当前审核状态。
+    try:
+        asset = client.request("GET", f"/assets/{asset_id}/audit", query={"provider": provider})
+    except ApiError as exc:
+        sys.stderr.write(f"[opendreamina] 查询素材审核状态失败：{exc}\n")
+        _print_json(exc.to_dict())
+        return None
+    status = asset.get("audit_status")
+    if status == "active":
+        sys.stderr.write(f"[opendreamina] 素材 {asset_id} 已审核通过，跳过。\n")
+        return asset_id
+    if status != "pending":
+        # 非 active / 非 pending（含 None）：提交审核。
+        sys.stderr.write(f"[opendreamina] 素材 {asset_id} 未审核，自动提交审核...\n")
+        try:
+            asset = client.request(
+                "POST", f"/assets/{asset_id}/audit", json_body={"provider": provider}
+            )
+        except ApiError as exc:
+            sys.stderr.write(f"[opendreamina] 提交审核失败：{exc}\n")
+            _print_json(exc.to_dict())
+            return None
+        status = asset.get("audit_status")
+    # 轮询到 active / failed 或超时。
+    while status not in ("active", "failed"):
+        if time.monotonic() >= deadline:
+            sys.stderr.write(
+                f"[opendreamina] 素材 {asset_id} 审核等待超时（仍为 {status}），生成可能失败。\n"
+            )
+            break
+        time.sleep(max(1.0, interval))
+        try:
+            asset = client.request(
+                "GET", f"/assets/{asset_id}/audit", query={"provider": provider}
+            )
+        except ApiError as exc:
+            sys.stderr.write(f"[opendreamina] 查询审核状态失败：{exc}\n")
+            _print_json(exc.to_dict())
+            return None
+        status = asset.get("audit_status")
+    if status == "failed":
+        err = asset.get("audit_error") or "审核失败"
+        sys.stderr.write(f"[opendreamina] 素材 {asset_id} 审核失败：{err}\n")
+        _print_json({"error": f"参考素材 {asset_id} 审核失败：{err}，请更换素材重试。"})
+        return None
+    if status == "active":
+        sys.stderr.write(f"[opendreamina] 素材 {asset_id} 审核通过。\n")
+    else:
+        # 超时仍未通过：仍把 asset_id 交给后端（让后端给出明确错误，而非 CLI 静默失败）。
+        sys.stderr.write(
+            f"[opendreamina] 素材 {asset_id} 审核未确认（{status}），继续尝试生成。\n"
+        )
+    return asset_id
+
+
 def _ensure_assets_audited(
     provider: str,
     reference_asset_ids: list[str],
@@ -168,7 +246,8 @@ def _ensure_assets_audited(
 ) -> list[str] | None:
     """对用户透明地处理参考素材审核，返回可直接用于生成的 asset_id 列表。
 
-    流程：上传本地文件 → 查每个素材审核状态 → 非 active 的提交审核并等待通过。
+    流程：上传本地文件 → 按素材类型分流 → 图片 / 视频提审并等待通过，
+    音频等不在提审范围内的类型原样透传（后端会把它路由到 audio_urls）。
     全过程在 stderr 打印进度提示，不污染 stdout 的 JSON 流。
     返回 None 表示出错（已打印错误 JSON），调用方应直接返回。
     """
@@ -189,64 +268,28 @@ def _ensure_assets_audited(
         return []
 
     deadline = time.monotonic() + timeout
-    audited: list[str] = []
-    for asset_id in list(dict.fromkeys(ids)):
-        # 查当前审核状态。
+    resolved: list[str] = []
+    # dict.fromkeys 去重且保留传入顺序（首尾帧模式下顺序有意义）。
+    for asset_id in dict.fromkeys(ids):
+        # 先取素材详情确认类型：提审接口仅处理 Image / Video。
         try:
-            asset = client.request("GET", f"/assets/{asset_id}/audit", query={"provider": provider})
+            asset = client.request("GET", f"/assets/{asset_id}")
         except ApiError as exc:
-            sys.stderr.write(f"[opendreamina] 查询素材审核状态失败：{exc}\n")
+            sys.stderr.write(f"[opendreamina] 查询素材信息失败：{exc}\n")
             _print_json(exc.to_dict())
             return None
-        status = asset.get("audit_status")
-        if status == "active":
-            sys.stderr.write(f"[opendreamina] 素材 {asset_id} 已审核通过，跳过。\n")
-            audited.append(asset_id)
-            continue
-        if status != "pending":
-            # 非 active / 非 pending（含 None）：提交审核。
-            sys.stderr.write(f"[opendreamina] 素材 {asset_id} 未审核，自动提交审核...\n")
-            try:
-                asset = client.request(
-                    "POST", f"/assets/{asset_id}/audit", json_body={"provider": provider}
-                )
-            except ApiError as exc:
-                sys.stderr.write(f"[opendreamina] 提交审核失败：{exc}\n")
-                _print_json(exc.to_dict())
-                return None
-            status = asset.get("audit_status")
-        # 轮询到 active / failed 或超时。
-        while status not in ("active", "failed"):
-            if time.monotonic() >= deadline:
-                sys.stderr.write(
-                    f"[opendreamina] 素材 {asset_id} 审核等待超时（仍为 {status}），生成可能失败。\n"
-                )
-                break
-            time.sleep(max(1.0, interval))
-            try:
-                asset = client.request(
-                    "GET", f"/assets/{asset_id}/audit", query={"provider": provider}
-                )
-            except ApiError as exc:
-                sys.stderr.write(f"[opendreamina] 查询审核状态失败：{exc}\n")
-                _print_json(exc.to_dict())
-                return None
-            status = asset.get("audit_status")
-        if status == "failed":
-            err = asset.get("audit_error") or "审核失败"
-            sys.stderr.write(f"[opendreamina] 素材 {asset_id} 审核失败：{err}\n")
-            _print_json({"error": f"参考素材 {asset_id} 审核失败：{err}，请更换素材重试。"})
-            return None
-        if status == "active":
-            sys.stderr.write(f"[opendreamina] 素材 {asset_id} 审核通过。\n")
-            audited.append(asset_id)
-        else:
-            # 超时仍未通过：仍把 asset_id 交给后端（让后端给出明确错误，而非 CLI 静默失败）。
+        if not _is_auditable(asset):
             sys.stderr.write(
-                f"[opendreamina] 素材 {asset_id} 审核未确认（{status}），继续尝试生成。\n"
+                f"[opendreamina] 素材 {asset_id}（type={asset.get('type')}）"
+                "不在提审范围内，跳过审核。\n"
             )
-            audited.append(asset_id)
-    return audited
+            resolved.append(asset_id)
+            continue
+        audited = _audit_one_asset(provider, asset_id, client, deadline, interval)
+        if audited is None:
+            return None
+        resolved.append(audited)
+    return resolved
 
 # mode 关键字 → 内容模式。用于 mode-select：根据提示词 / 参考素材推断走图片还是视频。
 _IMAGE_HINTS = ("图", "image", "img", "picture", "photo", "海报", "插画", "照片", "壁纸")
@@ -672,7 +715,7 @@ def _add_generate_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--negative-prompt", help="负面提示词，描述要排除的内容。")
     p.add_argument("--aspect-ratio", help=f"画面比例。图片: {'、'.join(sizes.IMAGE_ASPECT_RATIOS)}；视频: {'、'.join(sizes.VIDEO_ASPECT_RATIOS)}。")
     p.add_argument("--resolution", help=f"分辨率档位。图片: {'、'.join(sizes.IMAGE_RESOLUTIONS)}；视频: {'、'.join(sizes.VIDEO_RESOLUTIONS)}。")
-    p.add_argument("--reference", action="append", help="本地参考图路径（可多次传）。传入后自动切换为图生图 / 图生视频。")
+    p.add_argument("--reference", action="append", help="本地参考素材路径（可多次传，图片 / 视频 / 音频）。传入后自动切换为图生图 / 图生视频。")
     p.add_argument("--reference-asset", action="append", help="已有素材的 asset_id（可多次传）。")
     p.add_argument("--conversation-id", help="归属对话 id；省略则后端自动新建对话。")
     # 图片专用

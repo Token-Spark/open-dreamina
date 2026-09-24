@@ -285,6 +285,8 @@ opendreamina upload D:/refs/frame.png
 > **Spark Hub Seedance 自动审核**：图生视频（`image2video` / `frames2video`）使用 Spark Hub Seedance 渠道时，CLI 会**自动**完成参考素材审核——上传后检测素材审核状态，未审核的自动提交审核并等待通过（`active`），全程在 stderr 打印进度，无需手动调用 `audit`。直接用 `--reference <本地路径>` 即可一条命令走完「上传 → 审核 → 生成视频」。
 >
 > 如需**复用同一素材**生成多次（避免重复上传 + 审核），可先 `upload` 上传一次，再用 `--reference-asset <asset_id>` 引用——已审核通过的素材会跳过审核。
+>
+> **审核范围仅 Image / Video**：提审接口只接受图片与视频素材，音频等类型不在提审范围内。CLI 会按素材类型分流——图片 / 视频走「提交审核 → 等待通过」，音频等类型原样透传参与生成（后端路由到 `audio_urls`），不会被送进提审接口。
 
 ### 5.6a `audit` —— 参考素材审核（仅 Spark Hub Seedance 生视频需要）
 
@@ -304,6 +306,7 @@ opendreamina audit <asset_id> --provider sparkhub-seedance --query-only
 - `--provider`（必填）：Spark Hub Seedance Provider slug（如 `sparkhub-seedance`）。
 - `--wait`：提交后轮询直到终态（`active` / `failed`）或超时；终态时只输出一个 JSON。
 - `--query-only`：只查询不提交（仅调用 GET）。
+- **仅 Image / Video 可提审**：音频等类型的素材不在提审范围内，提交会返回 400。这类素材无需审核，直接作为参考素材参与生成即可。
 - 审核状态：`pending`（审核中）→ `active`（通过，可用于生成）/ `failed`（失败，需更换素材重新上传）。
 - 通过后用 `image2video` / `frames2video` 的 `--reference-asset <asset_id>` 引用，即可生成视频。
 
