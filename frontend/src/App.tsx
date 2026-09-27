@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { useEffect } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from '@/components/Layout'
 import { CreatePage } from '@/pages/CreatePage'
@@ -24,7 +24,7 @@ import { TasksPage } from '@/pages/TasksPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { CanvasListPage } from '@/pages/CanvasListPage'
 import { CanvasEditorPage } from '@/pages/CanvasEditorPage'
-import { ReviewPage } from '@/pages/ReviewPage'
+import { ReviewCenterPage } from '@/pages/ReviewCenterPage'
 import { listTasks, ACTIVE_STATUSES } from '@/api/tasks'
 import { useTaskStore } from '@/stores/taskStore'
 
@@ -60,7 +60,9 @@ export default function App() {
             <Route path="/canvas" element={<CanvasListPage />} />
             <Route path="/assets" element={<AssetsPage />} />
             <Route path="/creation-assets" element={<CreationAssetsPage />} />
-            <Route path="/review" element={<ReviewPage />} />
+            <Route path="/review" element={<ReviewCenterPage />} />
+            {/* 旧「镜头审片」路由重定向到审阅中心的镜头审片模式 */}
+            <Route path="/shot-review" element={<Navigate to="/review?mode=shot" replace />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/settings/providers" element={<SettingsPage />} />

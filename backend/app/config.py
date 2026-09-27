@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     # 留空时默认允许 ./data/review_sources，部署时按需配置实际素材所在目录。
     review_source_roots: str = ""
 
+    # 镜头审片：允许扫描/删除废弃镜头视频的根目录（逗号分隔多个目录）。
+    # 与制片人审阅的区别在于镜头审片支持按用户操作删除废弃视频文件，
+    # 因此容器内以可写方式挂载；留空时回退到 review_source_roots。
+    shot_review_source_roots: str = ""
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors(cls, v):
@@ -125,6 +130,28 @@ class Settings(BaseSettings):
             if key not in seen:
                 seen.add(key)
                 result.append(p)
+        return result
+
+    @property
+    def shot_review_source_paths(self) -> list[Path]:
+        """镜头审片允许扫描/删除的根目录列表。
+
+        优先使用 shot_review_source_roots 配置；留空时回退到制片人审阅的
+        review_source_paths（同一素材库场景零配置可用）。
+        """
+        raw = self.shot_review_source_roots.strip()
+        if not raw:
+            return self.review_source_paths
+        seen: set[str] = set()
+        result: list[Path] = []
+        for p in raw.split(","):
+            p = p.strip()
+            if not p:
+                continue
+            key = str(Path(p).resolve())
+            if key not in seen:
+                seen.add(key)
+                result.append(Path(p).resolve())
         return result
 
     def ensure_dirs(self) -> None:

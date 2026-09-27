@@ -51,6 +51,52 @@ interface SSEPayload {
 
 const TERMINAL: TaskStatus[] = ['completed', 'failed', 'cancelled']
 
+// ---------------- 全局 SSE 连接预算 ----------------
+// HTTP/1.1 下浏览器对同源最多 6 条并发连接。若每个运行中任务都各开一条
+// EventSource，同时运行的任务一多（如批量出图 ≥5 个）就会占满连接池，
+// 页面上所有正常数据请求被饿死——请求停在浏览器队列里，服务端根本收不到。
+// 因此全局最多保留 MAX_TASK_SSE 条直播流，其余任务自动退化为下方已有的
+// 3s 轮询兜底；有任务结束释放预算时，等待中的订阅按先到先得接管直播流。
+const MAX_TASK_SSE = 4
+
+interface StreamWaiter {
+  cancelled: boolean
+  grant: () => void
+}
+
+let freeStreamSlots = MAX_TASK_SSE
+const streamWaiters: StreamWaiter[] = []
+
+/** 申请一条 SSE 连接预算：有空位立即 grant，否则排队等待（返回等待凭据）。 */
+function requestStreamSlot(grant: () => void): StreamWaiter | null {
+  if (freeStreamSlots > 0) {
+    freeStreamSlots -= 1
+    grant()
+    return null
+  }
+  const waiter: StreamWaiter = { cancelled: false, grant }
+  streamWaiters.push(waiter)
+  return waiter
+}
+
+/** 归还一条连接预算，并把它移交给队列中第一个仍有效的等待者。 */
+function releaseStreamSlot(): void {
+  freeStreamSlots += 1
+  while (streamWaiters.length) {
+    const waiter = streamWaiters.shift()!
+    if (waiter.cancelled) continue
+    freeStreamSlots -= 1
+    waiter.grant()
+    return
+  }
+}
+
+function cancelStreamWaiter(waiter: StreamWaiter): void {
+  waiter.cancelled = true
+  const i = streamWaiters.indexOf(waiter)
+  if (i >= 0) streamWaiters.splice(i, 1)
+}
+
 /**
  * Subscribe to a single task's progress via SSE, with a 3s polling fallback.
  * EventSource reconnects natively; the poll ensures progress is current even
@@ -83,6 +129,10 @@ export function useTaskSSE(
     let es: EventSource | null = null
     let pollTimer: number | null = null
     let cleanupTimer: number | null = null
+    // SSE 连接预算的持有状态：holdingSlot=已建立直播流，slotWaiter=正在排队等待
+    let holdingSlot = false
+    let slotWaiter: StreamWaiter | null = null
+    let terminalReached = false
 
     const apply = (payload: SSEPayload) => {
       if (cancelled) return
@@ -127,6 +177,7 @@ export function useTaskSSE(
     }
 
     const scheduleTerminalCleanup = (terminal: TaskStatus) => {
+      terminalReached = true
       stop()
       // Keep the entry briefly so the UI can show the final state, then drop it.
       cleanupTimer = window.setTimeout(() => {
@@ -135,9 +186,17 @@ export function useTaskSSE(
     }
 
     const stop = () => {
+      if (slotWaiter) {
+        cancelStreamWaiter(slotWaiter)
+        slotWaiter = null
+      }
       if (es) {
         es.close()
         es = null
+      }
+      if (holdingSlot) {
+        holdingSlot = false
+        releaseStreamSlot()
       }
       if (pollTimer) {
         window.clearInterval(pollTimer)
@@ -173,17 +232,26 @@ export function useTaskSSE(
       })
 
     const openSSE = () => {
-      if (es || cancelled) return
-      es = new EventSource(taskStreamUrl(taskId))
-      es.addEventListener('progress', (e) => safeParse(e, apply))
-      es.addEventListener('completed', (e) => safeParse(e, apply))
-      es.addEventListener('failed', (e) => safeParse(e, apply))
-      es.addEventListener('heartbeat', () => {
-        // keep-alive; no state change
-      })
-      es.onerror = () => {
-        // EventSource auto-reconnects; nothing to do here. Polling covers gaps.
+      if (es || cancelled || terminalReached) return
+      const grant = () => {
+        // 排队期间任务可能已结束或组件已卸载：把预算原样归还
+        if (cancelled || terminalReached) {
+          releaseStreamSlot()
+          return
+        }
+        holdingSlot = true
+        es = new EventSource(taskStreamUrl(taskId))
+        es.addEventListener('progress', (e) => safeParse(e, apply))
+        es.addEventListener('completed', (e) => safeParse(e, apply))
+        es.addEventListener('failed', (e) => safeParse(e, apply))
+        es.addEventListener('heartbeat', () => {
+          // keep-alive; no state change
+        })
+        es.onerror = () => {
+          // EventSource auto-reconnects; nothing to do here. Polling covers gaps.
+        }
       }
+      slotWaiter = requestStreamSlot(grant)
     }
 
     const startPolling = () => {

@@ -136,6 +136,11 @@ def _run_lightweight_migrations() -> None:
     _ensure_column("creation_assets", "cloud_tag", "TEXT NOT NULL DEFAULT ''")
     # 对话保护标记（受保护对话不可删除，CLI 默认对话受保护）
     _ensure_column("conversations", "is_protected", "INTEGER NOT NULL DEFAULT 0")
+    # 镜头审片：分镜提示词底稿 + 审片人改写的精修提示词（作为修改备注）
+    _ensure_column("shot_review_items", "source_prompt", "TEXT")
+    _ensure_column("shot_review_items", "revised_prompt", "TEXT")
+    # 镜头审片：同镜号多版本时的「选定保留版本」标记
+    _ensure_column("shot_review_items", "selected", "BOOLEAN NOT NULL DEFAULT 0")
 
 
 def init_db() -> None:

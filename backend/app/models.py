@@ -15,7 +15,7 @@
 """ORM 模型，严格对应规格书第 4 节 SQL 定义。"""
 from __future__ import annotations
 
-from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -346,4 +346,94 @@ class ReviewItem(Base):
     __table_args__ = (
         Index("idx_review_items_session", "session_id"),
         Index("idx_review_items_status", "status"),
+    )
+
+
+# ---------------- 剧集镜头审片 ----------------
+
+
+class ShotReviewSession(Base):
+    """镜头审片会话：绑定一个剧集视频根目录（如 分镜脚本/），记录审片进度与评分汇总。
+
+    - root_path：被扫描的目录绝对路径（必须在配置允许的根目录下）。
+    - status：draft（未开始）| in_review（审片中）| completed（已完成）| archived（已归档）。
+    - summary_json：按评分档位统计的汇总，在 recompute_summary 时更新。
+    """
+
+    __tablename__ = "shot_review_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False, default="未命名审片")
+    root_path: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
+    summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    items: Mapped[list["ShotReviewItem"]] = relationship(
+        "ShotReviewItem", back_populates="session", passive_deletes=True
+    )
+
+    __table_args__ = (
+        Index("idx_shot_review_sessions_status", "status"),
+        Index("idx_shot_review_sessions_created", "created_at"),
+    )
+
+
+class ShotReviewItem(Base):
+    """镜头审片条目：剧集目录下的一个镜头视频，附带评分与修改意见。
+
+    - episode / shot_id：从路径与文件名解析出的集号与镜号（如 EP05 / EP05-S01）。
+    - score：制片人打分 0–100，未打分为 None；档位由 score 派生，不落库避免漂移。
+    - feedback：修改意见（纯文本）。
+    - source_prompt：扫描时从同集 shots.md 提取的提示词底稿（人物/场景/动作等字段原文），
+      供审片人改写精修提示词时参考；只读关联，不回写素材文件。
+    - revised_prompt：审片人改写的 AIGC 精修提示词，作为该镜的修改备注，
+      下游重生成时可直接复制使用；NULL 表示未填写。
+    - shot_function / script_duration / shot_size / movement / dialogue：扫描时
+      从同集 shots.md 关联的分镜信息，用于「应有 vs 实际」对照。
+    - render_status / model：从同集 generation_report.json 关联的生成状态。
+    """
+
+    __tablename__ = "shot_review_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String, ForeignKey("shot_review_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    episode: Mapped[str | None] = mapped_column(String, nullable=True)
+    shot_id: Mapped[str] = mapped_column(String, nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_name: Mapped[str] = mapped_column(String, nullable=False)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thumbnail_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 同镜号多版本时的「选定保留版本」标记；同一集+镜号下至多一条为 True
+    selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revised_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shot_function: Mapped[str | None] = mapped_column(Text, nullable=True)
+    script_duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    shot_size: Mapped[str | None] = mapped_column(String, nullable=True)
+    movement: Mapped[str | None] = mapped_column(String, nullable=True)
+    dialogue: Mapped[str | None] = mapped_column(Text, nullable=True)
+    render_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reviewed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    session: Mapped["ShotReviewSession"] = relationship(
+        "ShotReviewSession", back_populates="items"
+    )
+
+    __table_args__ = (
+        Index("idx_shot_review_items_session", "session_id"),
+        Index("idx_shot_review_items_episode", "episode"),
     )

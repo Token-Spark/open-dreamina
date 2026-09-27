@@ -178,14 +178,19 @@ def _delete_thumbnail_file(thumb_rel: str | None) -> None:
 
 # ---------------- 路径安全验证 ----------------
 
-def _is_path_allowed(folder_path: str) -> Path:
+def _is_path_allowed(
+    folder_path: str,
+    roots: list[Path] | None = None,
+    env_hint: str = "REVIEW_SOURCE_ROOTS",
+) -> Path:
     """验证文件夹路径是否在配置允许的根目录下，返回解析后的绝对路径。
 
     安全要求：防止路径遍历攻击，只允许访问配置的根目录下的子目录。
     resolve() 会展开符号链接，因此指向外部的软链接同样会被拒绝。
+    roots 缺省时使用制片人审阅的允许根目录；镜头审片传入自己的可写根目录。
     """
     requested = Path(folder_path).expanduser().resolve()
-    for root in settings.review_source_paths:
+    for root in (roots if roots is not None else settings.review_source_paths):
         if not _is_within(requested, root):
             continue
         if not requested.is_dir():
@@ -193,7 +198,14 @@ def _is_path_allowed(folder_path: str) -> Path:
         return requested
     raise ValueError(
         f"路径不在允许的审阅目录内: {folder_path}。"
-        f"请在 .env 中配置 REVIEW_SOURCE_ROOTS 指向素材所在目录。"
+        f"请在 .env 中配置 {env_hint} 指向素材所在目录。"
+    )
+
+
+def is_shot_path_allowed(folder_path: str) -> Path:
+    """镜头审片专用的路径校验：使用可写根目录（SHOT_REVIEW_SOURCE_ROOTS）。"""
+    return _is_path_allowed(
+        folder_path, settings.shot_review_source_paths, "SHOT_REVIEW_SOURCE_ROOTS"
     )
 
 
@@ -206,13 +218,14 @@ def _is_within(path: Path, root: Path) -> bool:
         return False
 
 
-def list_review_folders() -> list[dict]:
-    """列出所有允许根目录及其下的子文件夹（递归两层），供前端选择审阅目标。
+def list_review_folders(roots: list[Path] | None = None) -> list[dict]:
+    """列出允许根目录及其下的子文件夹（递归两层），供前端选择审阅目标。
 
     返回格式：[{path, name, subdirs: [{path, name, subdirs: [{path, name}]}]}]
+    roots 缺省时使用制片人审阅的允许根目录；镜头审片传入自己的可写根目录。
     """
     result: list[dict] = []
-    for root in settings.review_source_paths:
+    for root in (roots if roots is not None else settings.review_source_paths):
         if not root.exists():
             result.append({"path": str(root), "name": root.name, "subdirs": [], "exists": False})
             continue

@@ -17,6 +17,9 @@ services:
       - ./data:/app/data
       # 审阅外部素材目录（只读挂载，容器内路径 /app/external_sources）
       - ${REVIEW_SOURCES_HOST_PATH:-./data/review_sources}:/app/external_sources:ro
+      # 镜头审片：外部镜头视频目录（可写挂载，容器内路径 /app/shot_sources，
+      # 支持在审片页删除废弃镜头视频；默认与审阅素材同一宿主机目录）
+      - ${SHOT_REVIEW_SOURCES_HOST_PATH:-${REVIEW_SOURCES_HOST_PATH:-./data/review_sources}}:/app/shot_sources:rw
     environment:
       - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
       - REDIS_URL=redis://redis:6379/0
@@ -34,6 +37,8 @@ services:
       - DIRECTOR_DESK_URL=${DIRECTOR_DESK_URL:-https://xiaozangao.github.io/3d-director-desk/}
       # 制片人审阅：外部素材目录（宿主机路径），留空则默认 /app/data/review_sources
       - REVIEW_SOURCE_ROOTS=${REVIEW_SOURCE_ROOTS:-}
+      # 镜头审片：允许扫描/删除废弃视频的容器内根目录（对应上面的可写挂载 /app/shot_sources）
+      - SHOT_REVIEW_SOURCE_ROOTS=${SHOT_REVIEW_SOURCE_ROOTS:-/app/shot_sources}
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"

@@ -12,40 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  ClipboardCheck,
-  Plus,
-  Trash2,
-  RefreshCw,
-  FolderOpen,
-  Loader2,
   CheckCircle2,
+  ClipboardCheck,
+  Clock,
+  Loader2,
   XCircle,
   AlertTriangle,
-  Clock,
 } from 'lucide-react'
 import {
   useReviewSessions,
   useReviewItems,
-  useCreateReviewSession,
   useDeleteReviewSession,
   useRescanReviewSession,
   useUpdateReviewSession,
   useUpdateReviewItem,
   useBatchUpdateReviewItems,
 } from '@/hooks/useReviews'
-import type { ReviewItem, ReviewStatus, ReviewSession } from '@/api/reviews'
+import type { ReviewItem, ReviewSession, ReviewStatus } from '@/api/reviews'
 import { reviewItemFileUrl } from '@/api/reviews'
-import { CreateReviewSessionDialog } from '@/components/review/CreateReviewSessionDialog'
 import { ReviewItemCard, STATUS_META } from '@/components/review/ReviewItemCard'
+import { FilterPill } from '@/components/reviewCenter/FilterPill'
+import { SessionListPanel } from '@/components/reviewCenter/SessionListPanel'
+import type { SessionListItem } from '@/components/reviewCenter/SessionListPanel'
+import { SessionToolbar } from '@/components/reviewCenter/SessionToolbar'
+import { SummaryDot } from '@/components/reviewCenter/SummaryDot'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
-import { Badge } from '@/components/ui/Badge'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
-import { cn, formatRelativeTime } from '@/lib/utils'
 
 type StatusFilter = ReviewStatus | 'all'
 
@@ -57,13 +54,37 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; icon: typeof Clock }[]
   { key: 'rejected', label: '驳回', icon: XCircle },
 ]
 
-export function ReviewPage() {
+/** 审阅中心的素材审阅面板：会话列表 + 条目审核（状态标记与修改意见）。 */
+export function MaterialReviewPanel({
+  selectedId,
+  onSelectSession,
+}: {
+  selectedId: string | null
+  onSelectSession: (id: string | null) => void
+}) {
   const { data: sessions, isLoading: sessionsLoading } = useReviewSessions()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [openCreate, setOpenCreate] = useState(false)
   const [openItem, setOpenItem] = useState<ReviewItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<ReviewSession | null>(null)
+
+  // 切换会话（含新建后自动选中）时回到全部状态
+  useEffect(() => {
+    setStatusFilter('all')
+  }, [selectedId])
+
+  const listItems = useMemo<SessionListItem[]>(
+    () =>
+      (sessions ?? []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        pathLabel: s.folder_path.split(/[\\/]/).pop() || s.folder_path,
+        completed: s.status === 'completed',
+        statPrimary: `${s.item_count} 个文件`,
+        statSecondary: s.summary?.reviewed != null ? `${s.summary.reviewed} 已审` : undefined,
+        updatedAt: s.updated_at,
+      })),
+    [sessions],
+  )
 
   const currentSession = sessions?.find((s) => s.id === selectedId) ?? null
 
@@ -72,28 +93,17 @@ export function ReviewPage() {
     statusFilter === 'all' ? undefined : statusFilter,
   )
 
-  const createMutation = useCreateReviewSession()
   const deleteMutation = useDeleteReviewSession()
   const rescanMutation = useRescanReviewSession()
   const updateSessionMutation = useUpdateReviewSession()
   const updateItemMutation = useUpdateReviewItem(selectedId ?? '')
   const batchUpdateMutation = useBatchUpdateReviewItems(selectedId ?? '')
 
-  async function handleCreate(title: string, folderPath: string) {
-    try {
-      const session = await createMutation.mutateAsync({ title, folderPath })
-      setSelectedId(session.id)
-      toast(`已创建审阅会话「${title}」，扫描到 ${session.item_count} 个文件`, 'success')
-    } catch (e) {
-      toast(toApiError(e).message, 'error')
-    }
-  }
-
   async function handleDelete() {
     if (!confirmDelete) return
     try {
       await deleteMutation.mutateAsync(confirmDelete.id)
-      if (selectedId === confirmDelete.id) setSelectedId(null)
+      if (selectedId === confirmDelete.id) onSelectSession(null)
       toast('已删除审阅会话', 'success')
     } catch (e) {
       toast(toApiError(e).message, 'error')
@@ -143,78 +153,19 @@ export function ReviewPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-6">
-      {/* 标题 */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-fg-primary">制片人审阅</h1>
-          <p className="mt-1 text-sm text-fg-secondary">
-            审核外部文件夹中的 AI 批量生成素材，标记通过/驳回并记录修改意见
-          </p>
-        </div>
-        <Button onClick={() => setOpenCreate(true)}>
-          <Plus className="h-4 w-4" />
-          新建审阅
-        </Button>
-      </div>
-
+    <>
       <div className="flex gap-6">
         {/* 左侧：会话列表 */}
-        <div className="w-72 shrink-0 space-y-2">
-          {sessionsLoading ? (
-            <div className="flex items-center gap-2 py-8 text-sm text-fg-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              加载中…
-            </div>
-          ) : sessions && sessions.length > 0 ? (
-            sessions.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => {
-                  setSelectedId(s.id)
-                  setStatusFilter('all')
-                }}
-                className={cn(
-                  'w-full rounded-card border p-3 text-left transition-all',
-                  selectedId === s.id
-                    ? 'border-accent bg-bg-tertiary ring-1 ring-accent/30'
-                    : 'border-border bg-bg-secondary hover:bg-bg-tertiary',
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium text-fg-primary">
-                    {s.title}
-                  </span>
-                  {s.status === 'completed' && (
-                    <Badge variant="success">已完成</Badge>
-                  )}
-                </div>
-                <div className="mt-1 flex items-center gap-1 text-xs text-fg-muted">
-                  <FolderOpen className="h-3 w-3 shrink-0" />
-                  <span className="truncate">
-                    {s.folder_path.split(/[\\/]/).pop() || s.folder_path}
-                  </span>
-                </div>
-                <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums text-fg-muted">
-                  <span>{s.item_count} 个文件</span>
-                  {s.summary?.reviewed != null && (
-                    <>
-                      <span>·</span>
-                      <span>{s.summary.reviewed} 已审</span>
-                    </>
-                  )}
-                  <span>·</span>
-                  <span>{formatRelativeTime(s.updated_at)}</span>
-                </div>
-              </button>
-            ))
-          ) : (
-            <div className="rounded-card border border-dashed border-border p-8 text-center">
-              <ClipboardCheck className="mx-auto mb-2 h-8 w-8 text-fg-muted" />
-              <p className="text-sm font-medium text-fg-secondary">暂无审阅会话</p>
-              <p className="mt-1 text-xs text-fg-muted">点击「新建审阅」开始</p>
-            </div>
-          )}
+        <div className="w-72 shrink-0">
+          <SessionListPanel
+            items={listItems}
+            isLoading={sessionsLoading}
+            selectedId={selectedId}
+            onSelect={onSelectSession}
+            emptyIcon={ClipboardCheck}
+            emptyTitle="暂无审阅会话"
+            emptyHint="点击「新建审阅」开始"
+          />
         </div>
 
         {/* 右侧：条目列表 */}
@@ -231,69 +182,22 @@ export function ReviewPage() {
           ) : (
             <div>
               {/* 会话工具栏 */}
-              <div className="mb-4 rounded-card border border-border bg-bg-secondary p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-semibold text-fg-primary">
-                      {currentSession.title}
-                    </h2>
-                    <div className="mt-1 flex items-center gap-1.5 text-xs text-fg-muted">
-                      <FolderOpen className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{currentSession.folder_path}</span>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRescan}
-                      disabled={rescanMutation.isPending}
-                    >
-                      <RefreshCw className={cn('h-3.5 w-3.5', rescanMutation.isPending && 'animate-spin')} />
-                      重新扫描
-                    </Button>
-                    {currentSession.status !== 'completed' ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          updateSessionMutation.mutate({
-                            sessionId: currentSession.id,
-                            payload: { status: 'completed' },
-                          })
-                        }
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        标记完成
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          updateSessionMutation.mutate({
-                            sessionId: currentSession.id,
-                            payload: { status: 'in_review' },
-                          })
-                        }
-                      >
-                        重新开启
-                      </Button>
-                    )}
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setConfirmDelete(currentSession)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      删除
-                    </Button>
-                  </div>
-                </div>
-
-                {/* 统计 */}
+              <SessionToolbar
+                title={currentSession.title}
+                path={currentSession.folder_path}
+                completed={currentSession.status === 'completed'}
+                rescanPending={rescanMutation.isPending}
+                onRescan={handleRescan}
+                onToggleStatus={() =>
+                  updateSessionMutation.mutate({
+                    sessionId: currentSession.id,
+                    payload: { status: currentSession.status === 'completed' ? 'in_review' : 'completed' },
+                  })
+                }
+                onDelete={() => setConfirmDelete(currentSession)}
+              >
                 {currentSession.summary && (
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums">
+                  <>
                     <SummaryDot icon={Clock} label="待审" count={currentSession.summary.pending ?? 0} className="text-fg-secondary" />
                     <SummaryDot icon={CheckCircle2} label="通过" count={currentSession.summary.approved ?? 0} className="text-success" />
                     <SummaryDot icon={AlertTriangle} label="需修改" count={currentSession.summary.needs_revision ?? 0} className="text-warning" />
@@ -301,33 +205,26 @@ export function ReviewPage() {
                     <span className="text-fg-muted">
                       共 {currentSession.summary.total ?? currentSession.item_count} 个
                     </span>
-                  </div>
+                  </>
                 )}
-              </div>
+              </SessionToolbar>
 
               {/* 状态筛选 + 批量操作 */}
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 {STATUS_FILTERS.map((f) => {
-                  const Icon = f.icon
                   const count =
                     f.key === 'all'
                       ? currentSession.summary?.total ?? 0
                       : currentSession.summary?.[f.key] ?? 0
                   return (
-                    <button
+                    <FilterPill
                       key={f.key}
+                      icon={f.icon}
+                      label={f.label}
+                      count={count}
+                      active={statusFilter === f.key}
                       onClick={() => setStatusFilter(f.key)}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
-                        statusFilter === f.key
-                          ? 'border-accent bg-accent/10 text-fg-primary'
-                          : 'border-border text-fg-muted hover:bg-bg-tertiary hover:text-fg-secondary',
-                      )}
-                    >
-                      <Icon className="h-3 w-3" />
-                      {f.label}
-                      <span className="tabular-nums text-fg-muted">{count}</span>
-                    </button>
+                    />
                   )
                 })}
                 <Button
@@ -373,13 +270,6 @@ export function ReviewPage() {
         </div>
       </div>
 
-      {/* 新建会话弹窗 */}
-      <CreateReviewSessionDialog
-        open={openCreate}
-        onOpenChange={setOpenCreate}
-        onCreate={handleCreate}
-      />
-
       {/* 预览 */}
       <ImageLightbox
         open={openItem != null}
@@ -421,26 +311,6 @@ export function ReviewPage() {
       >
         <p className="py-2 text-sm text-fg-secondary">外部文件夹中的原始文件不会被删除。</p>
       </Dialog>
-    </div>
-  )
-}
-
-function SummaryDot({
-  icon: Icon,
-  label,
-  count,
-  className,
-}: {
-  icon: typeof Clock
-  label: string
-  count: number
-  className?: string
-}) {
-  return (
-    <span className={cn('flex items-center gap-1', className)}>
-      <Icon className="h-3 w-3" />
-      {label}
-      <span className="font-medium">{count}</span>
-    </span>
+    </>
   )
 }
