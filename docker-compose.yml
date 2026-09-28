@@ -39,6 +39,10 @@ services:
       - REVIEW_SOURCE_ROOTS=${REVIEW_SOURCE_ROOTS:-}
       # 镜头审片：允许扫描/删除废弃视频的容器内根目录（对应上面的可写挂载 /app/shot_sources）
       - SHOT_REVIEW_SOURCE_ROOTS=${SHOT_REVIEW_SOURCE_ROOTS:-/app/shot_sources}
+      # 镜头审片数据沉淀：markdown 归档（默认开启，写入 /app/data/review_archive）
+      - SHOT_REVIEW_ARCHIVE_ENABLED=${SHOT_REVIEW_ARCHIVE_ENABLED:-true}
+      - SHOT_REVIEW_ARCHIVE_DIR=${SHOT_REVIEW_ARCHIVE_DIR:-}
+      - SHOT_REVIEW_ARCHIVE_COPY_MEDIA=${SHOT_REVIEW_ARCHIVE_COPY_MEDIA:-true}
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"

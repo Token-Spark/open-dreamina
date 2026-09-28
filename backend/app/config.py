@@ -87,6 +87,16 @@ class Settings(BaseSettings):
     # 因此容器内以可写方式挂载；留空时回退到 review_source_roots。
     shot_review_source_roots: str = ""
 
+    # 镜头审片数据沉淀：审阅动作（打分/意见/精修提示词/删除/完成）无感自动归档为
+    # markdown + 媒体副本（./data/review_archive），记录 原内容/提示词/评分/问题/
+    # 修改指引/修改后内容 的完整迭代链，供优化 AI 工作流参考。关闭后不写任何档案。
+    shot_review_archive_enabled: bool = True
+    # 归档根目录；留空默认 ./data/review_archive
+    shot_review_archive_dir: str = ""
+    # 是否复制媒体副本到归档（删前抢救废弃版本 + 完成时归档每镜首末版本）。
+    # 关闭后 entry.md 只引用素材原始路径，归档体积最小但非自包含。
+    shot_review_archive_copy_media: bool = True
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors(cls, v):
@@ -153,6 +163,14 @@ class Settings(BaseSettings):
                 seen.add(key)
                 result.append(Path(p).resolve())
         return result
+
+    @property
+    def shot_review_archive_path(self) -> Path:
+        """审片数据档案根目录。留空回退到 ./data/review_archive。"""
+        raw = self.shot_review_archive_dir.strip()
+        if raw:
+            return Path(raw)
+        return self.assets_path.parent / "review_archive"
 
     def ensure_dirs(self) -> None:
         """确保运行时目录存在（db 父目录、assets、backups）。"""

@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from ..models import ShotReviewItem, ShotReviewSession
 from ..utils.file_utils import detect_mime_type
 from ..utils.time_utils import now_iso as _now_iso
+from . import shot_review_archive as _archive
 from .review_service import (
     _delete_thumbnail_file,
     _generate_review_thumbnail,
@@ -194,6 +195,7 @@ def scan_root(db: Session, session: ShotReviewSession, root_path: str) -> dict:
 
     meta_cache: dict[Path, dict] = {}
     added = 0
+    added_keys: list[tuple[str | None, str]] = []
     for rel in sorted(found, key=str.lower):
         if rel in existing:
             continue
@@ -201,11 +203,16 @@ def scan_root(db: Session, session: ShotReviewSession, root_path: str) -> dict:
         db.add(item)
         session.items.append(item)
         added += 1
+        added_keys.append((item.episode, item.shot_id))
 
     removed = 0
+    removed_keys: list[tuple[str | None, str]] = []
+    scan_overrides: list[dict] = []
     backfilled = 0
     for rel, item in existing.items():
         if rel not in found:
+            removed_keys.append((item.episode, item.shot_id))
+            scan_overrides.append(_archive.missing_override(item))
             _delete_thumbnail_file(item.thumbnail_path)
             db.delete(item)
             removed += 1
@@ -224,6 +231,8 @@ def scan_root(db: Session, session: ShotReviewSession, root_path: str) -> dict:
     session.updated_at = _now_iso()
     db.commit()
     recompute_summary(db, session)
+    # 数据沉淀：为涉及镜号建档/更新（新镜建档、外部消失标记），审阅人无感
+    _archive.after_scan(db, session, touched=added_keys + removed_keys, overrides=scan_overrides)
     return {"added": added, "removed": removed, "total": len(session.items)}
 
 
@@ -304,6 +313,11 @@ def update_session(
     session.updated_at = _now_iso()
     db.commit()
     db.refresh(session)
+    # 数据沉淀：标记完成时归档每镜首末版本媒体并全量刷新；其余变更同步全局索引
+    if status == "completed":
+        _archive.finalize_session(db, session)
+    else:
+        _archive.refresh_index(db)
     return session
 
 
@@ -316,6 +330,8 @@ def delete_session(db: Session, session: ShotReviewSession) -> None:
             pass
     db.delete(session)
     db.commit()
+    # 数据沉淀：档案文件夹保留，全局索引标记「会话已删除」
+    _archive.refresh_index(db)
 
 
 # ---------------- 条目读写 ----------------
@@ -365,6 +381,8 @@ def update_item(
     db.refresh(item)
     if item.session:
         recompute_summary(db, item.session)
+    # 数据沉淀：评分/意见/精修提示词/选定 → 重写该镜 entry.md，审阅人无感
+    _archive.sync_shots(item.session, [item])
     return item
 
 
@@ -374,6 +392,7 @@ def batch_update_items(db: Session, session_id: str, updates: list[dict]) -> tup
     items = {item.id: item for item in session.items} if session else {}
     updated = 0
     failed = 0
+    updated_items: list[ShotReviewItem] = []
     for upd in updates:
         item = items.get(upd.get("id", ""))
         if not item:
@@ -392,9 +411,12 @@ def batch_update_items(db: Session, session_id: str, updates: list[dict]) -> tup
         item.reviewed_at = _now_iso()
         item.updated_at = _now_iso()
         updated += 1
+        updated_items.append(item)
     db.commit()
     if session:
         recompute_summary(db, session)
+        # 数据沉淀：批量更新涉及的镜号建档刷新
+        _archive.sync_shots(session, updated_items)
     return updated, failed
 
 
@@ -428,6 +450,8 @@ def _delete_item_file(item: ShotReviewItem) -> int:
 
 def delete_item(db: Session, item: ShotReviewItem, delete_file: bool) -> dict:
     """删除审片条目；delete_file=True 时同时从磁盘删除该视频文件。"""
+    # 数据沉淀：删前抢救媒体副本（物理删除后无法复制），随后标记版本状态
+    rescue = _archive.rescue_before_delete(item, delete_file)
     freed_bytes = _delete_item_file(item) if delete_file else 0
     _delete_thumbnail_file(item.thumbnail_path)
     session = item.session
@@ -435,6 +459,8 @@ def delete_item(db: Session, item: ShotReviewItem, delete_file: bool) -> dict:
     db.commit()
     if session:
         recompute_summary(db, session)
+    if rescue:
+        _archive.apply_delete_overrides(db, session, [rescue])
     return {"deleted": 1, "failed": 0, "freed_bytes": freed_bytes, "errors": []}
 
 
@@ -448,12 +474,16 @@ def bulk_delete_items(db: Session, session: ShotReviewSession, item_ids: list[st
     failed = 0
     freed_bytes = 0
     errors: list[dict] = []
+    rescues: list[dict] = []
     for item_id in item_ids:
         item = items.get(item_id)
         if not item:
             failed += 1
             errors.append({"id": item_id, "message": "条目不存在或已删除"})
             continue
+        # 数据沉淀：删前抢救副本（必须在文件删除前复制）；删除失败则不追加覆盖标记，
+        # 条目仍在库中，该镜号下次更新时会按库内状态重写档案
+        rescue = _archive.rescue_before_delete(item, delete_file)
         try:
             if delete_file:
                 freed_bytes += _delete_item_file(item)
@@ -461,12 +491,16 @@ def bulk_delete_items(db: Session, session: ShotReviewSession, item_ids: list[st
             failed += 1
             errors.append({"id": item_id, "file_name": item.file_name, "message": str(e)})
             continue
+        if rescue:
+            rescues.append(rescue)
         _delete_thumbnail_file(item.thumbnail_path)
         db.delete(item)
         deleted += 1
     db.commit()
     if deleted:
         recompute_summary(db, session)
+    if rescues:
+        _archive.apply_delete_overrides(db, session, rescues)
     return {"deleted": deleted, "failed": failed, "freed_bytes": freed_bytes, "errors": errors}
 
 
