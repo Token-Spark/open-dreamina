@@ -149,6 +149,49 @@ opendreamina query_result <task_id> --wait --download-dir ./out
 
 ---
 
+## 短剧项目制作（opendreamina drama 子命令）
+
+仓库内置短剧制作工具链（`drama/` 包，纯标准库零依赖），把《代号奥林匹斯》实战项目
+（40 集 × 90 秒 / 724 镜头 / 1 人 3 天）验证过的制作方法提炼为 9 个命令，全部输出
+JSON 供智能体解析。**`drama` 子命令纯本地执行，不需要后端在线**（`qc` 依赖 ffprobe/ffmpeg，缺失时如实降级）。
+
+```bash
+opendreamina drama init ./data/review_sources/我的短剧 --title "剧名" --episodes 40   # 建项目骨架（幂等）
+opendreamina drama list --project ./我的短剧          # 全部集的状态概览
+opendreamina drama lint EP01 --project ./我的短剧      # 分镜规范校验（errors=0 才能生成）
+opendreamina drama compile EP01 --project ./我的短剧   # 中文分镜 → Seedance 英文提示词
+opendreamina drama spec EP01 --project ./我的短剧 --write   # 生成分集执行规格
+opendreamina drama assets EP01 --project ./我的短剧    # 资产引用审计（杜绝无参考生成）
+opendreamina drama manifest --project ./我的短剧       # manifest 校验
+opendreamina drama qc EP01 --project ./我的短剧        # 成片技术验收（画幅/时长/音轨）
+opendreamina drama parse EP01 --shot S01               # 分镜结构化预览
+```
+
+要点：
+
+- 项目根解析：`--project` > 环境变量 `DRAMA_PROJECT_ROOT` > 当前目录。
+- 中英词库：`{项目根}/tools/maps.py`（init 自动生成模板；lint 会列出未命中词，回填后重跑）。
+- 标准目录见 [drama/README.md](drama/README.md)；项目放入 `data/review_sources/` 后即被审阅中心零配置扫描（素材审阅 + 镜头审片）。
+- 工具链对项目目录**只读**（`init`/`spec --write` 除外），不触碰 `data/` 下任何现有文件。
+
+### 短剧智能体技能链
+
+`.skills/` 内置六技能覆盖短剧全流程（`SKILL.md` 加载给 AI 助手即用）：
+
+```
+drama-production-playbook（制作手册/编排，新开项目从这里进）
+  → short-drama-creator（剧本创作，<80 分自动重写）
+  → ai-video-director（剧本拆分镜，产出 shots.md）
+  → production-orchestrator（批量生成执行，消费 episode_spec）
+  → shot-reviewer（镜头初审打分，回写审片中心）
+  → prompt-optimizer（单点提示词优化与直执行）
+```
+
+各技能均含短剧管线专章（references/drama-*.md），与 `opendreamina drama`
+命令、审阅中心数据契约对齐。
+
+---
+
 ## 常用运维命令
 
 ```bash

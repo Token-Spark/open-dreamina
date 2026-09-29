@@ -366,6 +366,46 @@ python mcp/server.py                # 以 stdio 方式启动 MCP 服务
 
 ---
 
+## 短剧制作方案（drama 工具链 + 制作手册技能）
+
+项目内置一套**稳定可迭代的短剧制作方案**，提炼自《代号奥林匹斯》实战项目
+（AI 仿真人竖屏短剧，40 集 × 90 秒 / 724 镜头 / 1 人 3 天完成）。方案分三部分：
+
+### 1. `opendreamina drama` 命令行工具链
+
+纯 Python 标准库、零依赖，**不需要后端在线**，输出统一 JSON——智能体的
+短剧制作能力全部通过命令行获得：
+
+```bash
+opendreamina drama init ./data/review_sources/我的短剧 --title "剧名"   # 建项目骨架（幂等）
+opendreamina drama lint EP01    --project ./我的短剧   # 分镜规范校验（15 行模板 / 时长 / 禁相对引用）
+opendreamina drama compile EP01 --project ./我的短剧   # 中文分镜 → Seedance 英文提示词
+opendreamina drama spec EP01    --project ./我的短剧 --write   # 分集执行规格（数据/机制分离）
+opendreamina drama assets EP01  --project ./我的短剧   # 资产引用审计（杜绝无参考生成）
+opendreamina drama qc EP01      --project ./我的短剧   # 成片技术验收（画幅/时长/音轨）
+```
+
+另有 `list`（项目概览）、`parse`（分镜结构化）、`manifest`（清单校验）。
+完整说明见 [drama/README.md](drama/README.md)。
+
+### 2. 标准项目目录（与审阅中心零配置对接）
+
+`drama init` 生成的标准目录放入 `data/review_sources/` 即被审阅中心自动扫描：
+素材审阅扫 `素材库/`，镜头审片扫 `分镜脚本/EPxx/video_renders/`（自动按
+「集 → 镜」组织、多版本合并对比、`_` 前缀目录跳过、审片动作自动 markdown 归档）。
+
+### 3. 制作手册技能（drama-production-playbook）
+
+`.skills/` 新增第六套技能，把实战经验固化为可复用方法论：项目初始化、三级
+剧本体系、Seedance 生成实战经验（多人镜头规避 / 单镜 ≤6s / 三视图优先 /
+素材分层管理）、四层锚点一致性策略、资产命名规范、工具链编排、迭代与废弃
+版本沉淀。既有五套技能也各追加短剧管线专章，与命令行工具链数据契约对齐。
+
+> 组合方式：**drama-production-playbook**（新开项目，定骨架与节奏）调度其余技能，
+> 全程以 `opendreamina drama` 子命令为机器检查与数据流转的入口。
+
+---
+
 ## 社区交流
 
 <div align="center">

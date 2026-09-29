@@ -64,6 +64,7 @@ STEP 8  汇总报告：档位统计、共性问题、建议人工复核清单   
 | `references/05-backend-integration.md` | 对接镜头审片中心：API 速查、批量回写、安全边界 | 后端在线时 |
 | `references/06-filesystem-workflow.md` | 离线文件审片：目录约定、shots.md 解析、ffmpeg 抽帧、报告输出 | 无后端 / 直接看目录时 |
 | `assets/review-brief-template.md` | 剧目审片规范模板（生成 review_brief.md 的底稿） | 用户要求定制规则时 |
+| `references/drama-review-brief.md` | 竖屏短剧专章：六维度权重调整、台词逐字核验、高频瑕疵图鉴、管线对齐的精修写作 | 审 Open Dreamina 短剧管线的集数时必读 |
 
 ## 5. 强制规则
 

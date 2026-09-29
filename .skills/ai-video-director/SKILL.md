@@ -68,6 +68,7 @@ STEP 11 最终验收评分（Production Score）       → references/11-princip
 | `references/09-pipeline-and-qc.md` | 生产管线、Keyframe First、Keyframe QC、Video QC、镜头评分、成本意识、Production Priority | 进入生产与质检阶段时 |
 | `references/10-workflows-and-output.md` | 工作模式、导演台输出格式、逐镜头生成卡、与 Short Drama Creator 接口 | 准备交付物或切换工作模式时 |
 | `references/11-principles-and-acceptance.md` | 最重要导演原则、最终验收（Production Score）、最终目标 | 一集完成后、交付前 |
+| `references/drama-shotlist-spec.md` | 竖屏短剧专章：shots.md 15 行模板与 15 列总览表规范、lint 硬规则、生成友好性设计 | 分镜产出要进入 Open Dreamina 短剧管线时必读 |
 
 ## 5. 强制规则
 

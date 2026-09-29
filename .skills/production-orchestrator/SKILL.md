@@ -74,6 +74,7 @@ STEP 13 工作模式切换 + 响应行为 + 成功标准          → references
 | `references/08-manifest.md` | 生产清单（Manifest）说明 | 维护生产清单时 |
 | `references/production-schema.md` | 生产清单详细 Schema（机器可读字段定义） | 编写/校验 Manifest 时 |
 | `references/09-modes-and-success.md` | 工作模式（Plan/Execute/Repair/Review/Deliver）、响应行为、成功标准 | 切换工作模式 / 最终验收时 |
+| `references/drama-execution.md` | 短剧管线专章：消费 drama 工具链（lint/assets/spec/qc）与 episode_spec 数据契约、Seedance 参数基线、版本纪律 | 生产对象为 Open Dreamina 短剧管线时必读 |
 
 ## 5. 强制规则
 

@@ -56,6 +56,7 @@ STEP 12 自动重写（<80 重写；<70 禁止局部修补，必须重新设计�
 | `reference/narrative-craft.md` | 叙事工艺：世界观展示、信息控制、反转、场景设计、对白、可视化、节奏与信息密度 | 写场景/对白时 |
 | `reference/quality-control.md` | 质量评分系统、五项硬性门槛、可制作性检查、Agent 自检 Prompt | 每集完成后、输出前 |
 | `reference/series-design.md` | 连续剧级别设计：Series Bible、长篇节奏、5 集小 Arc、AI/科幻额外标准 | 超过 5 集或科幻题材时 |
+| `reference/drama-context.md` | 竖屏 AIGC 短剧专章：体裁硬约束、生成友好性写法、八幕结构模板、交接契约 | 创作目标为 AIGC 竖屏短剧时必读 |
 | `reference/workflow.md` | 创作 Workflow 12 步详细标准 | 每次创作 |
 
 ## 4. 强制规则

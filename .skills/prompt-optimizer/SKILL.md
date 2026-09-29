@@ -65,6 +65,7 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 | `references/03-parameters-and-execution.md` | MCP 工具清单、参数含义与默认值、尺寸换算、模型能力校验、执行序列与返回处理 | 给出参数建议或直接生成时 |
 | `references/04-quality-and-iteration.md` | 优化自检清单与评分、常见出图/出片问题 → 改词策略、迭代收敛规则 | 交付前自检与结果不理想时 |
 | `references/05-examples.md` | 图片 / 视频 / 图生视频 / 模板套用的前后对照示例 | 需要参考具体写法时 |
+| `references/drama-prompt-pattern.md` | 短剧管线专章：镜头提示词 8 段编译模式、全局风格四常量、中英映射纪律、工具链调用 | 优化对象在 Open Dreamina 短剧管线内时必读 |
 
 ## 5. 强制规则
 

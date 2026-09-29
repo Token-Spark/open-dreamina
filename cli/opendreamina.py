@@ -46,7 +46,7 @@ if str(_REPO_ROOT) not in sys.path:
 from mcp import catalog, sizes, tools as tools_module  # noqa: E402
 from mcp.client import ApiClient, ApiError  # noqa: E402
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # ---------------- 输出整形 ----------------
 
@@ -701,6 +701,16 @@ def cmd_create_task(ns: argparse.Namespace) -> int:
     return _run_tool("create_task", args)
 
 
+# ---------------- 短剧制作工具链（drama/ 包） ----------------
+
+
+def cmd_drama(ns: argparse.Namespace) -> int:
+    """drama：短剧制作工具链（分镜解析 / 编译 / 规范校验 / 规格 / 资产 / 质检）。"""
+    from drama.cli import dispatch as drama_dispatch
+
+    return drama_dispatch(ns)
+
+
 # ---------------- 参数解析 ----------------
 
 
@@ -746,12 +756,17 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "环境变量：\n"
             "  OPEN_DREAMINA_API_BASE     后端 API 基地址（默认 http://localhost:10130/api/v1）\n"
-            "  OPEN_DREAMINA_API_TIMEOUT  单次 HTTP 请求超时秒数（默认 60）\n\n"
+            "  OPEN_DREAMINA_API_TIMEOUT  单次 HTTP 请求超时秒数（默认 60）\n"
+            "  DRAMA_PROJECT_ROOT         短剧项目根目录（drama 子命令的默认 --project）\n\n"
             "典型工作流：\n"
             "  1) opendreamina health / providers / models  确认环境与可用服务\n"
             "  2) opendreamina generate --provider seedream --prompt '...' --auto-wait\n"
             "  3) opendreamina progress <task_id> --wait    轮询进度或等待终态\n"
-            "  4) 读取 result_urls_absolute 下载结果\n"
+            "  4) 读取 result_urls_absolute 下载结果\n\n"
+            "短剧制作（drama 子命令，无需后端在线）：\n"
+            "  opendreamina drama init ./我的短剧            初始化项目骨架\n"
+            "  opendreamina drama lint EP01 --project ./我的短剧   校验分镜规范\n"
+            "  opendreamina drama --help                     查看全部短剧子命令\n"
         ),
     )
     parser.add_argument("--version", action="version", version=f"opendreamina {__version__}")
@@ -838,6 +853,10 @@ def build_parser() -> argparse.ArgumentParser:
     # create-task 专用：直接透传给后端的 params 对象（generate 不暴露此参数）。
     ct.add_argument("--params", help="直接透传给后端的参数对象（JSON 字符串）；白名单外的字段会被后端忽略。")
 
+    # drama（短剧制作工具链，实现见 drama/ 包，纯标准库零依赖）
+    from drama.cli import register_drama_command
+    register_drama_command(sub)
+
     return parser
 
 
@@ -862,6 +881,8 @@ _DISPATCH = {
     "text2video": make_task_type_command("video", force_reference=False),
     "image2video": make_task_type_command("video", force_reference=True),
     "frames2video": _frames2video_handler,
+    # 短剧制作工具链（drama/ 包）
+    "drama": cmd_drama,
 }
 
 
