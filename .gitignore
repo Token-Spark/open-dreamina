@@ -40,3 +40,7 @@ Thumbs.db
 
 # 本地智能体会话产物（计划 / 草稿），不入库
 .zcode/
+.zcodeignore
+
+# 本地临时备份（如 .backup_shotsmd_20260929/），不入库
+.backup_*/
