@@ -26,8 +26,8 @@
 | Seedream 5.0 | 火山引擎豆包文生图模型，支持高质量图像生成与编辑。 |
 | Seedance 2.0 | 火山引擎豆包视频生成模型，支持文生视频与图生视频。 |
 | Seedance 2.5 | 火山引擎豆包视频生成模型，支持文生视频与图生视频。 |
-| 即梦 Seedream（CLI） | 通过本机即梦 CLI 生成图片，复用本机登录态，无需 API Key。 |
-| 即梦 Seedance（CLI） | 通过本机即梦 CLI 生成视频，复用本机登录态，无需 API Key。 |
+| 即梦 Seedream（CLI） | 通过本机即梦画布 CLI（dreamina-canvas）生成图片，复用本机登录态，无需 API Key。 |
+| 即梦 Seedance（CLI） | 通过本机即梦画布 CLI（dreamina-canvas）生成视频，复用本机登录态，无需 API Key。 |
 | Seedream（Spark Hub 中转） | 经 Spark Hub 中转站调用 Seedream 生图模型（Seedream 5 / 5 Pro），统一异步任务模式。 |
 | Seedance（Spark Hub 中转） | 经 Spark Hub 中转站调用 Seedance 生视频模型（Seedance 2 / 2 Fast / 2 Mini / 2.5），统一异步任务模式。 |
 | Stability AI | Stability 图像生成模型服务。 |
@@ -175,13 +175,18 @@ QINIU_AUDIT_EXPIRE_DAYS=14   # 临时素材保留天数，到期自动删除
 
 ### 即梦 CLI（可选）
 
-若使用即梦 CLI 作为模型服务，需在运行 `celery-worker` 的机器上安装 CLI 并完成登录：
+若使用即梦 CLI 作为模型服务，需在运行 `celery-worker` 的机器上安装 CLI 并完成登录。
+官方已将即梦 CLI 替换为新版画布 CLI（命令名 `dreamina-canvas`，安装脚本
+`https://jimeng.jianying.com/canvas-cli/install.sh`），本应用已适配新版：
 
-1. 进入「设置 → 服务管理 → 即梦 CLI」，点击「安装」；
-2. 安装完成后点击「登录」，按页面提示完成授权；
+1. 进入「设置 → 服务管理 → 即梦 CLI」，点击「一键安装即梦 CLI」；
+2. 安装完成后点击「开始登录」，按页面提示在浏览器完成授权；
 3. 登录态保存在 `./data/dreamina-home`，容器重建后不丢失。
 
-> 注意：CLI 需安装在 celery-worker 所在机器上，且 `dreamina login` 需手动完成授权（自动发起的登录链接可能存在兼容问题）。
+> 注意：CLI 需安装在 celery-worker 所在机器上；生成任务会自动创建/复用一块专用画布
+> （默认名「Open Dreamina」，可在 Provider 配置中修改），并按「单次积分上限」（默认 200）
+> 自动批准生成报价，报价超过上限时任务停止且不扣积分，可调高上限后重试。
+> 若本机残留旧版 `dreamina` 命令，应用会提示升级到新版 `dreamina-canvas`。
 
 ### 数据备份
 

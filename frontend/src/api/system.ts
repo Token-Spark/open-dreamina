@@ -62,13 +62,18 @@ export interface DreaminaCliStatus {
   cli_path: string | null
   version: string | null
   logged_in: boolean
+  /** 兼容字段：新版 CLI 无积分查询命令，恒为 null */
   credit_info: string | null
+  /** auth account 返回的账号信息（userId / isVip / vipLevel） */
+  account_info?: Record<string, unknown> | null
+  /** 检测到的旧版即梦 CLI 路径（官方已替换为新版画布 CLI 时提示升级） */
+  legacy_cli?: string | null
   message: string
   /** worker 不在线时的降级标记 */
   worker_offline?: boolean
 }
 
-/** headless 登录发起结果：需用户在浏览器完成的授权材料。 */
+/** 非交互登录（device flow）发起结果：需用户在浏览器完成的授权材料。 */
 export interface DreaminaCliLoginStart {
   ok: boolean
   message?: string
@@ -84,7 +89,8 @@ export interface DreaminaCliLoginStatus {
   state: 'no_session' | 'waiting' | 'success' | 'failed'
   logged_in: boolean
   message: string
-  credit_info?: string
+  /** 登录成功时返回的账号信息 */
+  account_info?: Record<string, unknown>
   worker_offline?: boolean
 }
 

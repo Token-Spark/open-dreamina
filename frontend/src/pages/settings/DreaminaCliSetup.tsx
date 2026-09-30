@@ -71,7 +71,7 @@ export function DreaminaCliSetup() {
         setPolling(true)
       } else {
         toast(r.message ?? '发起登录失败', 'error')
-        if (r.raw_output) console.warn('dreamina login output:', r.raw_output)
+        if (r.raw_output) console.warn('dreamina-canvas auth login output:', r.raw_output)
       }
     },
     onError: (e) => toast(toApiError(e).message, 'error'),
@@ -171,7 +171,7 @@ export function DreaminaCliSetup() {
           <div className="flex-1 space-y-2">
             <p className="text-xs text-fg-secondary">
               {status.message}。点击下方按钮自动在 celery-worker 节点安装（官方脚本
-              curl -fsSL https://jimeng.jianying.com/cli | bash）。
+              curl -fsSL https://jimeng.jianying.com/canvas-cli/install.sh | bash）。
             </p>
             <Button size="sm" onClick={() => installMut.mutate()} disabled={installMut.isPending}>
               {installMut.isPending ? '提交中…' : '一键安装即梦 CLI'}
@@ -198,7 +198,7 @@ export function DreaminaCliSetup() {
         {loginMut.isPending && (
           <p className="flex items-center gap-2 text-xs text-fg-muted">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            正在发起 dreamina login…
+            正在发起 dreamina-canvas auth login…
           </p>
         )}
         {!loginInfo && !loginMut.isPending && (

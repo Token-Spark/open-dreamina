@@ -638,9 +638,9 @@ def dreamina_cli_login_check_task(cli_path: str | None = None) -> dict[str, Any]
 
 @celery_app.task(name="app.worker.dreamina_cli_user_credit")
 def dreamina_cli_user_credit_task(cli_path: str | None = None) -> dict[str, Any]:
-    """worker 侧连通性自检（供 Provider「测试连通」使用）。"""
+    """worker 侧连通性自检（供 Provider「测试连通」使用；任务名沿用旧版命名）。"""
     from .services import dreamina_cli_service
-    return dreamina_cli_service.user_credit_check(cli_path)
+    return dreamina_cli_service.check_ready(cli_path)
 
 
 _DREAMINA_AUTO_INSTALL_MAX_ATTEMPTS = 3
@@ -671,7 +671,7 @@ def _dreamina_cli_bootstrap(sender=None, **kwargs) -> None:  # noqa: ANN001
             )
             if not status["logged_in"]:
                 logger.info(
-                    "[即梦CLI] 尚未登录：请打开 设置 → 服务管理 → 即梦 CLI，按引导完成 dreamina login"
+                    "[即梦CLI] 尚未登录：请打开 设置 → 服务管理 → 即梦 CLI，按引导完成 dreamina-canvas auth login"
                 )
             return
 

@@ -65,8 +65,8 @@ services:
       - QINIU_BUCKET=${QINIU_BUCKET:-}
       - QINIU_DOMAIN=${QINIU_DOMAIN:-}
       - QINIU_AUDIT_EXPIRE_DAYS=${QINIU_AUDIT_EXPIRE_DAYS:-14}
-      # 即梦 CLI：HOME 指向挂载卷内的持久化目录，CLI 二进制与 ~/.dreamina_cli 登录态
-      # 在容器重建后不丢失（安装/登录引导见 设置 → 服务管理 → 即梦 CLI）
+      # 即梦画布 CLI：HOME 指向挂载卷内的持久化目录，CLI 二进制（~/.local/bin/dreamina-canvas）
+      # 与登录凭据（~/.local/share/）在容器重建后不丢失（安装/登录引导见 设置 → 服务管理 → 即梦 CLI）
       - HOME=/app/data/dreamina-home
       # 制片人审阅：与 backend 共用同一外部素材目录配置
       - REVIEW_SOURCE_ROOTS=${REVIEW_SOURCE_ROOTS:-}

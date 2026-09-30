@@ -174,8 +174,8 @@
       "slug": "dreamina-seedance",
       "name": "即梦 Seedance（CLI）",
       "vendor": "即梦",
-      "description": "通过本机即梦命令行工具生成视频（Seedance 系列模型），复用本机登录态，无需 API Key。需先在 worker 所在机器安装 CLI 并执行 dreamina login。",
-      "docsUrl": "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg",
+      "description": "通过本机即梦画布命令行工具（dreamina-canvas）生成视频（Seedance 系列模型），复用本机登录态，无需 API Key。需先在 worker 所在机器安装 CLI 并完成 dreamina-canvas auth login 登录。",
+      "docsUrl": "https://bytedance.larkoffice.com/wiki/QO66wGahSiakEHkJbxIcNBtDnAc",
       "modes": ["video"],
       "fields": [
         {
@@ -183,8 +183,22 @@
           "label": "CLI 路径",
           "kind": "text",
           "required": false,
-          "placeholder": "留空使用默认命令 dreamina（依赖 PATH）",
-          "default": "dreamina"
+          "placeholder": "留空使用默认命令 dreamina-canvas（依赖 PATH）",
+          "default": "dreamina-canvas"
+        },
+        {
+          "key": "credit_ceiling",
+          "label": "单次积分上限",
+          "kind": "text",
+          "required": false,
+          "placeholder": "默认 200；生成报价不超过该值时自动批准，超过则停止（避免误扣积分）"
+        },
+        {
+          "key": "canvas_name",
+          "label": "专用画布名称",
+          "kind": "text",
+          "required": false,
+          "placeholder": "默认 Open Dreamina；生成任务将创建/复用同名画布"
         }
       ],
       "models": [
@@ -198,8 +212,8 @@
       "slug": "dreamina-seedream",
       "name": "即梦 Seedream（CLI）",
       "vendor": "即梦",
-      "description": "通过本机即梦命令行工具生成图片（Seedream / 即梦图片模型），复用本机登录态，无需 API Key。与即梦 Seedance（CLI）共用同一个 CLI 与登录态。",
-      "docsUrl": "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg",
+      "description": "通过本机即梦画布命令行工具（dreamina-canvas）生成图片（Seedream / 即梦图片模型），复用本机登录态，无需 API Key。与即梦 Seedance（CLI）共用同一个 CLI 与登录态。",
+      "docsUrl": "https://bytedance.larkoffice.com/wiki/QO66wGahSiakEHkJbxIcNBtDnAc",
       "modes": ["image"],
       "fields": [
         {
@@ -207,8 +221,22 @@
           "label": "CLI 路径",
           "kind": "text",
           "required": false,
-          "placeholder": "留空使用默认命令 dreamina（依赖 PATH）",
-          "default": "dreamina"
+          "placeholder": "留空使用默认命令 dreamina-canvas（依赖 PATH）",
+          "default": "dreamina-canvas"
+        },
+        {
+          "key": "credit_ceiling",
+          "label": "单次积分上限",
+          "kind": "text",
+          "required": false,
+          "placeholder": "默认 200；生成报价不超过该值时自动批准，超过则停止（避免误扣积分）"
+        },
+        {
+          "key": "canvas_name",
+          "label": "专用画布名称",
+          "kind": "text",
+          "required": false,
+          "placeholder": "默认 Open Dreamina；生成任务将创建/复用同名画布"
         }
       ],
       "models": [
