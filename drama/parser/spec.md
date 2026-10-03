@@ -33,7 +33,7 @@
 **秒级动作拆解：**
 - 0-4s：动作（含运镜说明）
 **台词同步：**
-- 说话人（语速 2.5 字/秒，台词："英文台词逐字"）
+- 说话人（语气：沙哑、哽咽、誓言，语速 2.5 字/秒，台词："英文台词逐字"）
 **光感：** **色调：** **构图：** **细节：**
 **音效设计：** 无背景音乐
 **基础环境音：** **动作触发音：** **特效音：**
@@ -56,6 +56,8 @@
   - 机位：`eye-level` / `low-angle` / `high-angle` / `slight-high` / `slight-low` / `overhead` / `ground-level` / `handheld`
   - 运镜：`static` / `slow-push` / `slow-pull` / `slow-pan` / `slow-tilt-up` / `slow-tilt-down` / `handheld-sway` / `follow` / `quick-pan` / `slow-motion` …
 - 表情词在 `tools/maps.py` 的 `EXPRESSION_MAP` 收录（未命中按无表情处理）
+- 台词行写「语气：」段（、分隔短语，收录进 `TONE_MAP`）——语气/语速是编译后
+  delivery 指令的唯一来源，缺失时模型只会平读台词（念白平淡的直接原因）
 - 人物资产只绑三视图（`*_turnaround`）；半身照/种子图不进视频参考
 - 心理活动 / 对话画面：人物占画面 75% 以上，减少背景描写
 

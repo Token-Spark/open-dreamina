@@ -93,6 +93,8 @@ opendreamina drama qc EP01 --project ./我的短剧
 - `CHARACTER_ALIASES`：素材 ID 角色标识 → 角色别名（`"venus": ("venus", "aphrodite")`）
 - `EXPRESSION_MAP` / `LIGHT_MAP` / `COLOR_MAP` / `ENV_MAP` / `ACTION_FRAGMENTS`：
   表情 / 光感 / 色调 / 环境 / 动作词库（最长键优先匹配）
+- `TONE_MAP`：台词语气短语 → 英文 delivery 指令（写在台词行「语气：」段，、分隔；
+  例 `"声音沙哑": "hoarse voice"`）——缺失或未命中时台词会被模型平读，念白平淡
 - `STYLE`：全局风格常量兜底（AESTHETIC / MEDIUM / AUDIO / NEGATIVE；
   优先读 assets_manifest.json 的 `style` 字段）
 

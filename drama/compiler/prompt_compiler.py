@@ -25,6 +25,7 @@ CJK_ANY = CJK_RUN    # 兜底护栏用：匹配任何中文 / 全角字符
 # ─────────────── 中文→英文映射表（项目级 tools/maps.py 注入） ───────────────
 
 EXPRESSION_MAP: dict[str, str] = {}
+TONE_MAP: dict[str, str] = {}
 LIGHT_MAP: dict[str, str] = {}
 COLOR_MAP: dict[str, str] = {}
 ENV_MAP: dict[str, str] = {}
@@ -40,6 +41,7 @@ def apply_maps(data: dict) -> None:
         return {str(k): str(v) for k, v in (mapping or {}).items()}
 
     EXPRESSION_MAP.clear(); EXPRESSION_MAP.update(_clean(data.get("EXPRESSION_MAP")))
+    TONE_MAP.clear(); TONE_MAP.update(_clean(data.get("TONE_MAP")))
     LIGHT_MAP.clear(); LIGHT_MAP.update(_clean(data.get("LIGHT_MAP")))
     COLOR_MAP.clear(); COLOR_MAP.update(_clean(data.get("COLOR_MAP")))
     ENV_MAP.clear(); ENV_MAP.update(_clean(data.get("ENV_MAP")))
@@ -73,6 +75,50 @@ def translate_expression(text: str) -> str:
     if not result:
         print(f"[warn] 表情词未命中 EXPRESSION_MAP，按无表情处理：{cleaned}", file=sys.stderr)
     return result
+
+
+def translate_tone(text: str) -> list[str]:
+    """翻译台词语气短语（、/，分隔），未命中的短语告警并丢弃（中文不得泄漏）。
+
+    念白是否有情感起伏取决于提示词里的 delivery 指令；语气词进不了提示词，
+    模型只能平读台词——这是"念白平淡"问题的根源，所以未命中必须显式告警。
+    """
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return []
+    parts: list[str] = []
+    for phrase in re.split(r"[、，,]", cleaned):
+        phrase = phrase.strip()
+        if not phrase:
+            continue
+        result = _best_match(phrase, TONE_MAP)
+        if result:
+            parts.append(result)
+        else:
+            print(f"[warn] 台词语气词未命中 TONE_MAP，按无语气处理：{phrase}", file=sys.stderr)
+    return parts
+
+
+def pace_cue(rate: float | None) -> str:
+    """语速（字/秒）→ 定性节奏提示；常速区间不输出，避免指令噪音。"""
+    if rate is None:
+        return ""
+    if rate < 1.6:
+        return "very slow, weighed down"
+    if rate < 2.0:
+        return "slow"
+    if rate <= 2.4:
+        return ""
+    return "brisk and clipped"
+
+
+def delivery_cue(line: dict[str, Any]) -> str:
+    """把一条台词的语气 + 语速编译为英文 delivery 修饰语（前置逗号；无则空串）。"""
+    phrases = translate_tone(line.get("tone") or "")
+    pace = pace_cue(line.get("rate"))
+    if pace:
+        phrases.append(pace)
+    return ", " + ", ".join(phrases) if phrases else ""
 
 
 def translate_light(text: str) -> str:
@@ -158,18 +204,19 @@ def compile_prompt(shot: dict[str, Any]) -> str:
             "Keep the architecture, materials and light identical to the scene reference image."
         )
 
-    # ⑤ 台词（逐字英文）
+    # ⑤ 台词（逐字英文；语气/语速 → delivery 指令，台词文本本身不改写）
     dialogue_parts: list[str] = []
     for line in dialogue:
         speaker = speaker_to_english(line["speaker"])
         text = line["text"]
+        cue = delivery_cue(line)
         if line["form"] == "vo":
             dialogue_parts.append(
-                f'Off-screen voice-over from {speaker}: "{text}"'
+                f'Off-screen voice-over from {speaker}{cue}: "{text}"'
             )
         else:
             dialogue_parts.append(
-                f'Spoken dialogue from {speaker}: "{text}"'
+                f'Spoken dialogue from {speaker}{cue}: "{text}"'
             )
     if dialogue_parts:
         sections.append(" ".join(dialogue_parts))

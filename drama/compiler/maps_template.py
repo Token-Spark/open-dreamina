@@ -29,6 +29,11 @@ CHARACTER_ALIASES = {}
 # 表情 / 情绪关键词 → 英文。例："伪善笃定": "sanctimonious certainty"
 EXPRESSION_MAP = {}
 
+# 台词语气短语 → 英文 delivery 指令（念白情感起伏的唯一来源）。
+# 写在台词行的「语气：」段内、以、分隔；未命中会告警并按无语气处理。
+# 例："声音沙哑": "hoarse voice"、"嗤笑": "snorting with mockery"
+TONE_MAP = {}
+
 # 光感 / 灯光关键词 → 英文。例："午后金色侧逆光": "afternoon golden rim light from behind"
 LIGHT_MAP = {}
 

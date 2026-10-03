@@ -213,7 +213,10 @@ def cmd_drama_lint(ns: argparse.Namespace) -> int:
     root = _project_root(ns)
     episode = _normalize(ns)
     load_maps(ns, root)
-    report = lint_episode(root, episode, target_duration=ns.target_duration)
+    # 镜头数上下限随目标时长等比推导（90s→18），可用 --expected-shots 显式覆盖（番外等非 90s 集用）
+    expected_shots = ns.expected_shots or max(4, round(ns.target_duration / 90 * 18))
+    report = lint_episode(root, episode, target_duration=ns.target_duration,
+                          expected_shots=expected_shots)
     _print_json(report)
     return 0 if report["valid"] else 1
 
@@ -380,6 +383,8 @@ def register_drama_command(sub) -> None:
     p_lint.add_argument("episode", help="集号。")
     p_lint.add_argument("--target-duration", type=int, default=90,
                         help="单集目标时长秒数（默认 90）。")
+    p_lint.add_argument("--expected-shots", type=int, default=None,
+                        help="单集镜头数基准（默认按时长等比推导：90s→18）。")
 
     p_spec = drama_sub.add_parser(
         "spec", parents=[common], help="生成分集执行规格（episode_spec）",

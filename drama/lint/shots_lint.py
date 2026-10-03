@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from drama.compiler.prompt_compiler import EXPRESSION_MAP, best_match
+from drama.compiler.prompt_compiler import EXPRESSION_MAP, TONE_MAP, best_match
 from drama.parser.shots_parser import CAMERA_PHRASE, parse_episode, parse_overview
 from drama.paths import shots_md_path
 from drama.qc.verify_dialogue import check_episode_dialogue
@@ -139,6 +139,8 @@ def lint_episode(project_root: Path, episode: str, *, target_duration: int = 90,
     shots = parsed["shots"]
     unknown_camera: list[str] = []
     unhit_expression: list[str] = []
+    missing_tone: list[str] = []
+    unhit_tone: list[str] = []
     pov_shots = 0
     for shot_id, shot in shots.items():
         for key in ("shot_size", "angle", "movement"):
@@ -151,6 +153,15 @@ def lint_episode(project_root: Path, episode: str, *, target_duration: int = 90,
         mood = (shot.get("mood_zh") or "").strip()
         if mood and mood not in DASH_SET and not best_match(mood, EXPRESSION_MAP):
             unhit_expression.append(f"{shot_id}：{mood}")
+        for line in shot.get("dialogue", []):
+            tone = (line.get("tone") or "").strip()
+            if not tone:
+                missing_tone.append(f"{shot_id}：{line['speaker']}")
+                continue
+            for phrase in re.split(r"[、，,]", tone):
+                phrase = phrase.strip()
+                if phrase and not best_match(phrase, TONE_MAP):
+                    unhit_tone.append(f"{shot_id}：{phrase}")
     if unknown_camera:
         warnings.append("摄影取值不在 CAMERA_PHRASE 内（编译时会被丢弃）："
                         + "；".join(unknown_camera[:8])
@@ -159,6 +170,14 @@ def lint_episode(project_root: Path, episode: str, *, target_duration: int = 90,
         warnings.append("表情词未在 EXPRESSION_MAP 命中（编译时按无表情处理）："
                         + "；".join(unhit_expression[:8])
                         + ("…" if len(unhit_expression) > 8 else ""))
+    if missing_tone:
+        warnings.append("台词缺少「语气：」标注（无 delivery 指令，模型会平读台词）："
+                        + "；".join(missing_tone[:8])
+                        + ("…" if len(missing_tone) > 8 else ""))
+    if unhit_tone:
+        warnings.append("台词语气词未在 TONE_MAP 命中（编译时按无语气处理）："
+                        + "；".join(unhit_tone[:8])
+                        + ("…" if len(unhit_tone) > 8 else ""))
     if pov_shots == 0:
         warnings.append("全集未检出 POV / 主观镜头（规范要求每集至少 1 个）")
 

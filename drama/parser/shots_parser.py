@@ -221,19 +221,26 @@ def parse_scene_anchor(line: str) -> str:
 
 
 def parse_dialogue(block: list[str]) -> list[dict]:
-    """台词同步块 → [{speaker, form, text, rate}]，form ∈ {spoken, vo}。"""
+    """台词同步块 → [{speaker, form, text, rate, tone}]，form ∈ {spoken, vo}。
+
+    tone 取自「语气：」段（、分隔的表演指导短语），编译时经 TONE_MAP
+    翻译为英文 delivery 指令；缺省为空串（向后兼容旧格式）。
+    """
     lines: list[dict] = []
     for line in block:
         if not line.startswith("- ") or "台词" not in line:
             continue
         label = line.split("（", 1)[0].lstrip("- ").strip()
         rate_match = re.search(r"语速\s*([\d.]+)", line)
+        tone_match = re.search(
+            r"语气[：:]\s*(.+?)(?=\s*[，,]\s*(?:语速|台词)|[）)]\s*$)", line)
         text_match = re.search(r"台词[：:]\s*[" + QUOTE + r"](.+?)[" + QUOTE + r"]\s*[）)]?\s*$", line)
         if not text_match:
             continue
         form = "vo" if any(tag in line for tag in ("画外音", "内心独白", "画外")) else "spoken"
         lines.append({"speaker": label, "form": form, "text": text_match.group(1).strip(),
-                      "rate": float(rate_match.group(1)) if rate_match else None})
+                      "rate": float(rate_match.group(1)) if rate_match else None,
+                      "tone": tone_match.group(1).strip() if tone_match else ""})
     return lines
 
 
