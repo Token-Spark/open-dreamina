@@ -62,6 +62,7 @@ import {
   KIND_SIZE_CAPS,
   VIDEO_EXTS,
   AUDIO_EXTS,
+  VIDEO_REF_DURATION_RANGE,
   frameModeSpec,
   isSeedanceProvider,
   isSparkHubSeedance,
@@ -357,6 +358,16 @@ export function GenerationInputBar({
       }
       try {
         const asset = await uploadAsset(file)
+        // 参考视频时长校验：SparkHub API 要求 2~30 秒，超出范围直接拒绝。
+        if (kind === 'video' && asset.duration != null) {
+          if (asset.duration < VIDEO_REF_DURATION_RANGE.min || asset.duration > VIDEO_REF_DURATION_RANGE.max) {
+            toast(
+              `参考视频时长需在 ${VIDEO_REF_DURATION_RANGE.min}~${VIDEO_REF_DURATION_RANGE.max} 秒之间（当前 ${asset.duration.toFixed(1)} 秒）：${file.name}`,
+              'error',
+            )
+            continue
+          }
+        }
         // 音频参考无需审核；图片/视频在 Spark Hub Seedance 下需审核，上传时立即标记为审核中。
         const needsAudit = isSparkHubSeedance(providerSlug) && kind !== 'audio'
         const ref: ReferenceAsset = {

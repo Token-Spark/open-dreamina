@@ -96,6 +96,13 @@ export const KIND_LABELS: Record<ReferenceKind, string> = {
  * 多段参考音频时长累加不得超过此值，否则提交时拦截并提示用户。
  */
 export const MAX_AUDIO_TOTAL_DURATION = 15
+
+/**
+ * Seedance 参考视频时长范围（秒），与 SparkHub API 文档一致：
+ * 视频素材格式为 MP4/MOV，时长 2～30 秒，分辨率 480p/720p/1080p。
+ * 上传时校验，超出范围的参考视频直接拒绝并提示。
+ */
+export const VIDEO_REF_DURATION_RANGE = { min: 2, max: 30 } as const
 /** 视频模式下文件选择器接受：图片 + mp4/mov 视频 + wav/mp3 音频。 */
 export const ACCEPT_VIDEO_MODE =
   'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
@@ -110,9 +117,9 @@ export type FrameMode = 'auto' | 'first' | 'first_last'
 /** 解析后的后端帧模式（text / reference 仅作为 auto 的解析结果，不直接存储）。 */
 export type EffectiveFrameMode = 'text' | 'first' | 'first_last' | 'reference'
 
-/** 合并模式解析：无参考图 → 文生视频（text）；有参考图 → 多模态参考（reference）。 */
-export function effectiveFrameMode(frameMode: FrameMode, hasImage: boolean): EffectiveFrameMode {
-  if (frameMode === 'auto') return hasImage ? 'reference' : 'text'
+/** 合并模式解析：无参考素材 → 文生视频（text）；有任意参考素材（图/视频/音频）→ 多模态参考（reference）。 */
+export function effectiveFrameMode(frameMode: FrameMode, hasReference: boolean): EffectiveFrameMode {
+  if (frameMode === 'auto') return hasReference ? 'reference' : 'text'
   return frameMode
 }
 
@@ -139,7 +146,7 @@ export const FRAME_MODES: {
 }[] = [
   {
     mode: 'auto',
-    label: '文生视频/参考图',
+    label: '全能参考',
     hint: '无需图片可直接生成，上传图片自动转为参考图',
     maxImages: MAX_REF_IMAGES,
     required: 0,

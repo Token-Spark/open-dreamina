@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { createTask, getTask, retryTask } from '@/api/tasks'
@@ -270,7 +270,6 @@ export function CreatePage() {
     if (!providerSlug) return toast('请先在设置中启用一个服务提供商', 'error')
     if (!requestPrompt.trim()) return toast('请输入提示词', 'error')
     const hasRef = requestRefAssets.length > 0
-    const hasImage = requestRefAssets.some((a) => (a.kind ?? 'image') === 'image')
     const requestType = deriveTaskType(requestMode, hasRef)
     if (!hasRef && (requestType === 'img2img' || requestType === 'img2video')) {
       return toast('请上传参考图', 'error')
@@ -306,7 +305,7 @@ export function CreatePage() {
     // 合并模式解析为后端接受的 text / reference，其余帧模式原样透传；
     // 仅 Seedance 系列使用 frame_mode，非 Seedance 保持原样提交。
     const sendParams = isSeedanceProvider(providerSlug)
-      ? { ...requestParams, frame_mode: effectiveFrameMode(frameMode, hasImage) }
+      ? { ...requestParams, frame_mode: effectiveFrameMode(frameMode, hasRef) }
       : requestParams
     const requestRefAssetIds = requestRefAssets.map((a) => a.assetId)
 
@@ -355,7 +354,7 @@ export function CreatePage() {
   }
 
   // 重试：后端复用同一 task_id 与 conversation_id，本地更新消息状态即可
-  async function handleRetry(message: GenMessage) {
+  const handleRetry = useCallback(async (message: GenMessage) => {
     if (!currentTopicId) return
     // 乐观更新：点击即刻切到 pending 并重置计时基准，避免用户仍看到失败状态
     updateMessage(currentTopicId, message.id, {
@@ -390,10 +389,10 @@ export function CreatePage() {
         createdAt: message.createdAt,
       })
     }
-  }
+  }, [currentTopicId, updateMessage, addActive])
 
   // 重新编辑：将该消息的输入回填到生成对话框，复用提示词/负向提示/参数/模型
-  async function handleEdit(message: GenMessage) {
+  const handleEdit = useCallback(async (message: GenMessage) => {
     const nextMode = modeOfTaskType(message.type)
     // submit_id 是后端断点续查用的上游任务 ID（仅"重试"同 task_id 时复用），
     // 重新编辑会创建新任务，必须剥离以免新任务跳过 submit 去轮询旧任务。
@@ -438,7 +437,7 @@ export function CreatePage() {
         duration: metas[i].duration,
       })),
     )
-  }
+  }, [mode])
 
   function applyTemplate(t: {
     prompt_text: string
@@ -454,7 +453,7 @@ export function CreatePage() {
     toast('已应用模板', 'success')
   }
 
-  function openLightbox(message: GenMessage, url?: string) {
+  const openLightbox = useCallback((message: GenMessage, url?: string) => {
     const target = url ?? message.resultUrl
     if (!target) return
     setLightboxMessage({
@@ -463,7 +462,7 @@ export function CreatePage() {
       meta: message.params,
     })
     setLightboxOpen(true)
-  }
+  }, [])
 
   if (!currentTopic) {
     return (

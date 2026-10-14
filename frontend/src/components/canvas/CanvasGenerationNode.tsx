@@ -135,7 +135,7 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
       // Seedance 视频需将合并模式 auto 解析为后端接受的 text / reference，
       // 否则后端默认 frame_mode=first 只取首张参考图，多图参考被丢弃。
       const sendParams = mode === 'video' && isSeedanceProvider(providerSlug)
-        ? { ...params, frame_mode: effectiveFrameMode(normalizeFrameMode(params.frame_mode), refAssets.some((a) => (a.kind ?? 'image') === 'image')) }
+        ? { ...params, frame_mode: effectiveFrameMode(normalizeFrameMode(params.frame_mode), refAssets.length > 0) }
         : params
       const { task_id } = await createTask({
         type: taskType,
