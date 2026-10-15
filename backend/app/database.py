@@ -19,15 +19,24 @@
 """
 from __future__ import annotations
 
+import logging
 import threading
+import time
 from contextlib import contextmanager
 from typing import Iterator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
+
+# SQLite 写写并发重试参数（配合 busy_timeout 兜底，极端争用下仍可恢复）
+_DB_RETRY_MAX = 3
+_DB_RETRY_DELAY = 0.3
 
 
 class Base(DeclarativeBase):
@@ -47,6 +56,10 @@ def _build_engine(database_url: str) -> Engine:
         connect_args=connect_args,
         pool_pre_ping=True,
         future=True,
+        # SQLite 写入靠文件锁串行化，连接池过大会增加锁争用；
+        # 用较小的静态池配合 busy_timeout，减少 "database is locked" 概率
+        pool_size=5 if not is_sqlite else 5,
+        max_overflow=10 if not is_sqlite else 5,
     )
 
     if is_sqlite:
@@ -56,6 +69,9 @@ def _build_engine(database_url: str) -> Engine:
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA foreign_keys=ON")
+            # 并发写入时让后到的写事务等待 5 秒而非立即报 "database is locked"，
+            # 配合 WAL 模式显著降低写写冲突导致的 500 错误
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.close()
 
     return engine
@@ -88,11 +104,24 @@ def get_db() -> Iterator[Session]:
 
 @contextmanager
 def db_session() -> Iterator[Session]:
-    """同步上下文管理器：供 Celery Worker / 脚本使用。"""
+    """同步上下文管理器：供 Celery Worker / 脚本使用。
+
+    SQLite 并发写入时偶发 "database is locked"，此处做有限次重试，
+    避免瞬时争用导致 worker 任务直接失败。
+    """
     db = SessionLocal()
     try:
         yield db
-        db.commit()
+        for attempt in range(_DB_RETRY_MAX):
+            try:
+                db.commit()
+                break
+            except OperationalError as e:
+                db.rollback()
+                if "locked" not in str(e).lower() or attempt == _DB_RETRY_MAX - 1:
+                    raise
+                logger.debug("db commit locked, retry %d/%d", attempt + 1, _DB_RETRY_MAX)
+                time.sleep(_DB_RETRY_DELAY * (attempt + 1))
     except Exception:
         db.rollback()
         raise

@@ -26,6 +26,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 
 from .config import settings
 from .database import init_db
@@ -53,6 +54,20 @@ def create_app() -> FastAPI:
     )
 
     # 统一异常处理：返回 {error: {code, message, detail}}
+    @app.exception_handler(OperationalError)
+    async def db_locked_handler(request: Request, exc: OperationalError):
+        logger.warning("DB operational error on %s %s: %s", request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "code": "database_busy",
+                    "message": "数据库正忙，请稍后重试",
+                    "detail": str(exc),
+                }
+            },
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
