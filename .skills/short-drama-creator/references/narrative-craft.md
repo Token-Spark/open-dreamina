@@ -1,6 +1,6 @@
 # 叙事工艺标准
 
-> 对应 SKILL.md 索引中的 `reference/narrative-craft.md`。
+> 对应 SKILL.md 索引中的 `references/narrative-craft.md`。
 > 写场景 / 对白时加载。包含：世界观设计、信息控制、反转、场景设计、对白、可视化、节奏与信息密度。
 
 ## 1. 世界观设计

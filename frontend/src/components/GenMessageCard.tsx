@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Pencil, ImagePlus } from 'lucide-react'
 import { useTaskSSE } from '@/hooks/useTaskSSE'
 import { useConversationStore, type GenMessage } from '@/stores/conversationStore'
@@ -29,25 +29,44 @@ interface GenMessageCardProps {
   onEdit: (message: GenMessage) => void
 }
 
-export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEdit }: GenMessageCardProps) {
+function GenMessageCardInner({ topicId, message, onRetry, onOpenLightbox, onEdit }: GenMessageCardProps) {
   const updateMessage = useConversationStore((s) => s.updateMessage)
   const running = message.status === 'running'
   const pending = message.status === 'pending'
 
   const { status, progress, error, data } = useTaskSSE(pending || running ? message.id : null)
 
+  // Merge live SSE/progress data into the store message snapshot for display.
+  // Only sync to the store on status changes (not every progress tick) to avoid
+  // cascading re-renders of the entire message list.
+  const liveMessage = useMemo<GenMessage>(() => ({
+    ...message,
+    status: status ?? message.status,
+    progress: progress ?? message.progress,
+    error: error ?? message.error,
+    message: data.message ?? message.message,
+    resultUrl: data.resultUrl ?? message.resultUrl,
+    thumbnailUrl: data.thumbnailUrl ?? message.thumbnailUrl,
+    resultUrls: data.resultUrls.length ? data.resultUrls : message.resultUrls,
+  }), [message, status, progress, error, data])
+
+  // Only persist to the global store when the task status *changes* (pending→running,
+  // running→completed/failed). Progress-only ticks stay local to this card via
+  // liveMessage and never trigger re-renders of sibling cards.
+  const lastSyncedStatus = useRef(message.status)
   useEffect(() => {
-    if (!status && progress === 0 && !error && !data.message) return
+    const currentStatus = status ?? message.status
+    if (currentStatus === lastSyncedStatus.current) return
+    lastSyncedStatus.current = currentStatus
     updateMessage(topicId, message.id, {
-      status: status ?? message.status,
-      progress,
+      status: currentStatus,
+      progress: progress ?? message.progress,
       error,
-      message: data.message,
       resultUrl: data.resultUrl,
       thumbnailUrl: data.thumbnailUrl,
       resultUrls: data.resultUrls.length ? data.resultUrls : message.resultUrls,
     })
-  }, [status, progress, error, data.resultUrl, data.thumbnailUrl, data.resultUrls, data.message, topicId, message.id, message.status, updateMessage])
+  }, [status, progress, error, data.resultUrl, data.thumbnailUrl, data.resultUrls, topicId, message.id, message.progress, message.resultUrls, updateMessage])
 
   return (
     <div id={`msg-${message.id}`} className="animate-slide-up scroll-mt-4">
@@ -61,7 +80,7 @@ export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEd
           </div>
 
           <ResultCard
-            message={message}
+            message={liveMessage}
             onRetry={() => onRetry(message)}
             onOpenLightbox={(url) => onOpenLightbox(message, url)}
             onEdit={() => onEdit(message)}
@@ -71,6 +90,36 @@ export function GenMessageCard({ topicId, message, onRetry, onOpenLightbox, onEd
     </div>
   )
 }
+
+// Custom comparison: only re-render when the message content actually changed
+// (shallow field comparison), or when callbacks change. This prevents the parent
+// CreatePage re-render (triggered by store updates) from re-rendering every card.
+function shallowEqual(a: GenMessage, b: GenMessage): boolean {
+  if (a === b) return true
+  const keys: (keyof GenMessage)[] = ['id', 'prompt', 'type', 'status', 'progress', 'error', 'message', 'resultUrl', 'thumbnailUrl', 'resultUrls', 'provider', 'modelId', 'createdAt']
+  for (const k of keys) {
+    const av = a[k], bv = b[k]
+    if (Array.isArray(av) && Array.isArray(bv)) {
+      if (av.length !== bv.length || av.some((v, i) => v !== bv[i])) return false
+    } else if (av !== bv) return false
+  }
+  // params/inputAssetIds/inputAssetUrls are arrays/objects — compare by reference
+  if (a.params !== b.params) return false
+  if (a.inputAssetIds !== b.inputAssetIds) return false
+  if (a.inputAssetUrls !== b.inputAssetUrls) return false
+  return true
+}
+
+export const GenMessageCard = memo(GenMessageCardInner, (prev, next) => {
+  // Re-render if the message snapshot changed (status, result, etc.)
+  if (!shallowEqual(prev.message, next.message)) return false
+  // Re-render if topicId changed
+  if (prev.topicId !== next.topicId) return false
+  // Callbacks: let them re-render (they're wrapped in useCallback in CreatePage)
+  return prev.onRetry === next.onRetry
+    && prev.onOpenLightbox === next.onOpenLightbox
+    && prev.onEdit === next.onEdit
+}) as typeof GenMessageCardInner
 
 function ResultCard({
   message,
@@ -165,6 +214,7 @@ function ResultCard({
                     src={url}
                     alt={`生成结果 ${i + 1}`}
                     className="w-full object-contain"
+                    loading="lazy"
                   />
                 </div>
               ))}
@@ -175,7 +225,7 @@ function ResultCard({
               onClick={() => onOpenLightbox()}
             >
               {resultType === 'image' ? (
-                <img src={message.resultUrl} alt="生成结果" className="max-h-[50vh] w-full object-contain" />
+                <img src={message.resultUrl} alt="生成结果" className="max-h-[50vh] w-full object-contain" loading="lazy" />
               ) : (
                 <video src={message.resultUrl} controls className="max-h-[50vh] w-full" />
               )}

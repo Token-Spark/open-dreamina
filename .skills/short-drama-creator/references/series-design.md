@@ -1,6 +1,6 @@
 # 连续剧级别设计标准
 
-> 对应 SKILL.md 索引中的 `reference/series-design.md`。
+> 对应 SKILL.md 索引中的 `references/series-design.md`。
 > 创作超过 5 集或科幻题材时加载。包含：Series Bible、长篇节奏、AI/科幻额外标准。
 
 ## 1. 连续剧级别设计

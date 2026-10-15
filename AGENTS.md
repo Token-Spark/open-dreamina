@@ -190,6 +190,15 @@ drama-production-playbook（制作手册/编排，新开项目从这里进）
 各技能均含短剧管线专章（references/drama-*.md），与 `opendreamina drama`
 命令、审阅中心数据契约对齐。
 
+### 爆款视频翻拍技能（viral-remake）
+
+`.skills/viral-remake/` 是独立于短剧链的单技能：把爆款视频拆解为可复用的**格式**
+（词锚定时间线 + ANALYSIS/TIMELINE 档案 + 变换透镜），替换主体与内容后用即梦管线
+重新生产，母片过审后可批量变体。方法论源自对 hypit（github.com/hypit-ai/hypit）
+的提炼，生产落地走 dreamina-canvas + ffmpeg + drama 复用件。
+`opendreamina remake` 子命令为规划中（尚未实现），当前按技能内 P1 手工流程执行。
+项目根同样建议放 `data/review_sources/`（审阅中心零配置扫描）。
+
 ---
 
 ## 常用运维命令

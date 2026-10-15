@@ -223,12 +223,21 @@ export function useTaskSSE(
           return
         }
         openSSE()
-        startPolling()
+        // Polling is started only as a fallback when SSE can't get a slot.
+        // When SSE connects successfully, it provides live updates and the
+        // 3s poll is unnecessary — it only doubles state updates and re-renders.
+        // If the SSE slot request queued (MAX_TASK_SSE reached), start polling
+        // immediately so progress isn't stalled.
+        if (slotWaiter) {
+          startPolling()
+        }
       })
       .catch(() => {
         // If the seed fetch fails, still attempt SSE/polling.
         openSSE()
-        startPolling()
+        if (slotWaiter) {
+          startPolling()
+        }
       })
 
     const openSSE = () => {
@@ -240,6 +249,13 @@ export function useTaskSSE(
           return
         }
         holdingSlot = true
+        // SSE connected successfully — stop the polling fallback if it was
+        // running. Having both active doubles state updates and re-renders
+        // since every poll tick re-applies the same data the SSE just delivered.
+        if (pollTimer) {
+          window.clearInterval(pollTimer)
+          pollTimer = null
+        }
         es = new EventSource(taskStreamUrl(taskId))
         es.addEventListener('progress', (e) => safeParse(e, apply))
         es.addEventListener('completed', (e) => safeParse(e, apply))

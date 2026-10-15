@@ -23,11 +23,11 @@ description: "专业微短剧创作与剧本质量控制技能：覆盖高概念
 2. **Drama**：每一场戏是否有戏剧性
 3. **Production**：剧本是否可以直接进入制作
 
-> 核心创作原则见 `reference/creative-principles.md`。
+> 核心创作原则见 `references/creative-principles.md`。
 
 ## 2. 使用流程（概览）
 
-接收到创作需求后，按以下 12 步执行（每步详细标准见 `reference/workflow.md`）：
+接收到创作需求后，按以下 12 步执行（每步详细标准见 `references/workflow.md`）：
 
 ```text
 STEP 1  提炼高概念（Logline）
@@ -40,7 +40,7 @@ STEP 7  设计 Episode Arc（Goal / Hook / Conflict / Escalation / Reveal / Emot
 STEP 8  Scene Breakdown（每场戏必须有 Goal + Conflict + Change）
 STEP 9  写剧本（严格 Show > Tell）
 STEP 10 自动审稿（Hook / Conflict / Character / Suspense / Escalation / Emotion / Visual / Cliffhanger / Production Test）
-STEP 11 评分（100 分制，标准见 `reference/quality-control.md`）
+STEP 11 评分（100 分制，标准见 `references/quality-control.md`）
 STEP 12 自动重写（<80 重写；<70 禁止局部修补，必须重新设计）→ 返回 STEP 1
 ```
 
@@ -50,22 +50,24 @@ STEP 12 自动重写（<80 重写；<70 禁止局部修补，必须重新设计�
 
 | 文件 | 内容 | 何时加载 |
 |---|---|---|
-| `reference/creative-principles.md` | 核心创作原则与最终创作哲学（第一原则：持续制造"想知道"） | 创作开始前 |
-| `reference/episode-structure.md` | 单集结构标准：HOOK → GOAL → CONFLICT → ESCALATION → PAYOFF → CLIFFHANGER，以及角色选择、Escalation、Payoff 设计 | 设计单集时 |
-| `reference/character-design.md` | 人物设计标准：Want / Need / Flaw / Secret / Choice / Change、独立驱动力、价值观冲突 | 设计人物时 |
-| `reference/narrative-craft.md` | 叙事工艺：世界观展示、信息控制、反转、场景设计、对白、可视化、节奏与信息密度 | 写场景/对白时 |
-| `reference/quality-control.md` | 质量评分系统、五项硬性门槛、可制作性检查、Agent 自检 Prompt | 每集完成后、输出前 |
-| `reference/series-design.md` | 连续剧级别设计：Series Bible、长篇节奏、5 集小 Arc、AI/科幻额外标准 | 超过 5 集或科幻题材时 |
-| `reference/drama-context.md` | 竖屏 AIGC 短剧专章：体裁硬约束、生成友好性写法、八幕结构模板、交接契约 | 创作目标为 AIGC 竖屏短剧时必读 |
-| `reference/workflow.md` | 创作 Workflow 12 步详细标准 | 每次创作 |
+| `references/creative-principles.md` | 核心创作原则与最终创作哲学（第一原则：持续制造"想知道"） | 创作开始前 |
+| `references/episode-structure.md` | 单集结构标准：HOOK → GOAL → CONFLICT → ESCALATION → PAYOFF → CLIFFHANGER，以及角色选择、Escalation、Payoff 设计 | 设计单集时 |
+| `references/character-design.md` | 人物设计标准：Want / Need / Flaw / Secret / Choice / Change、独立驱动力、价值观冲突 | 设计人物时 |
+| `references/narrative-craft.md` | 叙事工艺：世界观展示、信息控制、反转、场景设计、对白、可视化、节奏与信息密度 | 写场景/对白时 |
+| `references/quality-control.md` | 质量评分系统、五项硬性门槛、可制作性检查、Agent 自检 Prompt | 每集完成后、输出前 |
+| `references/series-design.md` | 连续剧级别设计：Series Bible、长篇节奏、5 集小 Arc、AI/科幻额外标准 | 超过 5 集或科幻题材时 |
+| `references/drama-context.md` | 竖屏 AIGC 短剧专章：体裁硬约束、生成友好性写法、八幕结构模板、交接契约 | 创作目标为 AIGC 竖屏短剧时必读 |
+| `references/hit-methodology.md` | 爆款方法论：情绪代偿（受众定位/男频女频/信息差）、节奏钩子（黄金3秒/90秒闭环/情绪曲线）、数据迭代与避坑清单 | 创作开始前、分集规划时 |
+| `references/workflow.md` | 创作 Workflow 12 步详细标准 | 每次创作 |
 
 ## 4. 强制规则
 
-1. 创作开始前，必须先阅读 `reference/workflow.md` 与 `reference/creative-principles.md`。
-2. 单集结构必须符合 `reference/episode-structure.md` 的六段式。
-3. 每集完成后，必须按 `reference/quality-control.md` 自动评分：**Score < 80 自动重写；Score < 70 禁止局部修补，必须重新设计 Hook / Conflict / Episode Structure**。
-4. 创作超过 5 集，必须先按 `reference/series-design.md` 建立 Series Bible，禁止只逐集创作。
-5. AI / 科幻 / 末日 / 虚拟世界题材，必须额外遵守 `reference/series-design.md` 第 3 章。
+1. 创作开始前，必须先阅读 `references/workflow.md` 与 `references/creative-principles.md`。
+2. 动笔前必须明确目标受众与核心情绪（男频/女频、情绪代偿类型），并遵守 `references/hit-methodology.md` 的黄金 3 秒、单集闭环与避坑清单。
+3. 单集结构必须符合 `references/episode-structure.md` 的六段式。
+4. 每集完成后，必须按 `references/quality-control.md` 自动评分：**Score < 80 自动重写；Score < 70 禁止局部修补，必须重新设计 Hook / Conflict / Episode Structure**。
+5. 创作超过 5 集，必须先按 `references/series-design.md` 建立 Series Bible，禁止只逐集创作。
+6. AI / 科幻 / 末日 / 虚拟世界题材，必须额外遵守 `references/series-design.md` 第 3 章。
 
 ## 5. Final Output Standard
 

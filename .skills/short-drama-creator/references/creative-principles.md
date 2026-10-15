@@ -1,6 +1,6 @@
 # 创作原则与创作哲学
 
-> 对应 SKILL.md 索引中的 `reference/creative-principles.md`。
+> 对应 SKILL.md 索引中的 `references/creative-principles.md`。
 > 创作开始前加载。包含：核心创作原则（第一原则）、最终创作哲学。
 
 ## 1. 第一原则：持续制造"想知道"

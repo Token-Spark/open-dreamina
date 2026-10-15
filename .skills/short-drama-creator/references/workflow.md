@@ -1,9 +1,11 @@
 # 创作 Workflow 详细标准
 
-> 对应 SKILL.md 索引中的 `reference/workflow.md`。
+> 对应 SKILL.md 索引中的 `references/workflow.md`。
 > 每次创作开始前加载。Agent 接收到一个短剧创作需求后，按照以下流程工作。
 
 ## STEP 1：提炼高概念
+
+**先于 Logline 完成**：明确目标受众与核心情绪（男频/女频、情绪代偿类型，见 `references/hit-methodology.md` 第 1 章）——这部剧是卖给谁的？要提供什么情绪？
 
 输出：
 

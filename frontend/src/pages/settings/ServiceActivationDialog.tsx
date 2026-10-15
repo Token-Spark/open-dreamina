@@ -78,6 +78,8 @@ export function ServiceActivationDialog({
   const [customModes, setCustomModes] = useState<ContentMode[]>(['image'])
   // 模型 ID（留空使用目录默认）
   const [modelId, setModelId] = useState('')
+  // 自定义 slug 的 Provider 类型（选择后端使用哪种 Provider 实现）
+  const [providerType, setProviderType] = useState('')
   const [testing, setTesting] = useState(false)
 
   const isCustom = !service
@@ -89,9 +91,16 @@ export function ServiceActivationDialog({
 
   // 当前选中的 slug 元信息（自定义服务下拉选择后）
   const selectedSlugOption = slugOptions?.find((o) => o.slug === customSlug)
+  // slug 是否为已知注册项（非空且不在 slugOptions 中则为自定义）
+  const isCustomSlug = isCustom && customSlug.trim() !== '' && !selectedSlugOption
+  // Provider 类型下拉：列出所有非 hidden slug（即 slugOptions）作为可选实现
+  // 自定义 slug 需选择后端使用哪种 Provider 实现
+  const providerTypeOptions = slugOptions ?? []
+  // Provider 类型默认值：自定义 slug 时默认 openai（最通用兼容接口）
+  const effectiveProviderType = providerType || 'openai'
   // 该 slug 支持的内容模式；目录服务沿用 service.modes
   const availableModes: ContentMode[] = isCustom
-    ? (selectedSlugOption?.modes as ContentMode[] | undefined) ?? ['image']
+    ? (selectedSlugOption?.modes as ContentMode[] | undefined) ?? ['image', 'video']
     : (service!.modes as ContentMode[])
 
   const createMut = useMutation({
@@ -129,6 +138,7 @@ export function ServiceActivationDialog({
       setFieldValues({ api_key: '', base_url: existingProvider.base_url ?? '' })
       const existingModels = (existingProvider.config?.models as ProviderModelConfig[] | undefined) ?? []
       setModelId(existingModels[0]?.id ?? '')
+      setProviderType((existingProvider.config?.provider_type as string | undefined) ?? '')
       const types = existingModels[0]?.types ?? []
       const modes: ContentMode[] = []
       if (types.includes('text2img') || types.includes('img2img')) modes.push('image')
@@ -141,6 +151,7 @@ export function ServiceActivationDialog({
       setCustomModes(['image'])
       setFieldValues({ api_key: '', base_url: '' })
       setModelId('')
+      setProviderType('')
     }
   }, [open, service, existingProvider])
 
@@ -148,7 +159,7 @@ export function ServiceActivationDialog({
     setFieldValues((v) => ({ ...v, [key]: value }))
   }
 
-  /** 自定义服务：选择 slug 后自动填充默认 base_url 并重置内容模式。 */
+  /** 自定义服务：输入 slug 后，若是已知 slug 则自动填充默认 base_url 并约束内容模式。 */
   function handleCustomSlugChange(slug: string) {
     setCustomSlug(slug)
     const opt = slugOptions?.find((o) => o.slug === slug)
@@ -176,6 +187,10 @@ export function ServiceActivationDialog({
         label: trimmedId,
         types: modesToTypes(service?.modes ?? customModes),
       }]
+    }
+    // 自定义 slug：写入 provider_type 供后端查找实现
+    if (isCustomSlug) {
+      config.provider_type = effectiveProviderType
     }
     // 其他自定义字段写入 config
     for (const f of service?.fields ?? []) {
@@ -231,6 +246,9 @@ export function ServiceActivationDialog({
         label: trimmedId,
         types: modesToTypes(service?.modes ?? customModes),
       }]
+    }
+    if (isCustomSlug) {
+      config.provider_type = effectiveProviderType
     }
     for (const f of service?.fields ?? []) {
       if (f.key !== 'api_key' && f.key !== 'base_url' && fieldValues[f.key]) {
@@ -306,7 +324,7 @@ export function ServiceActivationDialog({
       }
     >
       <div className="space-y-3 py-1">
-        {/* 自定义服务：名称 + 标识（下拉） + 内容模式 */}
+        {/* 自定义服务：名称 + 标识（可输入） + 内容模式 */}
         {isCustom && (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -314,25 +332,44 @@ export function ServiceActivationDialog({
                 <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="如 我的图服务" />
               </FieldRow>
               <FieldRow label="模型唯一标识">
-                <Select
+                <Input
                   value={customSlug}
                   onChange={(e) => handleCustomSlugChange(e.target.value)}
                   disabled={isEditing || slugLoading}
-                >
-                  <option value="">
-                    {slugLoading ? '加载中…' : '请选择'}
-                  </option>
+                  placeholder={slugLoading ? '加载中…' : '输入或选择标识'}
+                  list="slug-options-list"
+                  autoComplete="off"
+                />
+                <datalist id="slug-options-list">
                   {slugOptions?.map((o) => (
+                    <option key={o.slug} value={o.slug}>
+                      {o.display_name}
+                    </option>
+                  ))}
+                </datalist>
+                <p className="text-xs text-fg-muted">
+                  标识（slug）唯一区分不同服务实例；可直接输入自定义标识快速接入新模型。选择已知标识可自动填充 API 地址与内容模式，输入新标识需在下方选择接口类型。
+                </p>
+              </FieldRow>
+            </div>
+            {/* 自定义 slug：选择 Provider 接口实现类型 */}
+            {isCustomSlug && (
+              <FieldRow label="接口类型">
+                <Select
+                  value={effectiveProviderType}
+                  onChange={(e) => setProviderType(e.target.value)}
+                >
+                  {providerTypeOptions.map((o) => (
                     <option key={o.slug} value={o.slug}>
                       {o.display_name}（{o.slug}）
                     </option>
                   ))}
                 </Select>
                 <p className="text-xs text-fg-muted">
-                  标识（slug）确定模型类型和参数；实际供应商由下方 API 地址决定，可填官方地址或 OpenRouter 等兼容中转站。
+                  自定义标识需选择使用哪种 Provider 接口实现；默认 OpenAI（最通用兼容接口）。
                 </p>
               </FieldRow>
-            </div>
+            )}
             <FieldRow label="内容模式">
               <Select
                 value={customModes.join('+')}

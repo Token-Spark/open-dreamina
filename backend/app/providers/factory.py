@@ -213,10 +213,17 @@ class ProviderFactory:
         api_key: str = "",
         config: dict[str, Any] | None = None,
     ) -> BaseProvider:
+        config = config or {}
         entry = _REGISTRY.get(slug)
+        if entry is not None:
+            return entry.factory(base_url or entry.default_base_url, api_key, config)
+        # 自定义 slug：按 config["provider_type"] 查找已注册实现，
+        # 仍找不到则回退到 openai（最通用的兼容接口）。
+        impl_slug = config.get("provider_type") or "openai"
+        entry = _REGISTRY.get(impl_slug)
         if entry is None:
-            raise ProviderError(f"未知 Provider slug: {slug}")
-        return entry.factory(base_url or entry.default_base_url, api_key, config or {})
+            raise ProviderError(f"未知 Provider slug: {slug}（provider_type={impl_slug}）")
+        return entry.factory(base_url or entry.default_base_url, api_key, config)
 
     @staticmethod
     def list_slugs() -> list[str]:

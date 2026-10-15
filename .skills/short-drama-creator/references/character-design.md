@@ -1,6 +1,6 @@
 # 人物设计标准
 
-> 对应 SKILL.md 索引中的 `reference/character-design.md`。
+> 对应 SKILL.md 索引中的 `references/character-design.md`。
 > 设计人物时加载。包含：人物六要素、独立驱动力、价值观冲突。
 
 ## 1. 人物设计标准

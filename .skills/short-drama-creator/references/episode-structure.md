@@ -1,6 +1,6 @@
 # 单集结构标准
 
-> 对应 SKILL.md 索引中的 `reference/episode-structure.md`。
+> 对应 SKILL.md 索引中的 `references/episode-structure.md`。
 > 设计每一集时加载。默认六段式：
 
 > **HOOK → GOAL → CONFLICT → ESCALATION → PAYOFF → CLIFFHANGER**
@@ -42,6 +42,8 @@ Hook 必须能够让观众产生至少一个明确问题：
 > "这到底是什么？"
 
 如果前 10 秒没有形成有效问题，必须重新设计开场。
+
+> **黄金 3 秒**（见 `references/hit-methodology.md` 第 2.1 节）：竖屏短剧用户没有耐心看铺垫，前 3 秒必须抛出强烈的冲突动态场景或令人震惊的台词——前 3 秒给冲突画面，前 10 秒内给出问题。
 
 ## 2. Goal
 
