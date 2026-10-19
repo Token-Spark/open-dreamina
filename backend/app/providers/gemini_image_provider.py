@@ -32,6 +32,7 @@ from typing import Any
 import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
+from ..utils.http_client import get_async_client
 
 # OpenRouter 模型标识（Nano Banana Pro）
 MODEL_GEMINI_3_PRO_IMAGE = "google/gemini-3-pro-image"
@@ -144,11 +145,10 @@ class GeminiImageProvider(BaseProvider):
     async def test_connection(self) -> bool:
         # OpenRouter /auth/key 端点用于校验 API Key 并返回额度信息
         url = f"{self.base_url}/auth/key"
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, headers=self._headers())
-            if resp.status_code == 200:
-                return True
-            raise ProviderError(f"OpenRouter 返回 {resp.status_code}: {resp.text[:200]}")
+        resp = await get_async_client().get(url, headers=self._headers(), timeout=15)
+        if resp.status_code == 200:
+            return True
+        raise ProviderError(f"OpenRouter 返回 {resp.status_code}: {resp.text[:200]}")
 
     async def _generate(
         self,
@@ -186,26 +186,27 @@ class GeminiImageProvider(BaseProvider):
 
         # 单次响应通常只含 1 张图，多图并发发起多次请求
         url = f"{self.base_url}/chat/completions"
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
-            responses = await asyncio.gather(*[
-                self._request_with_retry(
-                    client,
-                    "POST",
-                    url,
-                    provider_name="GeminiImage",
-                    headers=self._headers(),
-                    json=payload,
-                )
-                for _ in range(count)
-            ])
-            files: list[tuple[bytes, str]] = []
-            tokens_used: int | None = None
-            for resp in responses:
-                data = resp.json()
-                files.extend(await self._extract_images(data, client))
-                total_tokens = (data.get("usage") or {}).get("total_tokens")
-                if isinstance(total_tokens, (int, float)) and total_tokens >= 0:
-                    tokens_used = int(total_tokens)
+        client = get_async_client()
+        responses = await asyncio.gather(*[
+            self._request_with_retry(
+                client,
+                "POST",
+                url,
+                provider_name="GeminiImage",
+                timeout=_REQUEST_TIMEOUT,
+                headers=self._headers(),
+                json=payload,
+            )
+            for _ in range(count)
+        ])
+        files: list[tuple[bytes, str]] = []
+        tokens_used: int | None = None
+        for resp in responses:
+            data = resp.json()
+            files.extend(await self._extract_images(data, client))
+            total_tokens = (data.get("usage") or {}).get("total_tokens")
+            if isinstance(total_tokens, (int, float)) and total_tokens >= 0:
+                tokens_used = int(total_tokens)
 
         metadata: dict[str, Any] = {
             "model": model_id,
@@ -243,7 +244,9 @@ class GeminiImageProvider(BaseProvider):
             else:
                 # 兼容网关返回公网图片 URL 的场景
                 dl = await self._request_with_retry(
-                    client, "GET", image_url, provider_name="GeminiImage 图片下载",
+                    client, "GET", image_url,
+                    provider_name="GeminiImage 图片下载",
+                    timeout=_REQUEST_TIMEOUT,
                 )
                 files.append((dl.content, _detect_mime(dl.content)))
         if not files:

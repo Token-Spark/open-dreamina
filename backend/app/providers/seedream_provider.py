@@ -18,9 +18,8 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-import httpx
-
 from .base import BaseProvider, GenerationResult, ProviderError
+from ..utils.http_client import get_async_client
 
 # 火山引擎官方 API 域名：base_url 指向它时，图片 URL 已是公网 CDN，无需改写
 _ARK_OFFICIAL_HOST = "ark.cn-beijing.volces.com"
@@ -91,15 +90,15 @@ class SeedreamProvider(BaseProvider):
             "n": count,
             "response_format": "b64_json",
         }
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await self._request_with_retry(
-                client,
-                "POST",
-                url,
-                provider_name="Seedream",
-                headers=self._headers(),
-                json=payload,
-            )
+        resp = await self._request_with_retry(
+            get_async_client(),
+            "POST",
+            url,
+            provider_name="Seedream",
+            timeout=120,
+            headers=self._headers(),
+            json=payload,
+        )
         data = resp.json()
         items = data.get("data") or []
         if not items:
@@ -116,13 +115,13 @@ class SeedreamProvider(BaseProvider):
                 image_url = item.get("url")
                 if not image_url:
                     raise ProviderError(f"Seedream 响应中既无 b64_json 也无 url: {data}")
-                async with httpx.AsyncClient(timeout=120) as client:
-                    dl = await self._request_with_retry(
-                        client,
-                        "GET",
-                        self._resolve_url(image_url),
-                        provider_name="Seedream 图片下载",
-                    )
+                dl = await self._request_with_retry(
+                    get_async_client(),
+                    "GET",
+                    self._resolve_url(image_url),
+                    provider_name="Seedream 图片下载",
+                    timeout=120,
+                )
                 file_bytes = dl.content
                 mime_type = _detect_mime(file_bytes)
             files.append((file_bytes, mime_type))
@@ -162,8 +161,7 @@ class SeedreamProvider(BaseProvider):
 
     async def test_connection(self) -> bool:
         url = f"{self.base_url}/models"
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, headers=self._headers())
-            if resp.status_code == 200:
-                return True
-            raise ProviderError(f"Seedream 返回 {resp.status_code}: {resp.text[:200]}")
+        resp = await get_async_client().get(url, headers=self._headers(), timeout=15)
+        if resp.status_code == 200:
+            return True
+        raise ProviderError(f"Seedream 返回 {resp.status_code}: {resp.text[:200]}")

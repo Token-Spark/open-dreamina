@@ -33,9 +33,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import redis
-
-from ..config import settings
+from ..utils.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +71,6 @@ _LEGACY_FALLBACK_PATHS = (
 )
 
 
-def _redis() -> redis.Redis:
-    return redis.Redis.from_url(settings.redis_url, decode_responses=True)
-
-
 # ---- 子进程执行 ----
 
 def _run(args: list[str], timeout: float = _CMD_TIMEOUT) -> tuple[int, str]:
@@ -101,7 +95,7 @@ def resolve_cli_path(cli_path: str | None = None) -> str | None:
     if cli_path and cli_path != DEFAULT_CLI_NAME:
         candidates.append(cli_path)
     try:
-        saved = _redis().get(_RESOLVED_PATH_KEY)
+        saved = get_redis().get(_RESOLVED_PATH_KEY)
         if saved:
             candidates.append(saved)
     except Exception:
@@ -143,7 +137,7 @@ def find_legacy_cli() -> str | None:
 
 def _set_resolved_path(path: str) -> None:
     try:
-        _redis().set(_RESOLVED_PATH_KEY, path)
+        get_redis().set(_RESOLVED_PATH_KEY, path)
     except Exception:
         pass
 
@@ -184,7 +178,7 @@ def _parse_version(out: str) -> str | None:
 
 def is_installing() -> bool:
     try:
-        return bool(_redis().get(_INSTALLING_KEY))
+        return bool(get_redis().get(_INSTALLING_KEY))
     except Exception:
         return False
 
@@ -229,7 +223,7 @@ def _run_install_script() -> tuple[int, str, str]:
 def install_cli() -> dict[str, Any]:
     """执行官方安装脚本（幂等：已安装则直接复用 / 升级）。"""
     try:
-        r = _redis()
+        r = get_redis()
         r.set(_INSTALLING_KEY, "1", ex=900)
     except Exception:
         r = None
@@ -352,7 +346,7 @@ def start_login(cli_path: str | None = None) -> dict[str, Any]:
 
     session = {**fields, "cli_path": resolved}
     try:
-        _redis().set(_LOGIN_SESSION_KEY, json.dumps(session, ensure_ascii=False), ex=_LOGIN_SESSION_TTL)
+        get_redis().set(_LOGIN_SESSION_KEY, json.dumps(session, ensure_ascii=False), ex=_LOGIN_SESSION_TTL)
     except Exception:
         logger.warning("[即梦CLI] 登录会话写入 Redis 失败（不影响授权检测）")
     logger.info("[即梦CLI] device flow 登录已发起: verification_uri=%s", fields.get("verification_uri"))
@@ -361,7 +355,7 @@ def start_login(cli_path: str | None = None) -> dict[str, Any]:
 
 def get_login_session() -> dict[str, Any] | None:
     try:
-        raw = _redis().get(_LOGIN_SESSION_KEY)
+        raw = get_redis().get(_LOGIN_SESSION_KEY)
     except Exception:
         return None
     if not raw:
@@ -408,7 +402,7 @@ def check_login(cli_path: str | None = None) -> dict[str, Any]:
 
 def clear_login_session() -> None:
     try:
-        _redis().delete(_LOGIN_SESSION_KEY)
+        get_redis().delete(_LOGIN_SESSION_KEY)
     except Exception:
         pass
 

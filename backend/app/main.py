@@ -31,6 +31,7 @@ from sqlalchemy.exc import OperationalError
 from .config import settings
 from .database import init_db
 from .routers import assets, canvas, conversations, creation_assets, providers, reviews, shot_reviews, system, tasks, templates
+from .utils.http_client import dispose_async_client
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -102,6 +103,10 @@ def create_app() -> FastAPI:
             logger.info("Database initialized (WAL mode)")
         except Exception:
             logger.exception("Database init failed")
+
+    @app.on_event("shutdown")
+    async def _on_shutdown() -> None:
+        await dispose_async_client()
 
     @app.get("/")
     def root():

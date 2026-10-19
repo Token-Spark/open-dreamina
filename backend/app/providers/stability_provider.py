@@ -21,9 +21,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import httpx
-
 from .base import BaseProvider, GenerationResult, ProviderError
+from ..utils.http_client import get_async_client
 
 
 class StabilityProvider(BaseProvider):
@@ -68,15 +67,15 @@ class StabilityProvider(BaseProvider):
             }
             if negative_prompt:
                 files["negative_prompt"] = (None, negative_prompt)
-            async with httpx.AsyncClient(timeout=120) as client:
-                resp = await self._request_with_retry(
-                    client,
-                    "POST",
-                    url,
-                    provider_name="Stability",
-                    headers=self._headers(),
-                    files=files,
-                )
+            resp = await self._request_with_retry(
+                get_async_client(),
+                "POST",
+                url,
+                provider_name="Stability",
+                timeout=120,
+                headers=self._headers(),
+                files=files,
+            )
             import base64 as _b64
             data = resp.json()
             img_b64 = data.get("image")
@@ -126,8 +125,7 @@ class StabilityProvider(BaseProvider):
 
     async def test_connection(self) -> bool:
         url = f"{self.base_url}/v1/user/balance"
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, headers=self._headers())
-            if resp.status_code == 200:
-                return True
-            raise ProviderError(f"Stability 返回 {resp.status_code}: {resp.text[:200]}")
+        resp = await get_async_client().get(url, headers=self._headers(), timeout=15)
+        if resp.status_code == 200:
+            return True
+        raise ProviderError(f"Stability 返回 {resp.status_code}: {resp.text[:200]}")

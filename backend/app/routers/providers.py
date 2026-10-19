@@ -106,10 +106,11 @@ def list_slug_options() -> list[ProviderSlugOption]:
 
 
 @router.post("/test-before-create", response_model=ProviderTestResult)
-def test_provider_before_create(payload: ProviderTestBeforeCreate) -> ProviderTestResult:
+async def test_provider_before_create(payload: ProviderTestBeforeCreate) -> ProviderTestResult:
     """新建前连通性测试：无需先落库即可校验 slug / API Key / base_url。"""
     if payload.slug in _DREAMINA_CLI_SLUGS:
-        return _test_dreamina_cli_on_worker(payload.base_url)
+        # CLI 自检要走 celery 同步等结果（最长 60s），放到线程池，不阻塞事件循环
+        return await asyncio.to_thread(_test_dreamina_cli_on_worker, payload.base_url)
 
     try:
         provider = get_provider(
@@ -123,7 +124,7 @@ def test_provider_before_create(payload: ProviderTestBeforeCreate) -> ProviderTe
 
     start = time.perf_counter()
     try:
-        ok = asyncio.run(provider.test_connection())
+        ok = await provider.test_connection()
         latency_ms = int((time.perf_counter() - start) * 1000)
         return ProviderTestResult(
             success=ok,
@@ -201,7 +202,7 @@ def delete_provider(provider_id: str, db: Session = Depends(get_db)) -> MessageR
 
 
 @router.post("/{provider_id}/test", response_model=ProviderTestResult)
-def test_provider(
+async def test_provider(
     provider_id: str,
     payload: ProviderTestOverride | None = None,
     db: Session = Depends(get_db),
@@ -225,7 +226,7 @@ def test_provider(
     config = json.loads(p.config_json or "{}") if not (payload and payload.config is not None) else payload.config
 
     if p.slug in _DREAMINA_CLI_SLUGS:
-        return _test_dreamina_cli_on_worker(base_url)
+        return await asyncio.to_thread(_test_dreamina_cli_on_worker, base_url)
 
     try:
         provider = get_provider(p.slug, base_url=base_url, api_key=api_key, config=config)
@@ -234,7 +235,7 @@ def test_provider(
 
     start = time.perf_counter()
     try:
-        ok = asyncio.run(provider.test_connection())
+        ok = await provider.test_connection()
         latency_ms = int((time.perf_counter() - start) * 1000)
         return ProviderTestResult(
             success=ok,

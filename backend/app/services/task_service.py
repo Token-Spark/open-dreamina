@@ -24,9 +24,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
-import redis
-
-from ..config import settings
+from ..utils.redis_client import get_redis
 from ..utils.time_utils import now_iso
 
 # Redis 进度 key 命名
@@ -50,10 +48,6 @@ _TRANSITIONS: dict[str, set[str]] = {
 }
 
 
-def _redis() -> redis.Redis:
-    return redis.Redis.from_url(settings.redis_url, decode_responses=True)
-
-
 def can_transition(from_status: str, to_status: str) -> bool:
     return to_status in _TRANSITIONS.get(from_status, set())
 
@@ -74,7 +68,7 @@ def set_progress(
 ) -> None:
     """写入 Redis 进度缓存（不更新 DB，DB 由 worker/service 显式更新）。"""
     try:
-        r = _redis()
+        r = get_redis()
         pipe = r.pipeline()
         pipe.set(_PROGRESS_KEY.format(task_id=task_id), str(progress))
         pipe.set(_STATUS_KEY.format(task_id=task_id), status)
@@ -89,7 +83,7 @@ def set_progress(
 def get_progress(task_id: str) -> dict[str, Any]:
     """从 Redis 读取进度。若无则返回空 dict。"""
     try:
-        r = _redis()
+        r = get_redis()
         pipe = r.pipeline()
         pipe.get(_PROGRESS_KEY.format(task_id=task_id))
         pipe.get(_STATUS_KEY.format(task_id=task_id))
@@ -108,7 +102,7 @@ def get_progress(task_id: str) -> dict[str, Any]:
 
 def clear_progress(task_id: str) -> None:
     try:
-        r = _redis()
+        r = get_redis()
         r.delete(
             _PROGRESS_KEY.format(task_id=task_id),
             _STATUS_KEY.format(task_id=task_id),

@@ -17,9 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
-
 from .base import BaseProvider, GenerationResult, ProviderError
+from ..utils.http_client import get_async_client
 
 
 class DashScopeProvider(BaseProvider):
@@ -66,15 +65,15 @@ class DashScopeProvider(BaseProvider):
         if negative_prompt:
             payload["input"]["negative_prompt"] = negative_prompt
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await self._request_with_retry(
-                client,
-                "POST",
-                url,
-                provider_name="DashScope",
-                headers=self._headers(),
-                json=payload,
-            )
+        resp = await self._request_with_retry(
+            get_async_client(),
+            "POST",
+            url,
+            provider_name="DashScope",
+            timeout=120,
+            headers=self._headers(),
+            json=payload,
+        )
         data = resp.json()
         # 通义万相通常是异步任务，这里简化：如有 output.results 立即返回
         results = (data.get("output") or {}).get("results") or []
@@ -83,18 +82,19 @@ class DashScopeProvider(BaseProvider):
 
         # 下载所有返回的图片
         files: list[tuple[bytes, str]] = []
-        async with httpx.AsyncClient(timeout=60) as client:
-            for r in results:
-                image_url = r.get("url")
-                if not image_url:
-                    continue
-                img_resp = await self._request_with_retry(
-                    client,
-                    "GET",
-                    image_url,
-                    provider_name="DashScope 结果图片下载",
-                )
-                files.append((img_resp.content, "image/png"))
+        client = get_async_client()
+        for r in results:
+            image_url = r.get("url")
+            if not image_url:
+                continue
+            img_resp = await self._request_with_retry(
+                client,
+                "GET",
+                image_url,
+                provider_name="DashScope 结果图片下载",
+                timeout=60,
+            )
+            files.append((img_resp.content, "image/png"))
 
         if not files:
             raise ProviderError("DashScope 响应中未找到可下载的 image url")

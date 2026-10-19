@@ -26,6 +26,7 @@ import traceback
 from typing import Any
 
 from celery import Celery
+from celery.exceptions import SoftTimeLimitExceeded
 from celery.schedules import crontab
 from celery.signals import worker_ready
 
@@ -44,6 +45,8 @@ from .services.asset_service import (
 from .services.backup_service import backup_database
 from .utils.crypto import decrypt
 from .utils.file_utils import _guess_asset_type, resolve_relative, save_uploaded_file
+from .utils.http_client import dispose_async_client
+from .utils.redis_client import get_redis
 from .utils.time_utils import now_iso as _now
 
 logger = logging.getLogger(__name__)
@@ -272,6 +275,35 @@ async def _build_sparkhub_seedream_ref_kwargs(db, raw_ids: list[str]) -> dict[st
     return {"image_urls": urls}
 
 
+_worker_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_worker_loop() -> asyncio.AbstractEventLoop:
+    """本 worker 进程的常驻事件循环。
+
+    每个任务新建并 close 循环，会让绑定在该循环上的 keep-alive 连接一起销毁，
+    下个任务只能重新 TCP+TLS 握手。常驻循环配合共享 AsyncClient，连接才能跨任务复用。
+    """
+    global _worker_loop
+    if _worker_loop is None or _worker_loop.is_closed():
+        _worker_loop = asyncio.new_event_loop()
+    return _worker_loop
+
+
+def _dispose_worker_loop() -> None:
+    """关闭并清空常驻循环，下个任务重建（用于协程被强制打断后）。"""
+    global _worker_loop
+    loop, _worker_loop = _worker_loop, None
+    if loop is None or loop.is_closed():
+        return
+    try:
+        loop.run_until_complete(dispose_async_client())
+    except Exception:
+        logger.debug("共享 HTTP 客户端清理失败", exc_info=True)
+    finally:
+        loop.close()
+
+
 @celery_app.task(name="app.worker.run_generation_task", bind=True)
 def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
     """执行生成任务。"""
@@ -338,7 +370,7 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         if task_type in ("img2img", "img2video") and raw_ids:
             image_bytes_list = _read_input_asset_bytes_list(raw_ids)
 
-        loop = asyncio.new_event_loop()
+        loop = _get_worker_loop()
         try:
             if task_type == "text2img":
                 result = loop.run_until_complete(provider.text_to_image(prompt=prompt, **_filter_kwargs(provider.text_to_image, kwargs)))
@@ -388,8 +420,11 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
                     result = loop.run_until_complete(provider.image_to_video(image_bytes=first_bytes, prompt=prompt, **_filter_kwargs(provider.image_to_video, kwargs)))
             else:
                 raise ProviderError(f"未知任务类型: {task_type}")
-        finally:
-            loop.close()
+        except SoftTimeLimitExceeded:
+            # 软超时由信号处理器直接打断协程，会留下未跑完的请求与在途连接；
+            # 丢弃该循环及其共享连接，下个任务重新建连，避免脏状态跨任务泄漏。
+            _dispose_worker_loop()
+            raise
 
         # 3. 60% 后处理中
         task_service.set_progress(task_id, "running", 60, "正在保存结果…")
@@ -680,8 +715,9 @@ def _dreamina_cli_bootstrap(sender=None, **kwargs) -> None:  # noqa: ANN001
             return
 
         try:
-            attempts = int(dcs._redis().incr(dcs._INSTALL_ATTEMPTS_KEY))
-            dcs._redis().expire(dcs._INSTALL_ATTEMPTS_KEY, 3600)
+            redis_client = get_redis()
+            attempts = int(redis_client.incr(dcs._INSTALL_ATTEMPTS_KEY))
+            redis_client.expire(dcs._INSTALL_ATTEMPTS_KEY, 3600)
         except Exception:
             attempts = 1
 

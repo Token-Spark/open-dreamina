@@ -31,6 +31,7 @@ from typing import Any, Callable
 import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
+from ..utils.http_client import get_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -204,11 +205,17 @@ class SparkHubBaseProvider(BaseProvider, ABC):
 
     # ---------- 异步任务生命周期 ----------
 
-    async def _submit(self, client: httpx.AsyncClient, payload: dict[str, Any]) -> str:
+    async def _submit(
+        self,
+        client: httpx.AsyncClient,
+        payload: dict[str, Any],
+        timeout: float = 120,
+    ) -> str:
         """创建异步任务，返回 task_id。"""
         resp = await self._request_with_retry(
             client, "POST", f"{self.base_url}{_CREATE_PATH}",
-            provider_name="Spark Hub", headers=self._headers(), json=payload,
+            provider_name="Spark Hub", timeout=timeout,
+            headers=self._headers(), json=payload,
         )
         data = resp.json()
         self._raise_business_error(data, "创建任务")
@@ -224,7 +231,8 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         last_status = ""
         while elapsed < self._POLL_TIMEOUT:
             resp = await self._request_with_retry(
-                client, "GET", url, provider_name="Spark Hub", headers=self._headers(),
+                client, "GET", url, provider_name="Spark Hub", timeout=120,
+                headers=self._headers(),
             )
             data = resp.json()
             self._raise_business_error(data, "查询任务")
@@ -285,7 +293,8 @@ class SparkHubBaseProvider(BaseProvider, ABC):
             try:
                 url = f"{self.base_url}{_ORIGINAL_PATH.format(task_id=task_id)}"
                 resp = await self._request_with_retry(
-                    client, "GET", url, provider_name="Spark Hub 原始响应", headers=self._headers(),
+                    client, "GET", url, provider_name="Spark Hub 原始响应",
+                    timeout=120, headers=self._headers(),
                 )
                 parts = _collect_error_parts(resp.json())
                 if parts:
@@ -300,10 +309,10 @@ class SparkHubBaseProvider(BaseProvider, ABC):
 
     async def _download(self, url: str) -> bytes:
         """下载结果字节（CDN 链接，瞬时故障自动重试）。"""
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await self._request_with_retry(
-                client, "GET", url, provider_name="Spark Hub 结果下载",
-            )
+        resp = await self._request_with_retry(
+            get_async_client(), "GET", url,
+            provider_name="Spark Hub 结果下载", timeout=120,
+        )
         return resp.content
 
     # ---------- 模板方法：提交 → 轮询 → 提取 URL → 下载 ----------
@@ -318,9 +327,9 @@ class SparkHubBaseProvider(BaseProvider, ABC):
 
         下载全部结果 URL（生图多图时返回多张；生视频通常仅 1 个 URL）。
         """
-        async with httpx.AsyncClient(timeout=120) as client:
-            task_id = await self._submit(client, payload)
-            polled = await self._poll(client, task_id)
+        client = get_async_client()
+        task_id = await self._submit(client, payload)
+        polled = await self._poll(client, task_id)
 
         urls = pick_urls(polled)
         if not urls:
@@ -361,6 +370,5 @@ class SparkHubBaseProvider(BaseProvider, ABC):
             "api_name": "doubao_seed_2_1_turbo",
             "prompt": "ping",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
-            await self._submit(client, payload)
+        await self._submit(get_async_client(), payload, timeout=30)
         return True

@@ -42,6 +42,7 @@ from ..models import ApiProvider, Asset
 from ..providers import ProviderError
 from ..utils.crypto import decrypt
 from ..utils.file_utils import resolve_relative
+from ..utils.http_client import get_async_client
 from .qiniu_service import is_configured, upload_asset_to_qiniu
 
 logger = logging.getLogger(__name__)
@@ -227,13 +228,13 @@ async def submit_asset_audit(db: Session, asset: Asset, provider_slug: str) -> A
             "或配置 public_base_url 为 https:// 地址"
         )
     payload = {"url": url, "AssetType": asset_type}
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            f"{provider.base_url}{_SUBMIT_PATH}",
-            headers={"X-API-Key": provider.api_key, "Content-Type": "application/json"},
-            json=payload,
-        )
-        data = _parse_json(resp)
+    resp = await get_async_client().post(
+        f"{provider.base_url}{_SUBMIT_PATH}",
+        headers={"X-API-Key": provider.api_key, "Content-Type": "application/json"},
+        json=payload,
+        timeout=60,
+    )
+    data = _parse_json(resp)
     # Spark Hub 可能以非 200 HTTP 状态码返回业务错误，解析响应体统一处理
     if resp.status_code != 200:
         logger.error(
@@ -273,13 +274,13 @@ async def check_asset_audit(db: Session, asset: Asset, provider_slug: str) -> As
         raise ProviderError("素材尚未提交审核，请先调用提审接口")
     provider = _load_sparkhub_provider(db, provider_slug)
     payload = {"asset_id": asset.audit_asset_id}
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            f"{provider.base_url}{_STATUS_PATH}",
-            headers={"X-API-Key": provider.api_key, "Content-Type": "application/json"},
-            json=payload,
-        )
-        data = _parse_json(resp)
+    resp = await get_async_client().post(
+        f"{provider.base_url}{_STATUS_PATH}",
+        headers={"X-API-Key": provider.api_key, "Content-Type": "application/json"},
+        json=payload,
+        timeout=60,
+    )
+    data = _parse_json(resp)
     if resp.status_code != 200:
         logger.error(
             "查询审核状态 HTTP 异常 provider=%s asset_id=%s audit_asset_id=%s http_status=%s resp=%s",

@@ -31,6 +31,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
+from ..utils.http_client import get_async_client
 
 # 火山引擎官方 API 域名：base_url 指向它时，video_url 已是公网 CDN，无需改写
 _ARK_OFFICIAL_HOST = "ark.cn-beijing.volces.com"
@@ -169,6 +170,7 @@ class SeedanceProvider(BaseProvider):
             "POST",
             url,
             provider_name="Seedance",
+            timeout=120,
             headers=self._headers(),
             json=payload,
         )
@@ -192,6 +194,7 @@ class SeedanceProvider(BaseProvider):
                 "GET",
                 url,
                 provider_name="Seedance",
+                timeout=120,
                 headers=self._headers(),
             )
             data = resp.json()
@@ -222,13 +225,13 @@ class SeedanceProvider(BaseProvider):
     async def _download_video(self, video_url: str) -> bytes:
         """下载生成的视频字节（CDN 链接，瞬时故障自动重试）。"""
         download_url = self._resolve_download_url(video_url)
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await self._request_with_retry(
-                client,
-                "GET",
-                download_url,
-                provider_name="Seedance 视频下载",
-            )
+        resp = await self._request_with_retry(
+            get_async_client(),
+            "GET",
+            download_url,
+            provider_name="Seedance 视频下载",
+            timeout=120,
+        )
         return resp.content
 
     async def _generate(
@@ -239,9 +242,9 @@ class SeedanceProvider(BaseProvider):
         model_id = kwargs.get("model_id") or self.config.get("model_id", DEFAULT_MODEL)
         params = self._build_params(kwargs)
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            task_id = await self._create_task(client, model_id, content, params)
-            result = await self._poll_task(client, task_id)
+        client = get_async_client()
+        task_id = await self._create_task(client, model_id, content, params)
+        result = await self._poll_task(client, task_id)
 
         status = result.get("status")
         if status != "succeeded":
@@ -363,8 +366,7 @@ class SeedanceProvider(BaseProvider):
 
     async def test_connection(self) -> bool:
         url = f"{self.base_url}/models"
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, headers=self._headers())
-            if resp.status_code == 200:
-                return True
-            raise ProviderError(f"Seedance 返回 {resp.status_code}: {resp.text[:200]}")
+        resp = await get_async_client().get(url, headers=self._headers(), timeout=15)
+        if resp.status_code == 200:
+            return True
+        raise ProviderError(f"Seedance 返回 {resp.status_code}: {resp.text[:200]}")

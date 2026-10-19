@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
+from ..utils.http_client import get_async_client
 
 # OpenAI 默认图片生成模型（GPT Image 2）
 MODEL_GPT_IMAGE_2 = "gpt-image-2"
@@ -135,15 +136,15 @@ class OpenAIProvider(BaseProvider):
 
     async def _post_generations(self, payload: dict[str, Any]) -> httpx.Response:
         """POST /images/generations（JSON）：文生图与统一网关图生图共用。"""
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
-            return await self._request_with_retry(
-                client,
-                "POST",
-                f"{self.base_url}/images/generations",
-                provider_name="OpenAI",
-                headers=self._headers(),
-                json=payload,
-            )
+        return await self._request_with_retry(
+            get_async_client(),
+            "POST",
+            f"{self.base_url}/images/generations",
+            provider_name="OpenAI",
+            timeout=_REQUEST_TIMEOUT,
+            headers=self._headers(),
+            json=payload,
+        )
 
     async def _generate_with_references(
         self,
@@ -176,16 +177,16 @@ class OpenAIProvider(BaseProvider):
             ("image[]", (f"image_{i}.{ext}", img, mime))
             for i, (img, mime, ext) in enumerate(map(self._image_file_field, image_bytes))
         ]
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
-            resp = await self._request_with_retry(
-                client,
-                "POST",
-                f"{self.base_url}/images/edits",
-                provider_name="OpenAI",
-                headers=headers,
-                data={key: str(value) for key, value in payload.items()},
-                files=files,
-            )
+        resp = await self._request_with_retry(
+            get_async_client(),
+            "POST",
+            f"{self.base_url}/images/edits",
+            provider_name="OpenAI",
+            timeout=_REQUEST_TIMEOUT,
+            headers=headers,
+            data={key: str(value) for key, value in payload.items()},
+            files=files,
+        )
         return self._parse_images_response(resp.json(), payload["model"])
 
     @staticmethod
@@ -246,11 +247,10 @@ class OpenAIProvider(BaseProvider):
 
     async def test_connection(self) -> bool:
         url = f"{self.base_url}/models"
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, headers=self._headers())
-            if resp.status_code == 200:
-                return True
-            raise ProviderError(f"OpenAI 返回 {resp.status_code}: {resp.text[:200]}")
+        resp = await get_async_client().get(url, headers=self._headers(), timeout=15)
+        if resp.status_code == 200:
+            return True
+        raise ProviderError(f"OpenAI 返回 {resp.status_code}: {resp.text[:200]}")
 
     @staticmethod
     def _size_str(width: int, height: int) -> str:

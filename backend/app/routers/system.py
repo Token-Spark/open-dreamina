@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-import redis
 from celery.exceptions import TimeoutError as CeleryTimeoutError
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -34,6 +33,7 @@ from ..schemas import (
     SystemSettings,
 )
 from ..services.backup_service import backup_database, list_backups
+from ..utils.redis_client import get_redis
 from ..worker import (
     celery_app,
     dreamina_cli_install_task,
@@ -62,10 +62,8 @@ def health(db: Session = Depends(get_db)) -> HealthResponse:
 
     # Redis
     try:
-        r = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=2)
-        r.ping()
+        get_redis().ping()
         redis_status = "ok"
-        r.close()
     except Exception:
         redis_status = "down"
 
@@ -172,8 +170,7 @@ def dreamina_cli_install():
     """触发 worker 节点安装即梦 CLI（异步执行，前端轮询 status 获取进度）。"""
     # 先置安装中标记，避免状态轮询在安装完成前显示「未安装」造成误导
     try:
-        r = redis.Redis.from_url(settings.redis_url, decode_responses=True)
-        r.set("dreamina_cli:installing", "1", ex=900)
+        get_redis().set("dreamina_cli:installing", "1", ex=900)
     except Exception:
         pass
     dreamina_cli_install_task.delay()

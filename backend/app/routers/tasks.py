@@ -254,42 +254,53 @@ def _refresh_task_from_db(task_id: str) -> Task | None:
         return s.get(Task, task_id)
 
 
-def _read_status(task_id: str, fallback_task: Task) -> tuple[str, int, str | None]:
+def _read_status(task_id: str, fallback_status: str, fallback_progress: int) -> tuple[str, int, str | None]:
     """读取任务状态：优先 Redis，Redis 为空时回查 DB。
 
     返回 (status, progress, message)。worker 完成后立即清理 Redis，
     此时 DB 已是终态，必须回查 DB 否则 SSE 永远收不到 completed 事件。
+
+    入参用普通值而非 ORM 实体：本函数会在线程池中执行，不能跨线程触碰 Session。
     """
     info = task_service.get_progress(task_id)
     if info:
-        status = info.get("status") or fallback_task.status
+        status = info.get("status") or fallback_status
         progress = info.get("progress")
         if progress is None:
-            progress = fallback_task.progress
+            progress = fallback_progress
         return status, progress, info.get("message")
     # Redis 已清理：从 DB 读取最新状态
     fresh = _refresh_task_from_db(task_id)
     if fresh:
         return fresh.status, fresh.progress, None
-    return fallback_task.status, fallback_task.progress, None
+    return fallback_status, fallback_progress, None
 
 
 @router.get("/{task_id}/stream")
 async def stream_task(task_id: str, request: Request, db: Session = Depends(get_db)):
     """SSE 端点：实时推送任务进度。
 
-    每 15s 发送一次 heartbeat；任务进入终态后立即结束流。
+    每 1s 读一次进度（Redis 优先，缺失时回查 DB），每 sse_heartbeat_interval 秒
+    补发一次心跳；任务进入终态后立即结束流。
+    读进度/建事件都是同步 I/O（redis-py、SQLAlchemy），一律交给线程池执行，
+    否则会把单进程 uvicorn 的事件循环堵死，导致所有在途请求排队。
     """
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"任务 {task_id} 不存在"})
 
+    # 只取普通值：生成器跨线程读取，不再触碰已脱离 Session 的 ORM 实体
+    fallback_status = task.status
+    fallback_progress = task.progress
+
     async def event_generator():
         # 立即推送一次当前状态
-        status, progress, message = _read_status(task_id, task)
+        status, progress, message = await asyncio.to_thread(
+            _read_status, task_id, fallback_status, fallback_progress
+        )
 
         if status in task_service.TERMINAL_STATUSES:
-            yield _terminal_event(task_id, status, task, message)
+            yield await asyncio.to_thread(_terminal_event, task_id, status, fallback_progress, message)
             return
 
         yield format_event(
@@ -304,10 +315,12 @@ async def stream_task(task_id: str, request: Request, db: Session = Depends(get_
             if await request.is_disconnected():
                 return
 
-            status, progress, msg = _read_status(task_id, task)
+            status, progress, msg = await asyncio.to_thread(
+                _read_status, task_id, fallback_status, fallback_progress
+            )
 
             if status in task_service.TERMINAL_STATUSES:
-                yield _terminal_event(task_id, status, task, msg)
+                yield await asyncio.to_thread(_terminal_event, task_id, status, fallback_progress, msg)
                 return
 
             if status != last_status or progress != last_progress:
@@ -337,7 +350,7 @@ async def stream_task(task_id: str, request: Request, db: Session = Depends(get_
     )
 
 
-def _terminal_event(task_id: str, status: str, task: Task, message: str | None) -> str:
+def _terminal_event(task_id: str, status: str, fallback_progress: int, message: str | None) -> str:
     if status == "completed":
         # 查询关联资产 id（优先读 worker 落库的有序结果 id，保序）
         asset_ids: list[str] = []
@@ -366,7 +379,7 @@ def _terminal_event(task_id: str, status: str, task: Task, message: str | None) 
         return format_event("failed", task_service.failed_payload(task_id, err))
     if status == "cancelled":
         return format_event("failed", task_service.failed_payload(task_id, message or "任务已取消"))
-    return format_event("progress", task_service.task_progress_payload(task_id, status, task.progress, message))
+    return format_event("progress", task_service.task_progress_payload(task_id, status, fallback_progress, message))
 
 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)

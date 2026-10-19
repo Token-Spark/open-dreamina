@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useCallback, useRef, useState } from 'react'
-import { submitAssetAudit, getAssetAudit, type AssetAuditStatus } from '@/api/assets'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { submitAssetAudit, type AssetAuditStatus } from '@/api/assets'
+import { watchAssetAudit } from '@/lib/auditPoller'
 import { isSparkHubSeedance, type ReferenceAsset } from '@/components/GenerationInputBar'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
@@ -43,20 +44,29 @@ export function useAssetAudit(providerSlug: string) {
     }))
   }, [])
 
-  const pollAudit = useCallback(async (assetId: string) => {
-    try {
-      const asset = await getAssetAudit(assetId, providerSlug)
-      patchAudit(assetId, {
-        status: asset.audit_status ?? undefined,
-        error: asset.audit_error,
+  // 轮询订阅的取消函数：组件卸载时统一退订，避免留下无人认领的轮询
+  const disposersRef = useRef<Set<() => void>>(new Set())
+
+  useEffect(
+    () => () => {
+      disposersRef.current.forEach((dispose) => dispose())
+      disposersRef.current.clear()
+    },
+    [],
+  )
+
+  const watch = useCallback(
+    (assetId: string) => {
+      const dispose = watchAssetAudit(assetId, providerSlug, (asset) => {
+        patchAudit(assetId, {
+          status: asset.audit_status ?? undefined,
+          error: asset.audit_error,
+        })
       })
-      if (asset.audit_status === 'pending') {
-        window.setTimeout(() => pollAudit(assetId), 3000)
-      }
-    } catch {
-      // 轮询失败（如网络抖动）静默忽略，下次上传/刷新时重新查询
-    }
-  }, [providerSlug, patchAudit])
+      disposersRef.current.add(dispose)
+    },
+    [providerSlug, patchAudit],
+  )
 
   const startAudit = useCallback(async (assetId: string) => {
     try {
@@ -65,14 +75,12 @@ export function useAssetAudit(providerSlug: string) {
         status: asset.audit_status ?? 'pending',
         error: asset.audit_error,
       })
-      if (asset.audit_status === 'pending') {
-        window.setTimeout(() => pollAudit(assetId), 3000)
-      }
+      if (asset.audit_status === 'pending') watch(assetId)
     } catch (e) {
       patchAudit(assetId, { status: 'failed', error: toApiError(e).message })
       toast(toApiError(e).message, 'error')
     }
-  }, [providerSlug, patchAudit, pollAudit])
+  }, [providerSlug, patchAudit, watch])
 
   /**
    * 为缺少审核状态的图片/视频参考素材自动提审。

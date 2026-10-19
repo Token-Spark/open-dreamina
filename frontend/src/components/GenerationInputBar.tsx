@@ -41,8 +41,8 @@ import {
   uploadAsset,
   assetFileUrl,
   submitAssetAudit,
-  getAssetAudit,
 } from '@/api/assets'
+import { watchAssetAudit } from '@/lib/auditPoller'
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
@@ -273,21 +273,25 @@ export function GenerationInputBar({
     onRefAssetsChange(next)
   }
 
-  /** 轮询 Spark Hub Seedance 参考素材审核状态，pending 时定时重查直到终态。 */
-  async function pollAudit(assetId: string) {
-    try {
-      const asset = await getAssetAudit(assetId, providerSlug)
-      const status = asset.audit_status
+  // 审核状态轮询的取消函数：组件卸载时统一退订
+  const auditDisposersRef = useRef<Set<() => void>>(new Set())
+  useEffect(
+    () => () => {
+      auditDisposersRef.current.forEach((dispose) => dispose())
+      auditDisposersRef.current.clear()
+    },
+    [],
+  )
+
+  /** 订阅 Spark Hub Seedance 参考素材审核状态（全局单调度器轮询，离开 pending 自动停止）。 */
+  function watchAudit(assetId: string) {
+    const dispose = watchAssetAudit(assetId, providerSlug, (asset) => {
       patchAudit(assetId, {
-        auditStatus: status ?? undefined,
+        auditStatus: asset.audit_status ?? undefined,
         auditError: asset.audit_error,
       })
-      if (status === 'pending') {
-        window.setTimeout(() => pollAudit(assetId), 3000)
-      }
-    } catch {
-      // 轮询失败（如网络抖动）静默忽略，下次上传/刷新时重新查询
-    }
+    })
+    auditDisposersRef.current.add(dispose)
   }
 
   /** 提交 Spark Hub Seedance 参考素材审核，并异步轮询进度。
@@ -300,7 +304,7 @@ export function GenerationInputBar({
         auditError: asset.audit_error,
       })
       if (asset.audit_status === 'pending') {
-        window.setTimeout(() => pollAudit(assetId), 3000)
+        watchAudit(assetId)
       }
     } catch (e) {
       patchAudit(assetId, { auditStatus: 'failed', auditError: toApiError(e).message })
