@@ -25,7 +25,8 @@ interface GenMessageCardProps {
   topicId: string
   message: GenMessage
   onRetry: (message: GenMessage) => void
-  onOpenLightbox: (message: GenMessage, url?: string) => void
+  /** index 为用户点击的那张结果序号（多图时灯箱从该张开始并可左右切换）。 */
+  onOpenLightbox: (message: GenMessage, index?: number) => void
   onEdit: (message: GenMessage) => void
 }
 
@@ -82,7 +83,7 @@ function GenMessageCardInner({ topicId, message, onRetry, onOpenLightbox, onEdit
           <ResultCard
             message={liveMessage}
             onRetry={() => onRetry(message)}
-            onOpenLightbox={(url) => onOpenLightbox(message, url)}
+            onOpenLightbox={(index) => onOpenLightbox(message, index)}
             onEdit={() => onEdit(message)}
           />
         </div>
@@ -129,11 +130,16 @@ function ResultCard({
 }: {
   message: GenMessage
   onRetry: () => void
-  onOpenLightbox: (url?: string) => void
+  onOpenLightbox: (index?: number) => void
   onEdit: () => void
 }) {
   const running = message.status === 'running'
   const resultType = message.type === 'text2img' || message.type === 'img2img' ? 'image' : 'video'
+  const imageUrls = resultType === 'image' ? message.resultUrls : []
+  const requestedCount = Number(message.params.count) || 1
+  // 一次请求多张时上游可能只回吐部分结果（如仅支持单图的模型忽略数量参数），
+  // 如实提示，避免用户以为漏生成。
+  const deliveredShort = resultType === 'image' && requestedCount > 1 && requestedCount > imageUrls.length
 
   // 本地实时计时：基于 createdAt 每秒刷新已等待时长，避免后端状态回调冻结时间戳
   const [elapsedSec, setElapsedSec] = useState(0)
@@ -158,7 +164,10 @@ function ResultCard({
         <div className="space-y-1.5">
           <Progress value={message.progress} glow />
           <div className="flex items-center justify-between text-xs text-fg-muted">
-            <span>生成中…{elapsedSec > 0 ? `（已等待 ${elapsedSec}s）` : ''}</span>
+            <span>
+              {requestedCount > 1 ? `生成 ${requestedCount} 张中…` : '生成中…'}
+              {elapsedSec > 0 ? `（已等待 ${elapsedSec}s）` : ''}
+            </span>
             <span>{message.progress}%</span>
           </div>
         </div>
@@ -202,13 +211,13 @@ function ResultCard({
 
       {message.status === 'completed' && message.resultUrl && (
         <div className="space-y-2">
-          {resultType === 'image' && message.resultUrls.length > 1 ? (
+          {resultType === 'image' && imageUrls.length > 1 ? (
             <div className="grid grid-cols-2 gap-2">
-              {message.resultUrls.map((url, i) => (
+              {imageUrls.map((url, i) => (
                 <div
                   key={url}
-                  className="cursor-pointer overflow-hidden rounded-btn bg-transparent"
-                  onClick={() => onOpenLightbox(url)}
+                  className="relative cursor-pointer overflow-hidden rounded-btn bg-transparent"
+                  onClick={() => onOpenLightbox(i)}
                 >
                   <img
                     src={url}
@@ -216,13 +225,16 @@ function ResultCard({
                     className="w-full object-contain"
                     loading="lazy"
                   />
+                  <span className="absolute left-1.5 top-1.5 rounded-btn bg-black/55 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white/90">
+                    {i + 1}
+                  </span>
                 </div>
               ))}
             </div>
           ) : (
             <div
               className="cursor-pointer overflow-hidden rounded-btn bg-transparent"
-              onClick={() => onOpenLightbox()}
+              onClick={() => onOpenLightbox(0)}
             >
               {resultType === 'image' ? (
                 <img src={message.resultUrl} alt="生成结果" className="max-h-[50vh] w-full object-contain" loading="lazy" />
@@ -233,8 +245,8 @@ function ResultCard({
           )}
           <div className="flex items-center justify-between">
             <span className="text-xs text-fg-muted">
-              {resultType === 'image' && message.resultUrls.length > 1
-                ? `共 ${message.resultUrls.length} 张，点击可放大查看`
+              {resultType === 'image' && imageUrls.length > 1
+                ? `共 ${imageUrls.length} 张，点击放大后可左右切换`
                 : '点击可放大查看'}
             </span>
             <Button variant="secondary" size="sm" onClick={onEdit}>
@@ -242,6 +254,11 @@ function ResultCard({
               重新编辑
             </Button>
           </div>
+          {deliveredShort && (
+            <p className="text-xs text-warning">
+              请求 {requestedCount} 张，该模型实际返回 {imageUrls.length || 1} 张。
+            </p>
+          )}
         </div>
       )}
 

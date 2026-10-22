@@ -29,6 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from ..config import settings
 from ..database import get_db
 from ..models import Canvas, Conversation, Task
+from ..providers.base import MAX_RESULTS_PER_TASK, MIN_RESULTS_PER_TASK
 from ..schemas import (
     MessageResponse,
     TaskCreate,
@@ -104,6 +105,34 @@ def _asset_id_map(db: Session, task_ids: list[str]) -> dict[str, list[str]]:
     return out
 
 
+def _validate_generation_count(params: dict[str, Any]) -> None:
+    """校验单次生成数量（1-4）。
+
+    对话页的数量选择器已限幅，此处拦截 CLI / MCP / 画布等外部调用方，
+    避免一次请求向 Provider 提交超量生成而放大费用与积分消耗。
+    """
+    raw = params.get("count")
+    if raw is None:
+        return
+    try:
+        count = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_params", "message": f"生成数量必须是整数，当前为 {raw!r}"},
+        )
+    if not MIN_RESULTS_PER_TASK <= count <= MAX_RESULTS_PER_TASK:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "invalid_params",
+                "message": (
+                    f"单次生成数量仅支持 {MIN_RESULTS_PER_TASK}-{MAX_RESULTS_PER_TASK}，当前为 {count}"
+                ),
+            },
+        )
+
+
 @router.post("", response_model=TaskCreateResponse, status_code=201)
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskCreateResponse:
     """创建生成任务，立即入队。"""
@@ -111,6 +140,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskCreat
     params = dict(payload.params)
     if payload.negative_prompt:
         params.setdefault("negative_prompt", payload.negative_prompt)
+    _validate_generation_count(params)
 
     # 多图参考：完整 ID 列表存入 params 供 worker 读取；
     # 首张写入 input_asset_id 列，兼容旧逻辑（预览 URL 派生、单图回退）。
@@ -429,6 +459,10 @@ def retry_task(task_id: str, db: Session = Depends(get_db)) -> TaskCreateRespons
     task.retry_count = (task.retry_count or 0) + 1
     task.started_at = None
     task.completed_at = None
+    # 清理上一轮结果引用：重试期间 result_urls 只反映本次运行，避免多图卡片回显旧结果
+    retry_params = task_service.safe_json_loads(task.params_json, {})
+    if retry_params.pop("result_asset_ids", None) is not None:
+        task.params_json = json.dumps(retry_params, ensure_ascii=False)
     db.commit()
     db.refresh(task)
 

@@ -49,7 +49,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .base import BaseProvider, GenerationResult, ProviderError
+from .base import BaseProvider, GenerationResult, ProviderError, resolve_generation_count
 
 logger = logging.getLogger(__name__)
 
@@ -906,7 +906,7 @@ class DreaminaSeedanceProvider(DreaminaCliBaseProvider):
             args += ["--ratio", _video_ratio_from_size(int(width), int(height))]
         args += ["--resolution", "720p"]
 
-        count = int(kwargs.get("count") or 1)
+        count = resolve_generation_count(kwargs)
         if count > 1:
             args += ["--count", str(count)]
         args += ["--run", "--credit-ceiling", str(self._credit_ceiling())]
@@ -983,7 +983,7 @@ class DreaminaSeedreamProvider(DreaminaCliBaseProvider):
             resource_id = await self._upload_resource(project_id, p, i)
             args += ["--ref", f"res:{resource_id}"]
 
-        count = int(kwargs.get("count") or 1)
+        count = resolve_generation_count(kwargs)
         if count > 1:
             args += ["--count", str(count)]
 

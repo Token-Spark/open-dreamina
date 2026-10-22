@@ -38,7 +38,7 @@ import {
   normalizeFrameMode,
   type ReferenceAsset,
 } from '@/components/GenerationInputBar'
-import { ImageLightbox } from '@/components/ImageLightbox'
+import { ImageLightbox, type LightboxGallery } from '@/components/ImageLightbox'
 import {
   defaultParamsForType,
   deriveTaskType,
@@ -95,9 +95,7 @@ export function CreatePage() {
     ensureAudited(refAssets)
   }, [refAssets, ensureAudited])
   const [lightboxOpen, setLightboxOpen] = useState(false)
-  const [lightboxMessage, setLightboxMessage] = useState<
-    { url: string; type: 'image' | 'video'; meta: Record<string, unknown> } | null
-  >(null)
+  const [lightboxGallery, setLightboxGallery] = useState<LightboxGallery | null>(null)
 
   const { data: providers } = useProviders()
   const { data: templates } = useQuery({
@@ -453,13 +451,23 @@ export function CreatePage() {
     toast('已应用模板', 'success')
   }
 
-  const openLightbox = useCallback((message: GenMessage, url?: string) => {
-    const target = url ?? message.resultUrl
-    if (!target) return
-    setLightboxMessage({
-      url: target,
-      type: message.type === 'text2img' || message.type === 'img2img' ? 'image' : 'video',
-      meta: message.params,
+  // 灯箱按整批结果打开：一次生成多张时可左右切换，并定位到用户点击的那张。
+  const openLightbox = useCallback((message: GenMessage, index = 0) => {
+    const urls = message.resultUrls.length
+      ? message.resultUrls
+      : message.resultUrl
+        ? [message.resultUrl]
+        : []
+    if (!urls.length) return
+    const type = message.type === 'text2img' || message.type === 'img2img' ? 'image' : 'video'
+    setLightboxGallery({
+      index: Math.min(Math.max(index, 0), urls.length - 1),
+      items: urls.map((url) => ({
+        url,
+        type,
+        title: '生成结果',
+        meta: message.params,
+      })),
     })
     setLightboxOpen(true)
   }, [])
@@ -551,17 +559,8 @@ export function CreatePage() {
 
       <ImageLightbox
         open={lightboxOpen}
+        gallery={lightboxGallery}
         onClose={() => setLightboxOpen(false)}
-        item={
-          lightboxMessage
-            ? {
-                url: lightboxMessage.url,
-                type: lightboxMessage.type,
-                title: '生成结果',
-                meta: lightboxMessage.meta,
-              }
-            : null
-        }
       />
     </div>
   )

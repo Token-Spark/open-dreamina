@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
@@ -25,14 +25,43 @@ export interface LightboxItem {
   meta?: Record<string, unknown>
 }
 
+/** 同批多图（如一次生成 4 张）浏览：可在本批结果间左右切换。 */
+export interface LightboxGallery {
+  items: LightboxItem[]
+  /** 打开时定位的序号，即用户点击的那张。 */
+  index?: number
+}
+
 export interface ImageLightboxProps {
-  item: LightboxItem | null
+  /** 单条预览（图片/视频/音频）；用 gallery 批量浏览时可不传。 */
+  item?: LightboxItem | null
+  gallery?: LightboxGallery | null
   open: boolean
   onClose: () => void
 }
 
-export function ImageLightbox({ item, open, onClose }: ImageLightboxProps) {
+export function ImageLightbox({ item, gallery, open, onClose }: ImageLightboxProps) {
+  const galleryItems = gallery && gallery.items.length > 0 ? gallery.items : null
+  const [cursor, setCursor] = useState(gallery?.index ?? 0)
   const [zoom, setZoom] = useState(1)
+
+  // 每次打开都定位到点击的那张，避免上一次浏览的序号残留
+  useEffect(() => {
+    if (open) setCursor(gallery?.index ?? 0)
+  }, [open, gallery?.index])
+
+  const current = galleryItems ? galleryItems[Math.min(cursor, galleryItems.length - 1)] : item
+
+  // 仅同批多于一张时才提供左右切换
+  const steppable = (galleryItems?.length ?? 0) > 1
+  const step = useCallback(
+    (delta: number) => {
+      if (!galleryItems || galleryItems.length < 2) return
+      setCursor((c) => (c + delta + galleryItems.length) % galleryItems.length)
+      setZoom(1)
+    },
+    [galleryItems],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -41,6 +70,8 @@ export function ImageLightbox({ item, open, onClose }: ImageLightboxProps) {
       if (e.key === 'Escape') onClose()
       if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(4, z + 0.25))
       if (e.key === '-') setZoom((z) => Math.max(0.5, z - 0.25))
+      if (e.key === 'ArrowLeft') step(-1)
+      if (e.key === 'ArrowRight') step(1)
     }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
@@ -48,9 +79,9 @@ export function ImageLightbox({ item, open, onClose }: ImageLightboxProps) {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = ''
     }
-  }, [open, onClose])
+  }, [open, onClose, step])
 
-  if (!open || !item) return null
+  if (!open || !current) return null
 
   // Lightbox forces a near-black backdrop in both themes; text must stay light
   // even when the app is in light mode, otherwise it would be invisible.
@@ -59,16 +90,21 @@ export function ImageLightbox({ item, open, onClose }: ImageLightboxProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-white">
-            {item.title ?? '预览'}
+            {current.title ?? '预览'}
+            {steppable && (
+              <span className="ml-2 tabular-nums text-white/60">
+                {cursor + 1} / {galleryItems?.length}
+              </span>
+            )}
           </p>
-          {item.meta && (
+          {current.meta && (
             <p className="truncate text-xs text-white/60">
-              {formatMeta(item.meta)}
+              {formatMeta(current.meta)}
             </p>
           )}
         </div>
         <div className="flex items-center gap-1 [&_button]:text-white/70 [&_button:hover]:bg-white/10 [&_button:hover]:text-white [&_a]:text-white/70 [&_a:hover]:bg-white/10 [&_a:hover]:text-white">
-          {item.type === 'image' && (
+          {current.type === 'image' && (
             <>
               <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(4, z + 0.25))} aria-label="放大">
                 <ZoomIn className="h-4 w-4" />
@@ -79,7 +115,7 @@ export function ImageLightbox({ item, open, onClose }: ImageLightboxProps) {
             </>
           )}
           <a
-            href={item.url}
+            href={current.url}
             download
             target="_blank"
             rel="noreferrer"
@@ -100,22 +136,46 @@ export function ImageLightbox({ item, open, onClose }: ImageLightboxProps) {
           if (e.target === e.currentTarget) onClose()
         }}
       >
-        {item.type === 'image' ? (
+        {steppable && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => step(-1)}
+              aria-label="上一张"
+              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => step(1)}
+              aria-label="下一张"
+              className="absolute right-3 top-1/2 z-10 -translate-y-1/2 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </Button>
+          </>
+        )}
+        {current.type === 'image' ? (
           <img
-            src={item.url}
-            alt={item.title ?? ''}
+            key={current.url}
+            src={current.url}
+            alt={current.title ?? ''}
             className={cn('max-h-full max-w-full object-contain transition-transform duration-200')}
             style={{ transform: `scale(${zoom})` }}
           />
-        ) : item.type === 'video' ? (
+        ) : current.type === 'video' ? (
           <video
-            src={item.url}
+            key={current.url}
+            src={current.url}
             controls
             autoPlay
             className="max-h-full max-w-full"
           />
         ) : (
-          <audio src={item.url} controls autoPlay className="w-full max-w-md" />
+          <audio key={current.url} src={current.url} controls autoPlay className="w-full max-w-md" />
         )}
       </div>
     </div>,

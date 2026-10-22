@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-from .base import BaseProvider, GenerationResult, ProviderError
+from .base import BaseProvider, GenerationResult, ProviderError, resolve_generation_count
 from ..utils.http_client import get_async_client
 
 # 火山引擎官方 API 域名：base_url 指向它时，图片 URL 已是公网 CDN，无需改写
@@ -81,7 +81,7 @@ class SeedreamProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", "doubao-seedream-5-0-pro-260628")
-        count = max(1, int(kwargs.get("count") or 1))
+        count = resolve_generation_count(kwargs)
         url = f"{self.base_url}/images/generations"
         payload = {
             "model": model_id,

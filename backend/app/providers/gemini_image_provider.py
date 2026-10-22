@@ -31,7 +31,7 @@ from typing import Any
 
 import httpx
 
-from .base import BaseProvider, GenerationResult, ProviderError
+from .base import BaseProvider, GenerationResult, ProviderError, resolve_generation_count
 from ..utils.http_client import get_async_client
 
 # OpenRouter 模型标识（Nano Banana Pro）
@@ -163,7 +163,7 @@ class GeminiImageProvider(BaseProvider):
         width = int(kwargs.get("width") or width)
         height = int(kwargs.get("height") or height)
         negative_prompt = negative_prompt or str(kwargs.get("negative_prompt") or "")
-        count = max(1, int(kwargs.get("count") or 1))
+        count = resolve_generation_count(kwargs)
         aspect_ratio = self._closest_aspect_ratio(width, height)
         image_size = (
             str(kwargs.get("image_size") or self.config.get("image_size") or "")

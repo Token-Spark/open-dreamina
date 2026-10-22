@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .base import GenerationResult, ProviderError
+from .base import GenerationResult, ProviderError, resolve_generation_count
 from .sparkhub_base import SparkHubBaseProvider, _find
 
 
@@ -71,7 +71,7 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
         if size:
             pl["kwargs"] = {"size": str(size)}
         # 多图生成数量（上游支持时生效；Pro 模型仅单图，忽略该参数）
-        count = int(kwargs.get("count") or 1)
+        count = resolve_generation_count(kwargs)
         if count > 1:
             pl.setdefault("kwargs", {})["count"] = count
         image_urls = kwargs.get("image_urls")

@@ -50,6 +50,7 @@ import {
   isSeedreamImageProvider,
   videoResolutionsForModel,
   videoDurationRangeForModel,
+  MAX_RESULTS_PER_TASK,
   type ContentMode,
   type AspectRatio,
   type Resolution,
@@ -886,9 +887,12 @@ function CountPicker({
   disabled?: boolean
 }) {
   const MIN = 1
-  const MAX = 4
+  const MAX = MAX_RESULTS_PER_TASK
   return (
-    <div className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm font-medium text-fg-secondary">
+    <div
+      className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm font-medium text-fg-secondary"
+      title={`单次最多生成 ${MAX} 张`}
+    >
       <Images className="h-4 w-4" />
       <button
         type="button"

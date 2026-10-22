@@ -23,7 +23,7 @@ import asyncio
 from typing import Any
 
 from ..utils.file_utils import render_placeholder_image
-from .base import BaseProvider, GenerationResult
+from .base import BaseProvider, GenerationResult, resolve_generation_count
 
 
 def _estimate_mock_tokens(prompt: str, width: int, height: int, steps: int = 30) -> int:
@@ -61,7 +61,7 @@ class MockProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         await asyncio.sleep(0.2)
-        count = max(1, int(kwargs.get("count") or 1))
+        count = resolve_generation_count(kwargs)
         files: list[tuple[bytes, str]] = []
         for i in range(count):
             img_bytes = render_placeholder_image(
@@ -94,7 +94,7 @@ class MockProvider(BaseProvider):
         width = int(kwargs.get("width", 1024))
         height = int(kwargs.get("height", 1024))
         steps = int(kwargs.get("steps", 30))
-        count = max(1, int(kwargs.get("count") or 1))
+        count = resolve_generation_count(kwargs)
         files: list[tuple[bytes, str]] = []
         for i in range(count):
             img_bytes = render_placeholder_image(

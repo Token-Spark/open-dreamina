@@ -23,6 +23,23 @@ from typing import Any
 import httpx
 
 
+# 单次生成任务的结果文件数上限（图片与 CLI 视频共用）：
+# 前端数量选择器、创建任务校验与各 Provider 的上游请求参数都以此为准，
+# 避免外部调用方（CLI / MCP / 画布）绕过 UI 提交高额批量请求。
+MIN_RESULTS_PER_TASK = 1
+MAX_RESULTS_PER_TASK = 4
+
+
+def resolve_generation_count(kwargs: dict[str, Any]) -> int:
+    """读取并钳制生成数量到 1-4；缺省或非法值按 1 处理。"""
+    raw = kwargs.get("count")
+    try:
+        count = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        count = MIN_RESULTS_PER_TASK
+    return max(MIN_RESULTS_PER_TASK, min(MAX_RESULTS_PER_TASK, count))
+
+
 class ProviderError(RuntimeError):
     """Provider 调用失败时抛出。
 

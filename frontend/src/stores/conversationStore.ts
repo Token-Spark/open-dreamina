@@ -58,6 +58,9 @@ export function taskToMessage(task: Task): GenMessage {
     : task.input_asset_id
       ? [task.input_asset_id]
       : []
+  // 后端回写的内部键不进参数视图：它们只用于派生结果/参考地址，
+  // 留在 params 会混进灯箱与「重新编辑」回填的生成参数里。
+  const { result_asset_ids: _omitResult, input_asset_ids: _omitInput, ...userParams } = params
   return {
     id: task.id,
     prompt: task.prompt ?? '',
@@ -69,7 +72,7 @@ export function taskToMessage(task: Task): GenMessage {
     resultUrl: task.result_url,
     thumbnailUrl: task.thumbnail_url,
     resultUrls: task.result_urls?.length ? task.result_urls : task.result_url ? [task.result_url] : [],
-    params,
+    params: userParams,
     provider: task.provider,
     modelId: task.model_id,
     inputAssetIds,

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .base import BaseProvider, GenerationResult, ProviderError
+from .base import BaseProvider, GenerationResult, ProviderError, resolve_generation_count
 from ..utils.http_client import get_async_client
 
 
@@ -52,7 +52,7 @@ class DashScopeProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", "wanx-v1")
-        count = max(1, int(kwargs.get("count") or 1))
+        count = resolve_generation_count(kwargs)
         url = f"{self.base_url}/api/v1/services/aigc/text2image/image-synthesis"
         payload = {
             "model": model_id,

@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .base import BaseProvider, GenerationResult, ProviderError
+from .base import BaseProvider, GenerationResult, ProviderError, resolve_generation_count
 from ..utils.http_client import get_async_client
 
 # OpenAI 默认图片生成模型（GPT Image 2）
@@ -99,7 +99,7 @@ class OpenAIProvider(BaseProvider):
         payload: dict[str, Any] = {
             "model": model_id,
             "prompt": prompt,
-            "n": max(1, int(kwargs.get("count") or 1)),
+            "n": resolve_generation_count(kwargs),
             "size": self._size_str(width, height),
         }
         if self._accepts_response_format(model_id):
@@ -119,7 +119,7 @@ class OpenAIProvider(BaseProvider):
         )
         width = int(kwargs.get("width") or 1024)
         height = int(kwargs.get("height") or 1024)
-        count = max(1, int(kwargs.get("count") or 1))
+        count = resolve_generation_count(kwargs)
 
         payload: dict[str, Any] = {
             "model": model_id,

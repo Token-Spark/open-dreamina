@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from .base import BaseProvider, GenerationResult, ProviderError
+from .base import BaseProvider, GenerationResult, ProviderError, resolve_generation_count
 from ..utils.http_client import get_async_client
 
 
@@ -56,7 +56,7 @@ class StabilityProvider(BaseProvider):
         **kwargs: Any,
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", "stable-image-core")
-        count = max(1, int(kwargs.get("count") or 1))
+        count = resolve_generation_count(kwargs)
 
         # Stability API 每次请求返回单张图片，count > 1 时并发请求
         async def _single_request() -> bytes:
