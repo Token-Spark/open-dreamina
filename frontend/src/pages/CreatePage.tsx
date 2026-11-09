@@ -22,6 +22,7 @@ import { listTemplates } from '@/api/templates'
 import { getSystemSettings } from '@/api/system'
 import { useProviders } from '@/hooks/useProviders'
 import { useAssetAudit } from '@/hooks/useAssetAudit'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import { useTaskStore } from '@/stores/taskStore'
 import { useConversationStore, useCurrentTopic, type GenMessage } from '@/stores/conversationStore'
 import { toast } from '@/stores/uiStore'
@@ -48,43 +49,23 @@ import {
   type ContentMode,
 } from '@/lib/generation'
 
-/** 生成对话框上次使用的模式/模型持久化键（localStorage），页面重载后默认恢复。 */
+// 旧版只持久化模式/Provider/模型，作为新草稿键的迁移来源保留读取。
 const LAST_MODE_KEY = 'dreamina.lastMode'
 const LAST_PROVIDER_KEY = 'dreamina.lastProvider'
 const LAST_MODEL_KEY = 'dreamina.lastModel'
 
-/** 安全读取 localStorage（隐私模式/禁用时回退默认值）。 */
-function readStored<T>(key: string, fallback: T): T {
-  try {
-    const raw = window.localStorage.getItem(key)
-    return raw == null ? fallback : (JSON.parse(raw) as T)
-  } catch {
-    return fallback
-  }
-}
-
-/** 安全写入 localStorage（隐私模式/禁用时静默忽略）。 */
-function writeStored(key: string, value: unknown): void {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    /* localStorage may be unavailable (private mode) */
-  }
-}
-
 export function CreatePage() {
-  const [mode, setMode] = useState<ContentMode>(() =>
-    readStored<ContentMode>(LAST_MODE_KEY, 'image'),
+  // 创作草稿整体持久化：写提示词 → 去素材库挑参考 → 回来，不丢内容。
+  // 灯箱、提交中、滚动定位等临时 UI 状态不入库。
+  const [mode, setMode] = usePersistedState<ContentMode>('dreamina.draft.mode', 'image', [LAST_MODE_KEY])
+  const [prompt, setPrompt] = usePersistedState('dreamina.draft.prompt', '')
+  const [providerSlug, setProviderSlug] = usePersistedState('dreamina.draft.provider', '', [LAST_PROVIDER_KEY])
+  const [modelId, setModelId] = usePersistedState('dreamina.draft.model', '', [LAST_MODEL_KEY])
+  const [params, setParams] = usePersistedState<Record<string, number | string>>(
+    'dreamina.draft.params',
+    () => defaultParamsForType('text2img'),
   )
-  const [prompt, setPrompt] = useState('')
-  const [providerSlug, setProviderSlug] = useState(() =>
-    readStored<string>(LAST_PROVIDER_KEY, ''),
-  )
-  const [modelId, setModelId] = useState(() => readStored<string>(LAST_MODEL_KEY, ''))
-  const [params, setParams] = useState<Record<string, number | string>>(
-    defaultParamsForType('text2img'),
-  )
-  const [refAssets, setRefAssets] = useState<ReferenceAsset[]>([])
+  const [refAssets, setRefAssets] = usePersistedState<ReferenceAsset[]>('dreamina.draft.refAssets', [])
   const [submitting, setSubmitting] = useState(false)
 
   // Spark Hub Seedance：@ 引用素材库添加的参考素材未经上传流程，缺少审核状态。
@@ -159,13 +140,17 @@ export function CreatePage() {
     const tpl = (location.state as { template?: Template } | null)?.template
     if (tpl && appliedTemplateRef.current !== tpl.id) {
       appliedTemplateRef.current = tpl.id
-      setMode(tpl.category === 'image' ? 'image' : 'video')
+      const nextMode = tpl.category === 'image' ? 'image' : 'video'
       setPrompt(tpl.prompt_text)
       if (tpl.params && Object.keys(tpl.params).length) {
-        setParams(tpl.params as Record<string, number | string>)
+        const tplParams = tpl.params as Record<string, number | string>
+        // 切模式会触发默认参数重置，把模板参数交给重置 effect 优先采用
+        if (nextMode !== mode) editParamsRef.current = tplParams
+        else setParams(tplParams)
       }
+      setMode(nextMode)
     }
-  }, [location.state])
+  }, [location.state, mode])
 
   // Seed a default provider once providers are available.
   // 优先选择当前模式下有可用模型的 active provider，避免默认落到不匹配的 provider
@@ -178,33 +163,29 @@ export function CreatePage() {
     if (first) setProviderSlug(first.slug)
   }, [providers, providerSlug, mode])
 
-  // 内容模式变化时重置参数为该模式默认（无参考图）任务类型
-  // "重新编辑"时复用原任务参数，跳过默认重置
+  // 内容模式变化时重置参数为该模式默认（无参考图）任务类型。
+  // 用「上一次 mode」判断，避免首次挂载或 StrictMode 重跑时把刚从
+  // localStorage 恢复的草稿参数覆盖掉。
+  const lastModeRef = useRef(mode)
   useEffect(() => {
+    if (lastModeRef.current === mode) return
+    lastModeRef.current = mode
+    // "重新编辑"时复用原任务参数，跳过默认重置
     if (editParamsRef.current) {
       setParams(editParamsRef.current)
       editParamsRef.current = null
       return
     }
     setParams(defaultParamsForType(deriveTaskType(mode, false)))
-  }, [mode])
-
-  // 持久化上次使用的模式/模型，页面重载或重新进入时默认恢复
-  useEffect(() => {
-    writeStored(LAST_MODE_KEY, mode)
-  }, [mode])
-  useEffect(() => {
-    writeStored(LAST_PROVIDER_KEY, providerSlug)
-  }, [providerSlug])
-  useEffect(() => {
-    writeStored(LAST_MODEL_KEY, modelId)
-  }, [modelId])
+  }, [mode, setParams])
 
   // 需求2：按内容模式筛选模型；参考图变化时校验当前模型是否仍支持派生类型。
   // 当前 provider 在该模式下无模型时，自动切换到首个有模型的 active provider
   // （例如从图片切到视频，而当前 provider 仅支持图片）。
   useEffect(() => {
-    const provider = providers?.find((p) => p.slug === providerSlug && p.is_active)
+    // providers 还在加载时不要清空刚从草稿恢复出来的模型选择
+    if (!providers) return
+    const provider = providers.find((p) => p.slug === providerSlug && p.is_active)
     const available = modelsForCategory(provider, mode)
     if (available.length === 0) {
       const fallback = (providers ?? [])
@@ -443,11 +424,15 @@ export function CreatePage() {
     params: Record<string, unknown>
     category: 'image' | 'video'
   }) {
-    setMode(t.category === 'image' ? 'image' : 'video')
+    const nextMode = t.category === 'image' ? 'image' : 'video'
     setPrompt(t.prompt_text)
     if (t.params && Object.keys(t.params).length) {
-      setParams(t.params as Record<string, number | string>)
+      const tplParams = t.params as Record<string, number | string>
+      // 与路由传入模板一致：切模式时暂存参数，避免被默认重置覆盖
+      if (nextMode !== mode) editParamsRef.current = tplParams
+      else setParams(tplParams)
     }
+    setMode(nextMode)
     toast('已应用模板', 'success')
   }
 
