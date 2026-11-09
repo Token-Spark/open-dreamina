@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""任务业务服务：进度 Redis 缓存 + 状态机校验。
+"""任务业务服务：进度 Redis 缓存 + 任务状态常量。
 
-进度写入：worker 调用 set_progress 同时更新 Redis 与 DB（DB 由调用方负责或在此更新）。
-SSE 端点从 Redis 高频读取，DB 作为兜底。
+进度写入：worker 调用 set_progress 更新 Redis（DB 由调用方显式更新）。
+SSE 端点从 Redis 高频读取，DB 作为兜底；所有进度 key 都带过期时间。
 """
 from __future__ import annotations
 
@@ -32,32 +32,18 @@ _PROGRESS_KEY = "task:{task_id}:progress"
 _STATUS_KEY = "task:{task_id}:status"
 _MESSAGE_KEY = "task:{task_id}:message"
 
+# 进度缓存兜底过期时间：略大于 Celery 硬超时（1260s）。终态由调用方主动
+# clear_progress 清理；TTL 只用于 worker 崩溃、异常分支漏清理时避免 key 永久残留。
+_PROGRESS_TTL_SECONDS = 3600
+
 # 终态：完成后清理 Redis 临时 key
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 # 可取消的状态
 CANCELLABLE_STATUSES = {"pending", "queued", "running"}
 
-# 状态机合法流转
-_TRANSITIONS: dict[str, set[str]] = {
-    "pending": {"queued", "running", "cancelled"},
-    "queued": {"running", "cancelled", "failed"},
-    "running": {"completed", "failed", "cancelled"},
-    "failed": {"queued"},  # retry
-    "completed": set(),
-    "cancelled": set(),
-}
-
-
-def can_transition(from_status: str, to_status: str) -> bool:
-    return to_status in _TRANSITIONS.get(from_status, set())
-
-
-def assert_transition(from_status: str, to_status: str) -> None:
-    if not can_transition(from_status, to_status):
-        raise ValueError(
-            f"非法状态流转: {from_status} -> {to_status}。"
-            f"当前状态 {from_status} 仅可流转到 {sorted(_TRANSITIONS.get(from_status, set()))}"
-        )
+# 状态流转由 worker 与 router 在各自写入点显式判断前置条件，不再维护一张
+# 无人调用的状态转移表——表与实现分离只会给出虚假的安全感。终态并发保护
+# 见 worker._update_task(guard_cancelled=True)。
 
 
 def set_progress(
@@ -65,15 +51,19 @@ def set_progress(
     status: str,
     progress: int,
     message: str | None = None,
+    ttl: int = _PROGRESS_TTL_SECONDS,
 ) -> None:
-    """写入 Redis 进度缓存（不更新 DB，DB 由 worker/service 显式更新）。"""
+    """写入 Redis 进度缓存（不更新 DB，DB 由 worker/service 显式更新）。
+
+    三个 key 都带过期时间：正常路径由 clear_progress 主动清理，TTL 是兜底。
+    """
     try:
         r = get_redis()
         pipe = r.pipeline()
-        pipe.set(_PROGRESS_KEY.format(task_id=task_id), str(progress))
-        pipe.set(_STATUS_KEY.format(task_id=task_id), status)
+        pipe.set(_PROGRESS_KEY.format(task_id=task_id), str(progress), ex=ttl)
+        pipe.set(_STATUS_KEY.format(task_id=task_id), status, ex=ttl)
         if message is not None:
-            pipe.set(_MESSAGE_KEY.format(task_id=task_id), message)
+            pipe.set(_MESSAGE_KEY.format(task_id=task_id), message, ex=ttl)
         pipe.execute()
     except Exception:
         # Redis 不可用不应阻断主流程
@@ -164,7 +154,7 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
     背景：Celery worker 在任务执行中途被杀/崩溃时，run_generation_task 的
     except 块不会执行，DB 状态会永远停留在 running（"生成中"），前端也一直
     显示生成中。正常任务受 task_time_limit（默认 600s）约束，超过该时长仍未
-    进入终态即视为异常。
+    进入终态即视为异常（当前 task_time_limit 为 1260s）。
 
     pending 任务也可能卡死：worker 崩溃或入队后 worker 未启动时，任务会一直
     停留在"排队中"。用 created_at 判断等待时长，超过阈值即标记失败。
@@ -206,13 +196,17 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
                             continue
                     if dt >= cutoff:
                         continue
+                    # 先记下原始状态再改写，否则下面的文案永远只会写「排队」
+                    was_running = t.status == "running"
                     t.status = "failed"
                     t.error_msg = (
-                        f"任务执行超时（{'运行' if t.status == 'running' else '排队'}"
+                        f"任务执行超时（{'运行' if was_running else '排队'}"
                         f"超过 {max_running_seconds // 60} 分钟仍未完成），"
                         "可能因 worker 中断导致，已自动标记为失败，请重试"
                     )
                     t.completed_at = now_iso()
+                    # 孤儿任务不再有 worker 收尾，进度缓存在此一并清理
+                    clear_progress(t.id)
                     recovered += 1
             break
         except Exception:

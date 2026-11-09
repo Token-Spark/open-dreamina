@@ -98,13 +98,21 @@ def _update_task(
     api_cost: float | None = None,
     started: bool = False,
     completed: bool = False,
-) -> None:
-    """更新任务记录（独立 Session，避免与其它写入冲突）。"""
+    guard_cancelled: bool = False,
+) -> bool:
+    """更新任务记录（独立 Session，避免与其它写入冲突）。
+
+    guard_cancelled=True 用于终态写入：若生成期间用户已取消任务，不再用
+    completed 覆盖 cancelled，返回 False 让调用方转入取消分支。
+    """
     with db_session() as db:
         task = db.get(Task, task_id)
         if not task:
             logger.warning("Task %s not found", task_id)
-            return
+            return False
+        if guard_cancelled and task.status == "cancelled":
+            logger.info("Task %s already cancelled, skip terminal update", task_id)
+            return False
         if status is not None:
             task.status = status
         if progress is not None:
@@ -123,6 +131,7 @@ def _update_task(
             task.started_at = _now()
         if completed:
             task.completed_at = _now()
+        return True
 
 
 def _persist_submit_id(task_id: str, submit_id: str) -> None:
@@ -481,7 +490,9 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             api_cost = None
 
         # 4. 100% completed
-        _update_task(
+        # 终态写入带取消保护：用户若在上一次 is_cancelled 检查之后、结果落盘
+        # 期间点了取消，DB 已是 cancelled，这里不再覆写成 completed。
+        if not _update_task(
             task_id,
             status="completed",
             progress=100,
@@ -490,7 +501,10 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             tokens_used=tokens_used,
             api_cost=api_cost,
             completed=True,
-        )
+            guard_cancelled=True,
+        ):
+            task_service.clear_progress(task_id)
+            return {"task_id": task_id, "status": "cancelled"}
         task_service.set_progress(task_id, "completed", 100, "生成完成")
         task_service.clear_progress(task_id)
 
@@ -510,9 +524,10 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         if submit_id:
             _persist_submit_id(task_id, submit_id)
         _update_task(task_id, status="failed", error_msg=err_msg, completed=True)
-        task_service.set_progress(task_id, "failed", 0, err_msg)
-        # 失败时保留 Redis 进度一段时间，让 SSE 推送失败事件后由客户端断开
-        # 但为避免无限残留，1 分钟后清理（这里立即清理由 SSE 端点已能从 DB 兜底）
+        # DB 已写入终态与 error_msg；SSE 端点在 Redis 为空时会回查 DB 并推送
+        # failed 事件（含错误详情），因此这里直接清理，不让进度 key 残留。
+        # 另由 set_progress 的 TTL 兜底 worker 被强杀、异常分支未执行的情况。
+        task_service.clear_progress(task_id)
         return {"task_id": task_id, "status": "failed", "error": err_msg}
 
 

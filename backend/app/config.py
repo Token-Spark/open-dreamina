@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     # 软超时 1200s（20 分钟），硬超时需大于软超时。
     task_time_limit: int = 1260
     task_soft_time_limit: int = 1200
+    # 创作页提交门禁：前端读 /system/settings 判断是否还能再提交一个任务。
+    # 真正的 worker 并发上限由 docker-compose 的 celery --concurrency 决定，
+    # 这里是产品层的提示阈值，不是队列信号量，勿当作限流机制依赖。
     max_concurrent_tasks: int = 2
 
     # SSE

@@ -223,11 +223,15 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskCreat
     try:
         run_generation_task.delay(task_id)
     except Exception as e:
-        # 入队失败标记任务 failed，但仍返回 task_id
+        # 入队失败后必须明确报错：返回 201 会让前端拿到 task_id 并挂一条
+        # 永远不会推进的 SSE 订阅，用户只看到任务卡住。
         task.status = "failed"
         task.error_msg = f"任务入队失败: {e}"
         db.commit()
-        db.refresh(task)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "enqueue_failed", "message": f"任务入队失败: {e}"},
+        )
 
     return TaskCreateResponse(task_id=task_id)
 
@@ -472,10 +476,14 @@ def retry_task(task_id: str, db: Session = Depends(get_db)) -> TaskCreateRespons
     try:
         run_generation_task.delay(task_id)
     except Exception as e:
+        # 与创建任务一致：入队失败返回 503，不返回误导性的 201
         task.status = "failed"
         task.error_msg = f"重试入队失败: {e}"
         db.commit()
-        db.refresh(task)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "enqueue_failed", "message": f"重试入队失败: {e}"},
+        )
 
     return TaskCreateResponse(task_id=task_id)
 
