@@ -6,6 +6,8 @@
 - **复用 `mcp/` 包**：与 MCP 服务、前端模型目录共用同一份事实来源（`frontend/src/config/modelServices.json`），不重复维护。
 - **对智能体友好**：所有输出均为 UTF-8 JSON，可直接解析；错误信息走 stderr，不污染 stdout。
 - **自动模式选择 / 自动模型选择 / 元素引用 / 进度查询**：一条命令完成「生成 → 等待 → 取结果」闭环。
+- **AIGC 技能自动加载**：`skills` 子命令只读扫描 `.skills/*/SKILL.md`，自动列出可用技能供 agent 选择，选中后读取完整 `SKILL.md` 加载；纯本地执行，不需要后端在线。
+- **人工审阅闭环**：生成结果交审阅中心由人批注打分，批注即返工依据（human-in-the-loop）。
 - **参数设计参考即梦创作 CLI**：子命令命名（`text2image` / `image2video` / `frames2video` 等）、`--poll` 有限等待、`--download-dir` 下载、`query_result` 跟进等均与即梦 CLI 对齐，降低智能体迁移成本。
 
 > 与 MCP 服务的关系：MCP（`mcp/server.py`）面向 IDE / 客户端以 JSON-RPC stdio 方式接入；本 CLI 面向命令行 / 智能体以子命令方式接入。两者底层调用同一套 handler，能力等价，按场景选用。
@@ -41,7 +43,11 @@ pwsh cli/install.ps1    # Windows（安装到 %USERPROFILE%\bin 并写入用户 
 ## 2. 快速开始
 
 ```bash
-# 0. 自检环境（不需后端在线也能跑 models / providers / health 之外需后端）
+# 0. 自动加载 AIGC 技能清单，按意图选择并加载（纯本地，不需后端在线）
+python cli/opendreamina.py skills --brief
+python cli/opendreamina.py skills prompt-optimizer
+
+# 0.5 自检环境（不需后端在线也能跑 models / providers / health 之外需后端）
 python cli/opendreamina.py --help
 python cli/opendreamina.py health
 python cli/opendreamina.py providers
@@ -85,6 +91,8 @@ python -m cli.opendreamina --help
 | --- | --- | --- |
 | `OPEN_DREAMINA_API_BASE` | `http://localhost:10130/api/v1` | 后端 API 基地址 |
 | `OPEN_DREAMINA_API_TIMEOUT` | `60` | 单次 HTTP 请求超时秒数（上传自动放宽到 ≥120） |
+| `OPEN_DREAMINA_SKILLS_DIR` | 无 | 额外技能目录，多目录用 `os.pathsep` 分隔（Windows 为 `;`），追加到内置 `.skills/` |
+| `OPEN_DREAMINA_NO_SKILLS_HINT` | 无 | 设为 `1` 关闭生成类命令 stderr 的技能提示（stdout JSON 不受影响） |
 
 连接远程后端时：
 
@@ -116,6 +124,7 @@ OPEN_DREAMINA_API_BASE=http://192.168.1.10:10130/api/v1 python cli/opendreamina.
 | `providers` | 列出已配置 Provider 与可接入 slug | — |
 | `templates` | 列出提示词模板 | — |
 | `health` | 检查后端 / DB / Redis / worker | — |
+| `skills` | 列出 / 选择 / 加载 AIGC 智能体技能（不需后端在线） | — |
 | `conversations` | 对话的增删改查 | `action` |
 
 ---
@@ -360,6 +369,53 @@ opendreamina conversations delete --id <id>                  # 删除分组（�
 
 生成时用 `--conversation-id <id>` 把任务归入对话；不传则后端自动新建对话，返回值中给出 `conversation_id`。
 
+### 5.12 `skills` —— AIGC 智能体技能目录
+
+智能体接入 CLI 的第一步：**自动加载可用技能清单 → 按意图选择一项 → 读取完整 `SKILL.md` 加载 → 再执行生成**。纯本地只读扫描 `.skills/*/SKILL.md` 的 frontmatter，不需要后端在线，也不修改技能文件。
+
+```bash
+opendreamina skills --brief                    # 紧凑清单；JSON 的 brief 字段可直接注入 agent 上下文
+opendreamina skills --match "把剧本拆成分镜"    # 按意图推荐（score 排序，--top 控制条数）
+opendreamina skills ai-video-director          # 输出该技能完整 SKILL.md 正文，加载后执行
+opendreamina skills                            # 完整清单
+opendreamina skills --skills-dir ./my-skills   # 追加外部技能目录（可多次传）
+```
+
+完整清单返回结构（字段节选）：
+
+```json
+{
+  "ok": true,
+  "count": 7,
+  "skills_roots": ["/path/to/open-dreamina/.skills"],
+  "skills": [
+    {
+      "name": "ai-video-director",
+      "description": "专业 AI 短剧导演与分镜生成技能：...",
+      "dir": "ai-video-director",
+      "path": "/path/to/open-dreamina/.skills/ai-video-director/SKILL.md",
+      "tags": [],
+      "category": null,
+      "references": ["references/drama-shots.md"],
+      "load_command": "opendreamina skills ai-video-director"
+    }
+  ],
+  "brief": "Open Dreamina 可用 AIGC 智能体技能（按需选择一项...）：\n- ...",
+  "load_command": "opendreamina skills <name>",
+  "hint": "先按用户意图从 skills 中选择最匹配的一项..."
+}
+```
+
+`skills <name>` 返回 `{ok, skill, content, hint}`，`content` 即完整 SKILL.md，可直接作为技能上下文加载；`references` 列出可继续读取的细则文件。技能名与目录名均可匹配，找不到时报错并列出全部可用名称。
+
+**自动加载的三个入口**（均不破坏 stdout 只输出 JSON 的既有契约）：
+
+1. `skills` / `skills --brief`：agent 启动时执行一次，把 `brief` 注入上下文；
+2. `opendreamina --help` 末尾自动附上技能清单；
+3. 执行 `generate` / `text2image` / `image2video` / `create-task` 等生成类命令时，stderr 自动打一行可用技能提示；设 `OPEN_DREAMINA_NO_SKILLS_HINT=1` 关闭。
+
+> 单一事实来源：不维护第二份清单。往 `.skills/<name>/SKILL.md` 放入带 `name` / `description` frontmatter 的文件，即自动出现在清单与 `--help` 中；内置目录优先级最高，同名技能先到先得。技能执行产出的内容交审阅中心人工批注，构成 human-in-the-loop 闭环。
+
 ---
 
 ## 6. 典型工作流
@@ -497,9 +553,10 @@ opendreamina progress <task_id> --wait
 
 ```text
 cli/
-├── opendreamina.py # 命令行入口（argparse 子命令）
-├── __init__.py     # 包定义
-└── README.md       # 本文件
+├── opendreamina.py   # 命令行入口（argparse 子命令）
+├── skills_catalog.py # AIGC 技能目录：只读扫描 .skills/*/SKILL.md，brief / match / show
+├── __init__.py       # 包定义
+└── README.md         # 本文件
 ```
 
 ### 与 MCP 服务的对应关系
@@ -519,4 +576,5 @@ cli/
 | `templates` | `list_templates` |
 | `health` | `get_health` |
 | `conversations` | `create_conversation` / `list_conversations` / `get_conversation` / `update_conversation` / `delete_conversation` |
+| `skills` | — CLI 独有的本地能力，只读扫描技能文件，不走后端 handler |
 

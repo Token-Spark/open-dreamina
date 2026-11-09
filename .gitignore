@@ -44,3 +44,6 @@ Thumbs.db
 
 # 本地临时备份（如 .backup_shotsmd_20260929/），不入库
 .backup_*/
+
+# 本地智能体会话数据与工作日志，不入库
+.workbuddy/

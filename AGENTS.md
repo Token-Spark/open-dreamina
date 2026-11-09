@@ -6,14 +6,14 @@
 
 ## 项目速览
 
-**Open Dreamina** 是一个自托管的 AIGC 创作工具，以前后端分离 + 任务队列架构运行：
+**Open Dreamina** 是面向智能体的 AIGC 内容生成本地工具套件：智能体通过 CLI / MCP 生成内容，人在审阅中心做批注、打分与终审（human-in-the-loop）。自托管部署，以前后端分离 + 任务队列架构运行：
 
-| 组件 | 技术栈 | 目录 | 端口 |
-| --- | --- | --- | --- |
-| 前端 | React 18 + Vite + TypeScript + Tailwind | `frontend/` | `10131` |
-| 后端 API | FastAPI + SQLAlchemy + SQLite | `backend/` | `10130` |
-| 任务队列 | Celery + Redis（worker + beat） | `backend/app/worker.py` | — |
-| 编排 | Docker Compose（5 个服务） | `docker-compose.yml` | — |
+| 组件     | 技术栈                                     | 目录                      | 端口      |
+| ------ | --------------------------------------- | ----------------------- | ------- |
+| 前端     | React 18 + Vite + TypeScript + Tailwind | `frontend/`             | `10131` |
+| 后端 API | FastAPI + SQLAlchemy + SQLite           | `backend/`              | `10130` |
+| 任务队列   | Celery + Redis（worker + beat）           | `backend/app/worker.py` | —       |
+| 编排     | Docker Compose（5 个服务）                   | `docker-compose.yml`    | —       |
 
 **核心原则：本地部署优先使用 Docker Compose，不要在宿主机直接安装 Python/Node 依赖。**
 
@@ -29,6 +29,7 @@ docker compose version    # Compose 插件可用（v2 语法）
 ```
 
 未安装或连不上引擎时，按平台安装 Docker：
+
 - macOS：`brew install --cask docker`，然后 `open /Applications/Docker.app`
 - Windows：`winget install -e --id Docker.DockerDesktop`
 - Ubuntu/Debian：`curl -fsSL https://get.docker.com | sudo sh`
@@ -62,8 +63,9 @@ curl -fsS http://localhost:10130/docs                    # Swagger UI 可访问
 ```
 
 全部通过后告知用户：
-- 应用地址：http://localhost:10131
-- API 文档：http://localhost:10130/docs
+
+- 应用地址：<http://localhost:10131>
+- API 文档：<http://localhost:10130/docs>
 - 数据目录：`./data`（SQLite、生成资产、备份、即梦 CLI 登录态）
 
 ---
@@ -117,14 +119,33 @@ opendreamina --version        # 版本自检（不需后端在线）
 opendreamina health           # 后端 / DB / Redis / worker 状态
 opendreamina providers        # 已配置 Provider
 opendreamina models --mode video
+opendreamina skills --brief   # 本地技能清单自检（不需后端在线）
 ```
+
+### 自动加载 AIGC 技能清单（智能体接入第一步）
+
+`opendreamina skills` 纯本地只读扫描 `.skills/*/SKILL.md` 的 frontmatter，自动列出可用的 AIGC 技能，**不需要后端在线**。智能体接入 CLI 时先执行第一步把清单载入上下文，按意图选择一项并加载，再调用生成命令：
+
+```bash
+opendreamina skills --brief                    # 紧凑清单；JSON 的 brief 字段可直接注入 agent 上下文
+opendreamina skills --match "把剧本拆成分镜"    # 按意图推荐，辅助选择
+opendreamina skills ai-video-director          # 输出该技能完整 SKILL.md 正文，加载后执行
+opendreamina skills                            # 完整清单（名称 / 描述 / 路径 / 参考文件 / 加载命令）
+```
+
+- **单一事实来源**：没有第二份技能清单。新增技能只需放入 `.skills/<name>/SKILL.md`（带 `name` / `description` frontmatter），即自动出现在列表与 `--help` 中。
+- 外部技能目录：`OPEN_DREAMINA_SKILLS_DIR`（多目录用 `os.pathsep` 分隔）或 `--skills-dir DIR`（可多次传）；内置 `.skills/` 优先级最高。
+- 生成类命令执行时会在 stderr 自动提示当前可用技能；stdout 仍只输出 JSON，不破坏既有解析契约。`opendreamina --help` 末尾也会列出技能清单。
+- 生成结果交审阅中心由人工批注，批注即返工依据——这是 human-in-the-loop 闭环的最后一环。
 
 ### 环境变量
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `OPEN_DREAMINA_API_BASE` | `http://localhost:10130/api/v1` | 后端 API 基地址 |
-| `OPEN_DREAMINA_API_TIMEOUT` | `60` | 单次 HTTP 请求超时秒数 |
+| 变量                             | 默认值                             | 说明                                       |
+| ------------------------------ | ------------------------------- | ---------------------------------------- |
+| `OPEN_DREAMINA_API_BASE`       | `http://localhost:10130/api/v1` | 后端 API 基地址                               |
+| `OPEN_DREAMINA_API_TIMEOUT`    | `60`                            | 单次 HTTP 请求超时秒数                           |
+| `OPEN_DREAMINA_SKILLS_DIR`     | 无                               | 额外技能目录（`os.pathsep` 分隔），追加到内置 `.skills/` |
+| `OPEN_DREAMINA_NO_SKILLS_HINT` | 无                               | 设为 `1` 关闭生成命令 stderr 的技能提示               |
 
 远程后端：
 
@@ -135,6 +156,10 @@ OPEN_DREAMINA_API_BASE=http://192.168.1.10:10130/api/v1 opendreamina health
 ### 智能体快速参考
 
 ```bash
+# 0. 自动加载技能清单，按意图选择并加载（纯本地，不需后端在线）
+opendreamina skills --brief
+opendreamina skills prompt-optimizer
+
 # 文生图（全自动选服务/模型 + 等待 + 下载）
 opendreamina text2image "一只橘猫坐在窗台上，清晨柔光" \
     --auto-provider --auto-model --aspect-ratio 16:9 --resolution 2K \
@@ -151,9 +176,7 @@ opendreamina query_result <task_id> --wait --download-dir ./out
 
 ## 短剧项目制作（opendreamina drama 子命令）
 
-仓库内置短剧制作工具链（`drama/` 包，纯标准库零依赖），把《代号奥林匹斯》实战项目
-（40 集 × 90 秒 / 724 镜头 / 1 人 3 天）验证过的制作方法提炼为 9 个命令，全部输出
-JSON 供智能体解析。**`drama` 子命令纯本地执行，不需要后端在线**（`qc` 依赖 ffprobe/ffmpeg，缺失时如实降级）。
+仓库内置短剧制作工具链（`drama/` 包，纯标准库零依赖）。**`drama` 子命令纯本地执行，不需要后端在线**（`qc` 依赖 ffprobe/ffmpeg，缺失时如实降级）。
 
 ```bash
 opendreamina drama init ./data/review_sources/我的短剧 --title "剧名" --episodes 40   # 建项目骨架（幂等）
@@ -176,7 +199,7 @@ opendreamina drama parse EP01 --shot S01               # 分镜结构化预览
 
 ### 短剧智能体技能链
 
-`.skills/` 内置六技能覆盖短剧全流程（`SKILL.md` 加载给 AI 助手即用）：
+`.skills/` 内置六技能覆盖短剧全流程（另有独立单技能 `viral-remake`，见下节）；用 `opendreamina skills` 自动列出，`opendreamina skills <name>` 读取 SKILL.md 加载给 AI 助手即用：
 
 ```
 drama-production-playbook（制作手册/编排，新开项目从这里进）
@@ -213,6 +236,15 @@ docker compose down                    # 停止（数据保留在 ./data）
 
 ---
 
+## 可选配置
+
+- **七牛云对象存储**：部分 Seedance 服务要求参考素材提供公网 URL。在 `.env` 配置 `QINIU_ACCESS_KEY` / `QINIU_SECRET_KEY` / `QINIU_BUCKET` / `QINIU_DOMAIN` / `QINIU_AUDIT_EXPIRE_DAYS`（默认 14 天自动删除），素材临时上传供上游审核；留空则回退到本服务素材下载端点，需部署环境公网可达。审核状态 pending → active / failed，仅 active 可用于生成。
+- **即梦 CLI**：需在 celery-worker 所在机器安装新版 `dreamina-canvas` 并登录，登录态存于 `./data/dreamina-home`；设置页「服务管理 → 即梦 CLI」提供一键安装与授权。生成任务自动复用专用画布，单次积分上限默认 200，超限停止且不扣积分。
+- **3D 导演台**：默认使用在线版本，`backend/app/config.py` 的 `director_desk_url` 可指向自托管地址。
+- **数据库备份**：设置页手动触发，备份存于 `./data/backups`（默认保留最近 3 份）。
+
+---
+
 ## 审阅中心（素材审阅 + 镜头审片）
 
 **统一入口**：侧边栏「审阅中心」（路由 `/review`），页内 Tab 切换「素材审阅」与「镜头审片」两种模式（镜头审片为 `/review?mode=shot`）；旧路由 `/shot-review` 自动重定向到 `/review?mode=shot`。前端为一个页面（两模式各自记住选中的会话），后端仍是两套独立 API 与数据表。
@@ -221,10 +253,10 @@ docker compose down                    # 停止（数据保留在 ./data）
 
 审核外部文件夹中批量生成的素材，支持标记审核状态（待审/通过/需修改/驳回）与编辑修改意见。外部目录通过 `.env` 只读挂载进容器：
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
+| 变量                         | 默认值                     | 说明                                            |
+| -------------------------- | ----------------------- | --------------------------------------------- |
 | `REVIEW_SOURCES_HOST_PATH` | `./data/review_sources` | 宿主机素材目录绝对路径，**必须用正斜杠**（如 `C:/Users/me/项目素材库`） |
-| `REVIEW_SOURCE_ROOTS` | `/app/external_sources` | 容器内允许扫描的根目录，逗号分隔可配多个 |
+| `REVIEW_SOURCE_ROOTS`      | `/app/external_sources` | 容器内允许扫描的根目录，逗号分隔可配多个                          |
 
 要点：
 
@@ -255,10 +287,10 @@ curl -fsS http://localhost:10130/api/v1/reviews/sessions   # 已有审阅会话�
 
 镜头审片支持**物理删除**废弃视频文件，因此使用独立的可写挂载（默认与制片人审阅同一宿主机目录）：
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
+| 变量                              | 默认值                          | 说明                                                       |
+| ------------------------------- | ---------------------------- | -------------------------------------------------------- |
 | `SHOT_REVIEW_SOURCES_HOST_PATH` | 同 `REVIEW_SOURCES_HOST_PATH` | 宿主机镜头视频目录绝对路径，**必须用正斜杠**；挂载到容器 `/app/shot_sources`（`rw`） |
-| `SHOT_REVIEW_SOURCE_ROOTS` | `/app/shot_sources` | 容器内允许扫描/删除的根目录，逗号分隔可配多个 |
+| `SHOT_REVIEW_SOURCE_ROOTS`      | `/app/shot_sources`          | 容器内允许扫描/删除的根目录，逗号分隔可配多个                                  |
 
 要点：
 
@@ -270,6 +302,7 @@ curl -fsS http://localhost:10130/api/v1/reviews/sessions   # 已有审阅会话�
 - 选定标记存库（`shot_review_items.selected`），评分汇总中含「多版本镜头 / 已选定」计数。
 
 **审阅数据自动归档（markdown 沉淀）**：审阅动作（打分 / 修改意见 / 精修提示词 / 删除废弃版本 / 标记完成）在审阅人无感的情况下自动写入归档目录，按「会话 → 集 → 镜号」组织为纯 markdown + 媒体副本（无数据库表），记录每个镜号「原内容 → 原提示词 → 评分 → 存在的问题 → 修改指引 → 修改后内容 → 修改后提示词」的完整迭代链，供优化 AI 工作流参考：
+
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -316,3 +349,4 @@ curl -fsS http://localhost:10130/api/v1/shot-reviews/sessions   # 已有审片�
 | 未安装 Docker | 按「首次安装」分平台安装 |
 | Docker 引擎连不上 | 启动 Docker Desktop → Linux 起服务/加用户组 → Windows 更新 WSL 2 |
 | 容器内访问宿主机服务 | 用 `host.docker.internal`（compose 已配置 host-gateway） |
+| 运行 `deploy.ps1` 中文乱码或解析错误 | Windows PowerShell 5 按 GBK 读取无 BOM 的 UTF-8 脚本；改用 PowerShell 7（`pwsh`），或把脚本存为 UTF-8 with BOM |

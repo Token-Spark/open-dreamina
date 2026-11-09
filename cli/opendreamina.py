@@ -27,6 +27,9 @@
     python cli/opendreamina.py generate --provider seedream --prompt "..." --auto-wait
     python cli/opendreamina.py progress <task_id>
     python cli/opendreamina.py models --mode video
+    python cli/opendreamina.py skills                 # 列出可加载的 AIGC 技能
+    python cli/opendreamina.py skills --brief         # 可注入 agent 上下文的紧凑清单
+    python cli/opendreamina.py skills prompt-optimizer  # 读取完整 SKILL.md
 """
 from __future__ import annotations
 
@@ -45,8 +48,9 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from mcp import catalog, sizes, tools as tools_module  # noqa: E402
 from mcp.client import ApiClient, ApiError  # noqa: E402
+from cli import skills_catalog  # noqa: E402 - 纯本地技能目录，不需后端在线
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # ---------------- 输出整形 ----------------
 
@@ -711,6 +715,55 @@ def cmd_drama(ns: argparse.Namespace) -> int:
     return drama_dispatch(ns)
 
 
+# ---------------- AIGC 智能体技能目录 ----------------
+
+
+def cmd_skills(ns: argparse.Namespace) -> int:
+    """skills：列出 / 推荐 / 加载 AIGC 技能，纯本地执行，不需要后端在线。
+
+    - 无参数：输出完整清单（含 brief，可直接注入 agent 上下文）
+    - --brief：只输出紧凑清单与接入提示，适合 agent 启动时自动加载
+    - <name>：输出该技能完整 SKILL.md 正文，供 agent 加载为技能上下文
+    - --match "意图"：按字面相关度排序推荐，帮助 agent 在多项技能中选择
+    """
+    roots = skills_catalog.resolve_roots(ns.skills_dir)
+
+    if ns.name:
+        payload = skills_catalog.show(ns.name, roots)
+        if payload is None:
+            available = ", ".join(s["name"] for s in skills_catalog.discover(roots)) or "（无）"
+            _die(f"未找到技能 {ns.name!r}；可用技能：{available}")
+        _print_json(payload)
+        return 0 if payload.get("ok") else 3
+
+    skills = skills_catalog.discover(roots)
+    if ns.match:
+        ranked = skills_catalog.match(ns.match, skills, top_n=ns.top)
+        _print_json({
+            "ok": True,
+            "intent": ns.match,
+            "count": len(ranked),
+            "matches": ranked,
+            "load_command": skills_catalog.LOAD_COMMAND,
+            "hint": "推荐排序仅供参考；选好后运行 `opendreamina skills <name>` 加载完整 SKILL.md。",
+        })
+        return 0
+
+    payload = skills_catalog.catalog(roots)
+    if ns.brief:
+        _print_json({
+            "ok": True,
+            "count": payload["count"],
+            "skills_roots": payload["skills_roots"],
+            "brief": payload["brief"],
+            "load_command": payload["load_command"],
+            "hint": payload["hint"],
+        })
+    else:
+        _print_json(payload)
+    return 0
+
+
 # ---------------- 参数解析 ----------------
 
 
@@ -743,6 +796,22 @@ def _add_generate_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--download-dir", help="终态成功时把结果下载到该目录（对应即梦 CLI 的 --download_dir）。")
 
 
+def _skills_help_block() -> str:
+    """把技能清单注入 --help：agent 只要查看帮助就自动获得可选技能列表。"""
+    try:
+        skills = skills_catalog.discover()
+    except Exception:  # noqa: BLE001 - 技能目录异常不应阻断 CLI 启动
+        return ""
+    if not skills:
+        return ""
+    lines = ["\n可直接加载的 AIGC 智能体技能（`opendreamina skills` 查看完整说明）："]
+    for item in skills:
+        short = " ".join(item["description"].split())[:56]
+        lines.append(f"  {item['name']:<28} {short}")
+    lines.append("  opendreamina skills <name>      读取该技能完整 SKILL.md 并加载")
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """构造子命令解析器；--help 文案即智能体的使用说明。"""
     parser = argparse.ArgumentParser(
@@ -750,24 +819,28 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Open Dreamina 命令行工具：把平台的图片 / 视频生成能力暴露给智能体与脚本。"
             " 支持 mode-select 自动推断内容模式、model-select 自动选模型、"
-            "元素引用（参考素材）、进度查询与等待。输出均为 JSON，便于智能体解析。"
+            "元素引用（参考素材）、进度查询与等待，以及 skills 子命令自动加载 AIGC 技能清单。"
+            "输出均为 JSON，便于智能体解析。"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "环境变量：\n"
             "  OPEN_DREAMINA_API_BASE     后端 API 基地址（默认 http://localhost:10130/api/v1）\n"
             "  OPEN_DREAMINA_API_TIMEOUT  单次 HTTP 请求超时秒数（默认 60）\n"
-            "  DRAMA_PROJECT_ROOT         短剧项目根目录（drama 子命令的默认 --project）\n\n"
-            "典型工作流：\n"
+            "  DRAMA_PROJECT_ROOT         短剧项目根目录（drama 子命令的默认 --project）\n"
+            "  OPEN_DREAMINA_SKILLS_DIR   额外技能目录（os.pathsep 分隔，追加到内置 .skills）\n"
+            "  OPEN_DREAMINA_NO_SKILLS_HINT=1  关闭生成命令 stderr 的技能提示\n\n"
+            "智能体接入（第一步自动加载技能清单）：\n"
+            "  0) opendreamina skills --brief  载入清单，按意图选择后用 `skills <name>` 加载 SKILL.md\n"
             "  1) opendreamina health / providers / models  确认环境与可用服务\n"
             "  2) opendreamina generate --provider seedream --prompt '...' --auto-wait\n"
             "  3) opendreamina progress <task_id> --wait    轮询进度或等待终态\n"
-            "  4) 读取 result_urls_absolute 下载结果\n\n"
+            "  4) 读取 result_urls_absolute 下载结果，交由审阅中心人工批注\n\n"
             "短剧制作（drama 子命令，无需后端在线）：\n"
             "  opendreamina drama init ./我的短剧            初始化项目骨架\n"
             "  opendreamina drama lint EP01 --project ./我的短剧   校验分镜规范\n"
             "  opendreamina drama --help                     查看全部短剧子命令\n"
-        ),
+        ) + _skills_help_block(),
     )
     parser.add_argument("--version", action="version", version=f"opendreamina {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="<command>", required=True)
@@ -839,6 +912,22 @@ def build_parser() -> argparse.ArgumentParser:
     tp.add_argument("--category", choices=["image", "video"], help="按模板分类筛选。")
     hl = sub.add_parser("health", help="检查后端健康状态", description="检查后端 / 数据库 / Redis / Celery worker 健康状态。")
 
+    # skills（AIGC 智能体技能目录；纯本地只读扫描，不需后端在线）
+    sk = sub.add_parser(
+        "skills",
+        help="列出 / 选择 / 加载 AIGC 智能体技能（不需后端在线）",
+        description=(
+            "扫描 .skills/ 下全部 SKILL.md 的 frontmatter，输出机器可读的技能清单。"
+            "接入时先运行 `opendreamina skills --brief` 把清单载入上下文，"
+            "按意图选择一项后用 `opendreamina skills <name>` 读取完整 SKILL.md 并加载。"
+        ),
+    )
+    sk.add_argument("name", nargs="?", help="技能名（或目录名）；给出时输出该技能完整 SKILL.md 正文。")
+    sk.add_argument("--brief", action="store_true", help="只输出可注入 agent 上下文的紧凑清单。")
+    sk.add_argument("--match", metavar="INTENT", help="按意图推荐技能，返回按相关度排序的结果。")
+    sk.add_argument("--top", type=int, default=3, help="--match 返回条数（默认 3）。")
+    sk.add_argument("--skills-dir", action="append", default=[], metavar="DIR", help="追加扫描的技能目录（可多次传）。")
+
     # conversations
     cv = sub.add_parser("conversations", help="对话的增删改查", description="对话的增删改查：把多个生成任务分组管理。")
     cv.add_argument("action", choices=["list", "create", "get", "rename", "delete", "protect", "unprotect"], help="操作类型。")
@@ -873,6 +962,7 @@ _DISPATCH = {
     "providers": cmd_providers,
     "templates": cmd_templates,
     "health": cmd_health,
+    "skills": cmd_skills,
     "conversations": cmd_conversations,
     "create-task": cmd_create_task,
     # 任务类型子命令（复用 generate 流程，预设 mode / 参考素材要求）
@@ -884,6 +974,13 @@ _DISPATCH = {
     # 短剧制作工具链（drama/ 包）
     "drama": cmd_drama,
 }
+
+# 生成类命令：执行前往 stderr 打一行技能清单，让 agent 在生成时自动看到可选项。
+# stdout 仍只输出 JSON，不破坏既有解析契约；可用环境变量关闭。
+_GENERATE_COMMANDS = frozenset({
+    "generate", "text2image", "image2image", "text2video", "image2video",
+    "frames2video", "create-task",
+})
 
 
 def main() -> int:
@@ -897,6 +994,8 @@ def main() -> int:
     handler = _DISPATCH.get(ns.command)
     if handler is None:  # pragma: no cover - argparse 已保证 command 合法
         parser.error(f"未知命令 {ns.command!r}")
+    if ns.command in _GENERATE_COMMANDS and not os.environ.get(skills_catalog.ENV_NO_HINT):
+        sys.stderr.write(skills_catalog.hint_line())
     return handler(ns)
 
 
