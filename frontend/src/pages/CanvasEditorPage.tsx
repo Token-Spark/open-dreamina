@@ -34,11 +34,10 @@ import {
   BackgroundVariant,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { ArrowLeft, Play, Plus, Loader2, Check } from 'lucide-react'
+import { ArrowLeft, Plus, Loader2, Check } from 'lucide-react'
 import {
   getCanvas,
   saveCanvasDocument,
-  createRun,
   type CanvasNodeType,
   type CanvasNode as CanvasNodeData,
   type CanvasEdge as CanvasEdgeData,
@@ -184,15 +183,6 @@ function CanvasEditorInner() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  // 运行（P0 骨架）
-  const runMut = useMutation({
-    mutationFn: () => createRun(canvasId!, { scope: 'all' }),
-    onSuccess: () => {
-      toast('运行已创建（调度功能即将上线）')
-    },
-    onError: (err) => toast(toApiError(err).message, 'error'),
-  })
-
   // React Flow 只管理视图态；持久数据通过 store 原子操作更新，避免旧快照覆盖节点输入。
   const handleNodesChange = useCallback(
     (changes: Parameters<typeof applyNodeChanges<Node>>[0]) => {
@@ -327,15 +317,6 @@ function CanvasEditorInner() {
             isError={saveMut.isError}
           />
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => runMut.mutate()}
-            disabled={runMut.isPending}
-          >
-            <Play className="h-3.5 w-3.5" />
-            运行
-          </Button>
         </div>
       </div>
 

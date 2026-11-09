@@ -592,49 +592,7 @@ class CanvasValidation(BaseModel):
     warnings: list[CanvasValidationItem] = Field(default_factory=list)
 
 
-class CanvasRunRequest(BaseModel):
-    scope: str = Field("all", pattern="^(all|node|upstream)$")
-    node_id: Optional[str] = None
-    force: bool = False
-    trigger: str = "user"  # user|agent
-
-
-class CanvasRunCreateResponse(BaseModel):
-    run_id: str
-
-
-class CanvasRunSummary(BaseModel):
-    """运行历史列表项。"""
-    id: str
-    canvas_id: str
-    doc_version: int
-    scope: str
-    target_node_id: Optional[str] = None
-    status: str
-    trigger: str = "user"
-    created_at: Optional[str] = None
-    completed_at: Optional[str] = None
-
-
-class CanvasRunListResponse(BaseModel):
-    items: list[CanvasRunSummary]
-    total: int
-    page: int
-    page_size: int
-
-
-class CanvasRunDetail(BaseModel):
-    id: str
-    canvas_id: str
-    doc_version: int
-    scope: str
-    target_node_id: Optional[str] = None
-    status: str
-    node_states: dict[str, Any] = Field(default_factory=dict)
-    error_msg: Optional[str] = None
-    trigger: str = "user"
-    created_at: Optional[str] = None
-    completed_at: Optional[str] = None
+# 画布运行（run）相关的请求/响应模型已随未实现的 P0 运行骨架一并移除。
 
 
 class CanvasVersionItem(BaseModel):

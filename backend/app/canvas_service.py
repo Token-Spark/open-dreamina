@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from .canvas_graph import _find_node, edges_to_port
 from .canvas_validate import validate_document
-from .models import Canvas, CanvasDocument, CanvasRun, Conversation
+from .models import Canvas, CanvasDocument, Conversation
 from .utils.time_utils import now_iso as _now
 
 # 版本快照保留数

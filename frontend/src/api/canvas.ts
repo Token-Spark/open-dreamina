@@ -136,29 +136,7 @@ export interface CanvasVersionItem {
   created_at: string | null
 }
 
-export interface CanvasRunSummary {
-  id: string
-  canvas_id: string
-  doc_version: number
-  scope: string
-  target_node_id: string | null
-  status: string
-  trigger: string
-  created_at: string | null
-  completed_at: string | null
-}
-
-export interface CanvasRunDetail extends CanvasRunSummary {
-  node_states: Record<string, unknown>
-  error_msg: string | null
-}
-
-export interface CanvasRunRequest {
-  scope?: string
-  node_id?: string
-  force?: boolean
-  trigger?: string
-}
+// 画布运行（run）的 API 与类型已随未实现的调度骨架一并移除。
 
 export interface NodeSpecPort {
   id: string
@@ -298,35 +276,3 @@ export async function getNodeSpecs(): Promise<NodeSpecs> {
   return data.specs
 }
 
-export async function createRun(
-  canvasId: string,
-  payload: CanvasRunRequest,
-): Promise<{ run_id: string }> {
-  const { data } = await apiClient.post<{ run_id: string }>(
-    `/canvas/${canvasId}/runs`,
-    payload,
-  )
-  return data
-}
-
-export async function listRuns(
-  canvasId: string,
-  page: number = 1,
-  pageSize: number = 20,
-): Promise<Paginated<CanvasRunSummary>> {
-  const { data } = await apiClient.get<Paginated<CanvasRunSummary>>(
-    `/canvas/${canvasId}/runs`,
-    { params: { page, page_size: pageSize } },
-  )
-  return data
-}
-
-export async function getRun(
-  canvasId: string,
-  runId: string,
-): Promise<CanvasRunDetail> {
-  const { data } = await apiClient.get<CanvasRunDetail>(
-    `/canvas/${canvasId}/runs/${runId}`,
-  )
-  return data
-}

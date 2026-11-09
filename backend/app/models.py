@@ -252,31 +252,8 @@ class CanvasDocument(Base):
     )
 
 
-class CanvasRun(Base):
-    """一次运行批次：记录调度范围、节点-任务映射与汇总结果。"""
-
-    __tablename__ = "canvas_runs"
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    canvas_id: Mapped[str] = mapped_column(
-        String, ForeignKey("canvases.id", ondelete="CASCADE"), nullable=False
-    )
-    doc_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    scope: Mapped[str] = mapped_column(String, nullable=False, default="all")  # all|node|upstream
-    # 请求执行的目标节点（scope=node/upstream 时有值）
-    target_node_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
-    # {"nd_x": {"task_id": "...", "status": "...", "asset_ids": [...]}, ...}
-    node_states_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
-    trigger: Mapped[str] = mapped_column(String, nullable=False, default="user")  # user|agent|schedule
-    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
-    completed_at: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    __table_args__ = (
-        Index("idx_canvas_runs_canvas", "canvas_id", "created_at"),
-        Index("idx_canvas_runs_status", "status"),
-    )
+# 画布运行（canvas_runs）已从代码下线：调度从未实现，只会堆积 pending 记录。
+# 已有数据库中该表保留原样，新库不再创建；此处不保留 ORM 映射。
 
 
 # ---------------- 制片人审阅 ----------------

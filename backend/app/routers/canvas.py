@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""画布路由：CRUD + 文档读写 + operations + 校验 + 版本管理 + 运行。"""
+"""画布路由：CRUD + 文档读写 + operations + 校验 + 版本管理。"""
 from __future__ import annotations
 
 import json
-import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -44,7 +43,7 @@ from ..canvas_service import (
 from ..canvas_specs import NODE_SPECS
 from ..canvas_validate import split_errors, validate_document
 from ..database import get_db
-from ..models import Canvas, CanvasRun
+from ..models import Canvas
 from ..schemas import (
     CanvasCreate,
     CanvasDetail,
@@ -55,11 +54,6 @@ from ..schemas import (
     CanvasOperationResult,
     CanvasOperationsRequest,
     CanvasRevertRequest,
-    CanvasRunCreateResponse,
-    CanvasRunDetail,
-    CanvasRunListResponse,
-    CanvasRunRequest,
-    CanvasRunSummary,
     CanvasSummary,
     CanvasUpdate,
     CanvasValidation,
@@ -68,7 +62,6 @@ from ..schemas import (
     MessageResponse,
     NodeSpecResponse,
 )
-from ..utils.time_utils import now_iso as _now
 
 router = APIRouter(prefix="/canvas", tags=["canvas"])
 
@@ -445,79 +438,6 @@ def revert_to_version_endpoint(
     )
 
 
-# ---------------- 运行（P0 骨架，仅创建记录） ----------------
-
-@router.post("/{canvas_id}/runs", response_model=CanvasRunCreateResponse, status_code=201)
-def create_run_endpoint(
-    canvas_id: str,
-    payload: CanvasRunRequest,
-    db: Session = Depends(get_db),
-) -> CanvasRunCreateResponse:
-    """创建运行记录（P0 骨架：仅创建记录，调度在 P1 补全）。"""
-    canvas = _get_canvas_or_404(db, canvas_id)
-    run = CanvasRun(
-        id=str(uuid.uuid4()),
-        canvas_id=canvas_id,
-        doc_version=canvas.version,
-        scope=payload.scope,
-        target_node_id=payload.node_id if payload.scope != "all" else None,
-        status="pending",
-        trigger=payload.trigger,
-    )
-    db.add(run)
-    canvas.last_run_at = _now()
-    db.commit()
-    return CanvasRunCreateResponse(run_id=run.id)
-
-
-@router.get("/{canvas_id}/runs", response_model=CanvasRunListResponse)
-def list_runs_endpoint(
-    canvas_id: str,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-) -> CanvasRunListResponse:
-    """获取画布运行历史。"""
-    _get_canvas_or_404(db, canvas_id)
-    from sqlalchemy import desc
-    query = db.query(CanvasRun).filter(CanvasRun.canvas_id == canvas_id)
-    total = query.count()
-    items = (
-        query.order_by(desc(CanvasRun.created_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-    return CanvasRunListResponse(
-        items=[CanvasRunSummary(
-            id=r.id, canvas_id=r.canvas_id, doc_version=r.doc_version,
-            scope=r.scope, target_node_id=r.target_node_id,
-            status=r.status, trigger=r.trigger,
-            created_at=r.created_at, completed_at=r.completed_at,
-        ) for r in items],
-        total=total, page=page, page_size=page_size,
-    )
-
-
-@router.get("/{canvas_id}/runs/{run_id}", response_model=CanvasRunDetail)
-def get_run_endpoint(
-    canvas_id: str,
-    run_id: str,
-    db: Session = Depends(get_db),
-) -> CanvasRunDetail:
-    """获取运行详情。"""
-    _get_canvas_or_404(db, canvas_id)
-    run = db.get(CanvasRun, run_id)
-    if not run or run.canvas_id != canvas_id:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "not_found", "message": f"运行 {run_id} 不存在"},
-        )
-    node_states = json.loads(run.node_states_json) if run.node_states_json else {}
-    return CanvasRunDetail(
-        id=run.id, canvas_id=run.canvas_id, doc_version=run.doc_version,
-        scope=run.scope, target_node_id=run.target_node_id,
-        status=run.status, node_states=node_states,
-        error_msg=run.error_msg, trigger=run.trigger,
-        created_at=run.created_at, completed_at=run.completed_at,
-    )
+# 画布「运行」原本只有 P0 骨架：创建一条永远停在 pending 的记录，调度从未
+# 实现，UI 上点了也只提示「即将上线」。已从 API 与前端入口一并下线。
+# 已有数据库里的 canvas_runs 表保留不动，不破坏历史数据。
