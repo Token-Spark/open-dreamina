@@ -97,11 +97,188 @@ function cancelStreamWaiter(waiter: StreamWaiter): void {
   if (i >= 0) streamWaiters.splice(i, 1)
 }
 
+// ---------------- 单一订阅源 ----------------
+// TaskSSEManager、GenMessageCard、画布节点可能同时订阅同一个 taskId。
+// 早期每个 hook 各建一条 EventSource 并各发一次 getTask，批量生成时既浪费
+// 连接预算又制造重复轮询。这里按 taskId 共享一条流：只有第一个订阅者会
+// 建立连接，其余订阅者复用同一份快照与后续事件；最后一个卸载时才断开。
+type Emit = (payload: SSEPayload) => void
+
+interface SharedStream {
+  listeners: Set<Emit>
+  /** 最近一次事件快照，供后加入的订阅者立即回放，避免等到下一帧才有状态。 */
+  last: SSEPayload | null
+  stop: () => void
+}
+
+const streams = new Map<string, SharedStream>()
+
+function createStream(taskId: string): SharedStream {
+  const stream: SharedStream = { listeners: new Set(), last: null, stop: () => {} }
+  let stopped = false
+  let es: EventSource | null = null
+  let pollTimer: number | null = null
+  let holdingSlot = false
+  let slotWaiter: StreamWaiter | null = null
+  let terminalReached = false
+
+  const broadcast: Emit = (payload) => {
+    for (const listener of [...stream.listeners]) listener(payload)
+  }
+
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    if (slotWaiter) {
+      cancelStreamWaiter(slotWaiter)
+      slotWaiter = null
+    }
+    if (es) {
+      es.close()
+      es = null
+    }
+    if (holdingSlot) {
+      holdingSlot = false
+      releaseStreamSlot()
+    }
+    if (pollTimer) {
+      window.clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+  stream.stop = stop
+
+  const scheduleTerminalCleanup = (terminal: TaskStatus) => {
+    if (terminalReached) return
+    terminalReached = true
+    stop()
+    // 终态任务在 TaskBar 里短暂停留后移除。这个定时器不随订阅者卸载取消：
+    // 任务已经结束，从活跃列表里清掉是期望行为，重复调用也是幂等的。
+    window.setTimeout(() => {
+      useTaskStore.getState().removeActive(taskId)
+    }, terminal === 'completed' ? 4000 : 8000)
+  }
+
+  const emit = (payload: SSEPayload) => {
+    if (stopped) return
+    stream.last = payload
+    // store 是全局单份，只在共享层镜像一次，不让每个订阅者各写一遍。
+    useTaskStore.getState().patchActive(taskId, {
+      status: payload.status ?? undefined,
+      progress: typeof payload.progress === 'number' ? payload.progress : undefined,
+      error: payload.error ?? undefined,
+      message: payload.message ?? undefined,
+      resultUrl: payload.result_url ?? undefined,
+      thumbnailUrl: payload.thumbnail_url ?? undefined,
+      runningSince: payload.status === 'running' ? Date.now() : undefined,
+    })
+    broadcast(payload)
+    if (payload.status && TERMINAL.includes(payload.status)) {
+      scheduleTerminalCleanup(payload.status)
+    }
+  }
+
+  const openSSE = () => {
+    if (es || stopped || terminalReached) return
+    const grant = () => {
+      // 排队期间任务可能已结束或所有订阅者已卸载：把预算原样归还
+      if (stopped || terminalReached) {
+        releaseStreamSlot()
+        return
+      }
+      holdingSlot = true
+      // SSE 连上后停掉轮询兜底，避免同一份数据触发两次状态更新。
+      if (pollTimer) {
+        window.clearInterval(pollTimer)
+        pollTimer = null
+      }
+      es = new EventSource(taskStreamUrl(taskId))
+      es.addEventListener('progress', (e) => safeParse(e, emit))
+      es.addEventListener('completed', (e) => safeParse(e, emit))
+      es.addEventListener('failed', (e) => safeParse(e, emit))
+      es.addEventListener('heartbeat', () => {
+        // keep-alive; no state change
+      })
+      es.onerror = () => {
+        // EventSource auto-reconnects; nothing to do here. Polling covers gaps.
+      }
+    }
+    slotWaiter = requestStreamSlot(grant)
+  }
+
+  const startPolling = () => {
+    if (pollTimer || stopped) return
+    pollTimer = window.setInterval(() => {
+      getTask(taskId)
+        .then((task) => {
+          if (stopped) return
+          emit({
+            task_id: task.id,
+            status: task.status,
+            progress: task.progress,
+            error: task.error_msg ?? undefined,
+            result_url: task.result_url ?? undefined,
+            thumbnail_url: task.thumbnail_url ?? undefined,
+            result_urls: task.result_urls,
+            thumbnail_urls: task.thumbnail_urls,
+          })
+        })
+        .catch(() => {
+          /* swallow poll errors; next tick retries */
+        })
+    }, 3000)
+  }
+
+  // 只有流的创建者发这一次 getTask，用来在 SSE 首帧到达前播种状态。
+  getTask(taskId)
+    .then((task) => {
+      if (stopped) return
+      emit({
+        task_id: task.id,
+        status: task.status,
+        progress: task.progress,
+        error: task.error_msg ?? undefined,
+        result_url: task.result_url ?? undefined,
+        thumbnail_url: task.thumbnail_url ?? undefined,
+        result_urls: task.result_urls,
+        thumbnail_urls: task.thumbnail_urls,
+      })
+      if (TERMINAL.includes(task.status)) return
+      openSSE()
+      if (slotWaiter) startPolling()
+    })
+    .catch(() => {
+      if (stopped) return
+      openSSE()
+      if (slotWaiter) startPolling()
+    })
+
+  return stream
+}
+
+function attach(taskId: string, listener: Emit): () => void {
+  let stream = streams.get(taskId)
+  if (!stream) {
+    stream = createStream(taskId)
+    streams.set(taskId, stream)
+  }
+  stream.listeners.add(listener)
+  if (stream.last) listener(stream.last)
+
+  return () => {
+    const current = streams.get(taskId)
+    if (!current) return
+    current.listeners.delete(listener)
+    if (current.listeners.size === 0) {
+      current.stop()
+      streams.delete(taskId)
+    }
+  }
+}
+
 /**
- * Subscribe to a single task's progress via SSE, with a 3s polling fallback.
- * EventSource reconnects natively; the poll ensures progress is current even
- * if an SSE frame is missed. The live snapshot is mirrored into taskStore so
- * the bottom TaskBar stays in sync across components.
+ * Subscribe to a single task's progress. Multiple components subscribing to the
+ * same task share one SSE stream and one seed request; see "单一订阅源" above.
  */
 export function useTaskSSE(
   taskId: string | null | undefined,
@@ -118,24 +295,12 @@ export function useTaskSSE(
     message: null,
   })
 
-  const patchActive = useTaskStore((s) => s.patchActive)
-  const removeActive = useTaskStore((s) => s.removeActive)
   const optsRef = useRef(options)
   optsRef.current = options
 
   useEffect(() => {
     if (!taskId) return
-    let cancelled = false
-    let es: EventSource | null = null
-    let pollTimer: number | null = null
-    let cleanupTimer: number | null = null
-    // SSE 连接预算的持有状态：holdingSlot=已建立直播流，slotWaiter=正在排队等待
-    let holdingSlot = false
-    let slotWaiter: StreamWaiter | null = null
-    let terminalReached = false
-
-    const apply = (payload: SSEPayload) => {
-      if (cancelled) return
+    return attach(taskId, (payload) => {
       if (payload.status) setStatus(payload.status)
       if (typeof payload.progress === 'number') setProgress(payload.progress)
       if (payload.message) {
@@ -154,152 +319,13 @@ export function useTaskSSE(
       if (Array.isArray(payload.thumbnail_urls)) {
         setData((d) => ({ ...d, thumbnailUrls: payload.thumbnail_urls ?? [] }))
       }
-      // Mirror into the global store for the TaskBar.
-      patchActive(taskId, {
-        status: payload.status ?? undefined,
-        progress: typeof payload.progress === 'number' ? payload.progress : undefined,
-        error: payload.error ?? undefined,
-        message: payload.message ?? undefined,
-        resultUrl: payload.result_url ?? undefined,
-        thumbnailUrl: payload.thumbnail_url ?? undefined,
-        runningSince:
-          payload.status === 'running' ? Date.now() : undefined,
-      })
       if (payload.status === 'completed') {
         optsRef.current.onComplete?.()
-        scheduleTerminalCleanup('completed')
       } else if (payload.status === 'failed') {
         optsRef.current.onFailed?.(payload.error ?? '生成失败')
-        scheduleTerminalCleanup('failed')
-      } else if (payload.status === 'cancelled') {
-        scheduleTerminalCleanup('cancelled')
       }
-    }
-
-    const scheduleTerminalCleanup = (terminal: TaskStatus) => {
-      terminalReached = true
-      stop()
-      // Keep the entry briefly so the UI can show the final state, then drop it.
-      cleanupTimer = window.setTimeout(() => {
-        if (!cancelled) removeActive(taskId)
-      }, terminal === 'completed' ? 4000 : 8000)
-    }
-
-    const stop = () => {
-      if (slotWaiter) {
-        cancelStreamWaiter(slotWaiter)
-        slotWaiter = null
-      }
-      if (es) {
-        es.close()
-        es = null
-      }
-      if (holdingSlot) {
-        holdingSlot = false
-        releaseStreamSlot()
-      }
-      if (pollTimer) {
-        window.clearInterval(pollTimer)
-        pollTimer = null
-      }
-    }
-
-    // Initial fetch to seed state before SSE events arrive.
-    getTask(taskId)
-      .then((task) => {
-        if (cancelled) return
-        apply({
-          task_id: task.id,
-          status: task.status,
-          progress: task.progress,
-          error: task.error_msg ?? undefined,
-          result_url: task.result_url ?? undefined,
-          thumbnail_url: task.thumbnail_url ?? undefined,
-          result_urls: task.result_urls,
-          thumbnail_urls: task.thumbnail_urls,
-        })
-        if (TERMINAL.includes(task.status)) {
-          scheduleTerminalCleanup(task.status)
-          return
-        }
-        openSSE()
-        // Polling is started only as a fallback when SSE can't get a slot.
-        // When SSE connects successfully, it provides live updates and the
-        // 3s poll is unnecessary — it only doubles state updates and re-renders.
-        // If the SSE slot request queued (MAX_TASK_SSE reached), start polling
-        // immediately so progress isn't stalled.
-        if (slotWaiter) {
-          startPolling()
-        }
-      })
-      .catch(() => {
-        // If the seed fetch fails, still attempt SSE/polling.
-        openSSE()
-        if (slotWaiter) {
-          startPolling()
-        }
-      })
-
-    const openSSE = () => {
-      if (es || cancelled || terminalReached) return
-      const grant = () => {
-        // 排队期间任务可能已结束或组件已卸载：把预算原样归还
-        if (cancelled || terminalReached) {
-          releaseStreamSlot()
-          return
-        }
-        holdingSlot = true
-        // SSE connected successfully — stop the polling fallback if it was
-        // running. Having both active doubles state updates and re-renders
-        // since every poll tick re-applies the same data the SSE just delivered.
-        if (pollTimer) {
-          window.clearInterval(pollTimer)
-          pollTimer = null
-        }
-        es = new EventSource(taskStreamUrl(taskId))
-        es.addEventListener('progress', (e) => safeParse(e, apply))
-        es.addEventListener('completed', (e) => safeParse(e, apply))
-        es.addEventListener('failed', (e) => safeParse(e, apply))
-        es.addEventListener('heartbeat', () => {
-          // keep-alive; no state change
-        })
-        es.onerror = () => {
-          // EventSource auto-reconnects; nothing to do here. Polling covers gaps.
-        }
-      }
-      slotWaiter = requestStreamSlot(grant)
-    }
-
-    const startPolling = () => {
-      if (pollTimer || cancelled) return
-      pollTimer = window.setInterval(() => {
-        getTask(taskId)
-          .then((task) => {
-            if (cancelled) return
-            apply({
-              task_id: task.id,
-              status: task.status,
-              progress: task.progress,
-              error: task.error_msg ?? undefined,
-              result_url: task.result_url ?? undefined,
-              thumbnail_url: task.thumbnail_url ?? undefined,
-              result_urls: task.result_urls,
-              thumbnail_urls: task.thumbnail_urls,
-            })
-            if (TERMINAL.includes(task.status)) scheduleTerminalCleanup(task.status)
-          })
-          .catch(() => {
-            /* swallow poll errors; next tick retries */
-          })
-      }, 3000)
-    }
-
-    return () => {
-      cancelled = true
-      stop()
-      if (cleanupTimer) window.clearTimeout(cleanupTimer)
-    }
-  }, [taskId, patchActive, removeActive])
+    })
+  }, [taskId])
 
   return {
     status,

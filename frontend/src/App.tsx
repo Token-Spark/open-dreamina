@@ -34,11 +34,16 @@ const queryClient = new QueryClient({
   },
 })
 
+// 启动恢复只取最近的一批活跃任务。每个任务都会占用一条 SSE 预算或退化成
+// 3 秒轮询，恢复 100 个历史任务会在页面打开瞬间制造请求风暴；超出这批的
+// 任务仍可通过任务中心查看，不影响数据完整性。
+const RECOVER_ACTIVE_LIMIT = 20
+
 /** Recover in-flight tasks on page load and seed the store for SSE subscription. */
 function useRecoverActiveTasks() {
   const setActive = useTaskStore((s) => s.setActive)
   useEffect(() => {
-    listTasks({ status: ACTIVE_STATUSES.join(','), page_size: 100 })
+    listTasks({ status: ACTIVE_STATUSES.join(','), page_size: RECOVER_ACTIVE_LIMIT })
       .then((res) => setActive(res.items))
       .catch(() => {
         /* backend may be unavailable; tasks will recover on next navigation */
