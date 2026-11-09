@@ -275,7 +275,9 @@ curl -fsS http://localhost:10130/api/v1/reviews/folders    # 列出可扫描目�
 curl -fsS http://localhost:10130/api/v1/reviews/sessions   # 已有审阅会话及汇总
 ```
 
-> 改 `docker-compose.yml` 的挂载配置后需 `docker compose up -d --build` 重建；只改 `backend/app` 代码时 backend 有 `--reload` 自动生效。
+> 改 `docker-compose.yml` 的挂载或环境配置后需 `docker compose up -d --build` 重建；生产镜像的 backend 没有 `--reload`，改 `backend/app` 代码同样需要重建或重启，只有 `docker-compose.dev.yml` 开发模式才热加载。
+>
+> 部署变量统一写在 `.env`，由 `env_file` 整体注入 backend / celery-worker / celery-beat；新增配置项不必再改 compose 的 `environment` 白名单。
 
 ---
 
@@ -344,7 +346,7 @@ curl -fsS http://localhost:10130/api/v1/shot-reviews/sessions   # 已有审片�
 | --- | --- |
 | 健康检查超时 | `docker compose logs backend` 看启动错误；查端口占用 |
 | `ENCRYPTION_KEY 未设置` 报错 | `.env` 缺失或为空，重跑部署脚本 |
-| 改了 `backend/app` 代码不生效 | backend 有 `--reload` 热加载；celery-worker / celery-beat 需 `docker compose restart <服务>` |
+| 改了 `backend/app` 代码不生效 | 生产模式无热加载，需 `docker compose up -d --build` 重建（或 `restart backend`）；celery-worker / celery-beat 需 `docker compose restart <服务>`；仅开发模式 `-f docker-compose.dev.yml` 自动热加载 |
 | 前端静态资源/模型列表未更新 | 必须 `docker compose up -d --build` 重建 frontend 镜像 |
 | 未安装 Docker | 按「首次安装」分平台安装 |
 | Docker 引擎连不上 | 启动 Docker Desktop → Linux 起服务/加用户组 → Windows 更新 WSL 2 |

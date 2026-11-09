@@ -1,12 +1,36 @@
 # 生产部署配置 —— 由 deploy.sh / deploy.ps1 调用
 # 开发模式请使用：docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# 配置来源约定：
+#   - .env 通过 env_file 整体注入 backend / worker / beat，新增配置项无需再改本文件；
+#   - 下面 x-container-env 只放「容器拓扑决定的固定值」（DB/Redis/目录），
+#     这些值不能依赖 .env，否则用户手写 .env 时容易漏配导致连不上 Redis；
+#   - 两个审阅扫描根是容器内挂载点，需要 compose 提供默认值，仍走 ${...:-} 插值。
+
+x-container-env: &container-env
+  DATABASE_URL: sqlite:///./data/db/aigc_studio.db
+  REDIS_URL: redis://redis:6379/0
+  ASSETS_DIR: /app/data/assets
+  BACKUP_DIR: /app/data/backups
+  # 这两项在 config.py 也有同样的默认值，这里保留显式注入，避免部署行为
+  # 依赖代码默认值而漂移；用户在 .env 中填写的值会通过插值覆盖它们。
+  QINIU_AUDIT_EXPIRE_DAYS: ${QINIU_AUDIT_EXPIRE_DAYS:-14}
+  DIRECTOR_DESK_URL: ${DIRECTOR_DESK_URL:-https://xiaozangao.github.io/3d-director-desk/}
+  # 必填校验保留在 compose 层：缺密钥时直接拒绝启动，而不是等后端报错
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
+
+x-review-env: &review-env
+  REVIEW_SOURCE_ROOTS: ${REVIEW_SOURCE_ROOTS:-/app/external_sources}
+  SHOT_REVIEW_SOURCE_ROOTS: ${SHOT_REVIEW_SOURCE_ROOTS:-/app/shot_sources}
+
 services:
   frontend:
     build: ./frontend
     ports:
       - "10131:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   backend:
@@ -20,34 +44,21 @@ services:
       # 镜头审片：外部镜头视频目录（可写挂载，容器内路径 /app/shot_sources，
       # 支持在审片页删除废弃镜头视频；默认与审阅素材同一宿主机目录）
       - ${SHOT_REVIEW_SOURCES_HOST_PATH:-${REVIEW_SOURCES_HOST_PATH:-./data/review_sources}}:/app/shot_sources:rw
+    env_file: .env
     environment:
-      - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
-      - REDIS_URL=redis://redis:6379/0
-      - ASSETS_DIR=/app/data/assets
-      - BACKUP_DIR=/app/data/backups
-      # ENCRYPTION_KEY 必须通过 .env 提供（deploy.sh / deploy.ps1 会自动生成随机值）
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
-      # 七牛云对象存储：为 Seedance 参考素材提供公网临时 URL（14 天自动过期）
-      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY:-}
-      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY:-}
-      - QINIU_BUCKET=${QINIU_BUCKET:-}
-      - QINIU_DOMAIN=${QINIU_DOMAIN:-}
-      - QINIU_AUDIT_EXPIRE_DAYS=${QINIU_AUDIT_EXPIRE_DAYS:-14}
-      # 3D 导演台 iframe 地址（默认使用在线版；离线部署可改为自托管地址）
-      - DIRECTOR_DESK_URL=${DIRECTOR_DESK_URL:-https://xiaozangao.github.io/3d-director-desk/}
-      # 制片人审阅：外部素材目录（宿主机路径），留空则默认 /app/data/review_sources
-      - REVIEW_SOURCE_ROOTS=${REVIEW_SOURCE_ROOTS:-}
-      # 镜头审片：允许扫描/删除废弃视频的容器内根目录（对应上面的可写挂载 /app/shot_sources）
-      - SHOT_REVIEW_SOURCE_ROOTS=${SHOT_REVIEW_SOURCE_ROOTS:-/app/shot_sources}
-      # 镜头审片数据沉淀：markdown 归档（默认开启，写入 /app/data/review_archive）
-      - SHOT_REVIEW_ARCHIVE_ENABLED=${SHOT_REVIEW_ARCHIVE_ENABLED:-true}
-      - SHOT_REVIEW_ARCHIVE_DIR=${SHOT_REVIEW_ARCHIVE_DIR:-}
-      - SHOT_REVIEW_ARCHIVE_COPY_MEDIA=${SHOT_REVIEW_ARCHIVE_COPY_MEDIA:-true}
+      <<: [*container-env, *review-env]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10130/api/v1/system/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     extra_hosts:
       # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   celery-worker:
@@ -55,26 +66,17 @@ services:
     volumes:
       - ./data:/app/data
       - ${REVIEW_SOURCES_HOST_PATH:-./data/review_sources}:/app/external_sources:ro
+    env_file: .env
     environment:
-      - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
-      - REDIS_URL=redis://redis:6379/0
-      - ASSETS_DIR=/app/data/assets
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
-      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY:-}
-      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY:-}
-      - QINIU_BUCKET=${QINIU_BUCKET:-}
-      - QINIU_DOMAIN=${QINIU_DOMAIN:-}
-      - QINIU_AUDIT_EXPIRE_DAYS=${QINIU_AUDIT_EXPIRE_DAYS:-14}
-      # 即梦画布 CLI：HOME 指向挂载卷内的持久化目录，CLI 二进制（~/.local/bin/dreamina-canvas）
-      # 与登录凭据（~/.local/share/）在容器重建后不丢失（安装/登录引导见 设置 → 服务管理 → 即梦 CLI）
-      - HOME=/app/data/dreamina-home
-      # 制片人审阅：与 backend 共用同一外部素材目录配置
-      - REVIEW_SOURCE_ROOTS=${REVIEW_SOURCE_ROOTS:-}
+      <<: [*container-env, *review-env]
+      # 即梦画布 CLI：HOME 指向挂载卷内的持久化目录，CLI 二进制与登录凭据
+      # 在容器重建后不丢失（安装/登录引导见 设置 → 服务管理 → 即梦 CLI）
+      HOME: /app/data/dreamina-home
     extra_hosts:
-      # 让容器内可通过 host.docker.internal 访问宿主机服务（如本地部署的 AIGC API）
       - "host.docker.internal:host-gateway"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     command: sh -c "mkdir -p /app/data/dreamina-home && exec celery -A app.worker worker --loglevel=info --concurrency=4"
 
@@ -82,13 +84,12 @@ services:
     build: ./backend
     volumes:
       - ./data:/app/data
+    env_file: .env
     environment:
-      - DATABASE_URL=sqlite:///./data/db/aigc_studio.db
-      - REDIS_URL=redis://redis:6379/0
-      - BACKUP_DIR=/app/data/backups
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY 未设置，请先运行 deploy.sh 或 deploy.ps1 生成 .env}
+      <<: *container-env
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     command: celery -A app.worker beat --loglevel=info
 
@@ -96,6 +97,11 @@ services:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
 volumes:

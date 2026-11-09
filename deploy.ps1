@@ -95,6 +95,8 @@ if (-not (Test-Path .env)) {
     @"
 # 用于加密 API Key 的密钥（首次部署自动生成，请妥善保管，勿泄露）
 ENCRYPTION_KEY=$key
+
+# 可选配置见 .env.example；.env 由 docker-compose.yml 整体注入三个后端服务
 "@ | Set-Content -Path .env -Encoding UTF8
     Write-Info ".env 已生成"
 } else {
