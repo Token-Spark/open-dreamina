@@ -44,7 +44,7 @@ from ..schemas_shot_review import (
     ShotReviewSessionResponse,
     ShotReviewSessionUpdate,
 )
-from ..services.review_service import list_review_folders
+from ..services.review_common import list_review_folders
 from ..services.shot_review_service import (
     batch_update_items,
     bulk_delete_items,

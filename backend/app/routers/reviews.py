@@ -48,13 +48,13 @@ from ..services.review_service import (
     delete_session,
     get_item,
     get_session,
-    list_review_folders,
     list_sessions,
     resolve_item_file,
     scan_folder,
     update_item,
     update_session,
 )
+from ..services.review_common import list_review_folders
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 

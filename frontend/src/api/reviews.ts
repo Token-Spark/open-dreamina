@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { apiClient } from './client'
+import { createReviewApi } from './reviewCore'
+
+export type { ReviewScanResult } from './reviewCore'
 
 export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'needs_revision'
 
@@ -64,93 +66,37 @@ export interface ReviewFolderSubdir {
   subdirs?: ReviewFolderSubdir[]
 }
 
-export interface ReviewScanResult {
-  added: number
-  removed: number
-  total: number
-}
-
-export async function listReviewFolders(): Promise<ReviewFolderRoot[]> {
-  const { data } = await apiClient.get<{ roots: ReviewFolderRoot[] }>('/reviews/folders')
-  return data.roots
-}
-
-export async function listReviewSessions(): Promise<ReviewSession[]> {
-  const { data } = await apiClient.get<{ items: ReviewSession[] }>('/reviews/sessions')
-  return data.items
-}
-
-export async function createReviewSession(
-  title: string,
-  folderPath: string,
-): Promise<ReviewSession> {
-  const { data } = await apiClient.post<ReviewSession>('/reviews/sessions', {
-    title,
-    folder_path: folderPath,
-  })
-  return data
-}
-
-export async function getReviewSession(sessionId: string): Promise<ReviewSession> {
-  const { data } = await apiClient.get<ReviewSession>(`/reviews/sessions/${sessionId}`)
-  return data
-}
-
-export async function updateReviewSession(
-  sessionId: string,
-  payload: { title?: string; status?: ReviewSessionStatus },
-): Promise<ReviewSession> {
-  const { data } = await apiClient.patch<ReviewSession>(`/reviews/sessions/${sessionId}`, payload)
-  return data
-}
-
-export async function deleteReviewSession(sessionId: string): Promise<void> {
-  await apiClient.delete(`/reviews/sessions/${sessionId}`)
-}
-
-export async function rescanReviewSession(sessionId: string): Promise<ReviewScanResult> {
-  const { data } = await apiClient.post<ReviewScanResult>(`/reviews/sessions/${sessionId}/scan`)
-  return data
-}
-
-export async function listReviewItems(
-  sessionId: string,
-  status?: ReviewStatus,
-): Promise<ReviewItem[]> {
-  const { data } = await apiClient.get<ReviewItem[]>(
-    `/reviews/sessions/${sessionId}/items`,
-    { params: status ? { status } : undefined },
-  )
-  return data
-}
-
-export async function updateReviewItem(
-  itemId: string,
-  payload: { status?: ReviewStatus; feedback?: string },
-): Promise<ReviewItem> {
-  const { data } = await apiClient.patch<ReviewItem>(`/reviews/items/${itemId}`, payload)
-  return data
-}
-
 export interface BatchUpdateEntry {
   id: string
   status?: ReviewStatus
   feedback?: string
 }
 
-export async function batchUpdateReviewItems(
-  sessionId: string,
-  items: BatchUpdateEntry[],
-): Promise<{ updated: number; failed: number }> {
-  const { data } = await apiClient.post(`/reviews/sessions/${sessionId}/items/batch`, { items })
-  return data
-}
+export type ReviewItemPatch = { status?: ReviewStatus; feedback?: string }
 
-/** Public URL helpers (served by the backend review router). */
-export function reviewItemFileUrl(itemId: string): string {
-  return `/api/v1/reviews/items/${itemId}/file`
-}
+// 与镜头审片共用同一份 HTTP 实现，这里只描述差异。
+const core = createReviewApi<
+  ReviewSession,
+  ReviewItem,
+  ReviewFolderRoot,
+  ReviewItemPatch,
+  ReviewStatus,
+  ReviewSessionStatus
+>({
+  prefix: '/reviews',
+  createPathKey: 'folder_path',
+  listItemsParams: (status) => (status ? { status } : undefined),
+})
 
-export function reviewItemThumbnailUrl(itemId: string): string {
-  return `/api/v1/reviews/items/${itemId}/thumbnail`
-}
+export const listReviewFolders = core.listFolders
+export const listReviewSessions = core.listSessions
+export const createReviewSession = core.createSession
+export const getReviewSession = core.getSession
+export const updateReviewSession = core.updateSession
+export const deleteReviewSession = core.deleteSession
+export const rescanReviewSession = core.rescanSession
+export const listReviewItems = core.listItems
+export const updateReviewItem = core.updateItem
+export const batchUpdateReviewItems = core.batchUpdateItems
+export const reviewItemFileUrl = core.itemFileUrl
+export const reviewItemThumbnailUrl = core.itemThumbnailUrl

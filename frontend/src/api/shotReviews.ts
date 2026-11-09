@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { apiClient } from './client'
+import { createReviewApi } from './reviewCore'
 
 /** 评分档位：未打分待审 / 通过（≥70）/ 需重生成（60–69）/ 需重新设计（<60）。 */
 export type ShotVerdict = 'pending' | 'pass' | 'revise' | 'redesign'
@@ -112,90 +113,48 @@ export interface ShotReviewItemPatch {
   selected?: boolean
 }
 
-export async function listShotReviewFolders(): Promise<ShotReviewFolderRoot[]> {
-  const { data } = await apiClient.get<{ roots: ShotReviewFolderRoot[] }>('/shot-reviews/folders')
-  return data.roots
-}
-
-export async function listShotReviewSessions(): Promise<ShotReviewSession[]> {
-  const { data } = await apiClient.get<{ items: ShotReviewSession[] }>('/shot-reviews/sessions')
-  return data.items
-}
-
-export async function createShotReviewSession(
-  title: string,
-  rootPath: string,
-): Promise<ShotReviewSession> {
-  const { data } = await apiClient.post<ShotReviewSession>('/shot-reviews/sessions', {
-    title,
-    root_path: rootPath,
-  })
-  return data
-}
-
-export async function getShotReviewSession(sessionId: string): Promise<ShotReviewSession> {
-  const { data } = await apiClient.get<ShotReviewSession>(`/shot-reviews/sessions/${sessionId}`)
-  return data
-}
-
-export async function updateShotReviewSession(
-  sessionId: string,
-  payload: { title?: string; status?: ShotReviewSessionStatus },
-): Promise<ShotReviewSession> {
-  const { data } = await apiClient.patch<ShotReviewSession>(
-    `/shot-reviews/sessions/${sessionId}`,
-    payload,
-  )
-  return data
-}
-
-export async function deleteShotReviewSession(sessionId: string): Promise<void> {
-  await apiClient.delete(`/shot-reviews/sessions/${sessionId}`)
-}
-
-export async function rescanShotReviewSession(sessionId: string): Promise<ShotReviewScanResult> {
-  const { data } = await apiClient.post<ShotReviewScanResult>(
-    `/shot-reviews/sessions/${sessionId}/scan`,
-  )
-  return data
-}
-
-export async function listShotReviewItems(
-  sessionId: string,
-  filters?: { episode?: string; verdict?: ShotVerdict },
-): Promise<ShotReviewItem[]> {
-  const params: Record<string, string> = {}
-  if (filters?.episode) params.episode = filters.episode
-  if (filters?.verdict) params.verdict = filters.verdict
-  const { data } = await apiClient.get<ShotReviewItem[]>(
-    `/shot-reviews/sessions/${sessionId}/items`,
-    { params: Object.keys(params).length ? params : undefined },
-  )
-  return data
-}
-
-export async function updateShotReviewItem(
-  itemId: string,
-  payload: ShotReviewItemPatch,
-): Promise<ShotReviewItem> {
-  const { data } = await apiClient.patch<ShotReviewItem>(`/shot-reviews/items/${itemId}`, payload)
-  return data
-}
-
 export interface ShotReviewBatchEntry extends ShotReviewItemPatch {
   id: string
 }
 
-export async function batchUpdateShotReviewItems(
-  sessionId: string,
-  items: ShotReviewBatchEntry[],
-): Promise<{ updated: number; failed: number }> {
-  const { data } = await apiClient.post(`/shot-reviews/sessions/${sessionId}/items/batch`, {
-    items,
-  })
-  return data
+export interface ShotReviewItemFilters {
+  episode?: string
+  verdict?: ShotVerdict
 }
 
+// 与制片人审阅共用同一份 HTTP 实现，这里只描述差异。
+const core = createReviewApi<
+  ShotReviewSession,
+  ShotReviewItem,
+  ShotReviewFolderRoot,
+  ShotReviewItemPatch,
+  ShotReviewItemFilters,
+  ShotReviewSessionStatus
+>({
+  prefix: '/shot-reviews',
+  createPathKey: 'root_path',
+  listItemsParams: (filters) => {
+    const params: Record<string, string> = {}
+    if (filters.episode) params.episode = filters.episode
+    if (filters.verdict) params.verdict = filters.verdict
+    return Object.keys(params).length ? params : undefined
+  },
+})
+
+export const listShotReviewFolders = core.listFolders
+export const listShotReviewSessions = core.listSessions
+export const createShotReviewSession = core.createSession
+export const getShotReviewSession = core.getSession
+export const updateShotReviewSession = core.updateSession
+export const deleteShotReviewSession = core.deleteSession
+export const rescanShotReviewSession = core.rescanSession
+export const listShotReviewItems = core.listItems
+export const updateShotReviewItem = core.updateItem
+export const batchUpdateShotReviewItems = core.batchUpdateItems
+export const shotReviewItemFileUrl = core.itemFileUrl
+export const shotReviewItemThumbnailUrl = core.itemThumbnailUrl
+
+// 以下为镜头审片独有：删除废弃版本，可连带物理删除磁盘视频。
 export interface ShotReviewBulkDeleteResult {
   deleted: number
   failed: number
@@ -230,13 +189,4 @@ export async function deleteShotReviewItem(
     { params: deleteFile ? { delete_file: true } : undefined },
   )
   return data
-}
-
-/** Public URL helpers (served by the backend shot review router). */
-export function shotReviewItemFileUrl(itemId: string): string {
-  return `/api/v1/shot-reviews/items/${itemId}/file`
-}
-
-export function shotReviewItemThumbnailUrl(itemId: string): string {
-  return `/api/v1/shot-reviews/items/${itemId}/thumbnail`
 }

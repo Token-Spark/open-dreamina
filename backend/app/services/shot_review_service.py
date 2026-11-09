@@ -38,14 +38,14 @@ from ..models import ShotReviewItem, ShotReviewSession
 from ..utils.file_utils import detect_mime_type
 from ..utils.time_utils import now_iso as _now_iso
 from . import shot_review_archive as _archive
-from .review_service import (
-    _delete_thumbnail_file,
-    _generate_review_thumbnail,
-    _is_within,
-    _probe_media_meta,
-    _resolve_thumbnail_path,
-    _thumb_base_path,
+from .review_common import (
+    delete_thumbnail_file as _delete_thumbnail_file,
+    generate_review_thumbnail as _generate_review_thumbnail,
     is_shot_path_allowed,
+    is_within as _is_within,
+    probe_media_meta as _probe_media_meta,
+    resolve_thumbnail_path as _resolve_thumbnail_path,
+    thumb_base_path as _thumb_base_path,
 )
 from .shot_script_meta import (
     EPISODE_DIR_RE,
