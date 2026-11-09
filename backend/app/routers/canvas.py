@@ -31,7 +31,6 @@ from ..canvas_service import (
     duplicate_canvas,
     get_canvas,
     get_latest_doc_meta,
-    get_template,
     list_canvases,
     list_templates,
     list_versions,
@@ -155,14 +154,22 @@ def create_canvas_endpoint(
             detail={"code": "invalid_template",
                     "message": f"模板 {payload.template_id} 不存在"},
         )
-    canvas = create_canvas(
-        db,
-        name=payload.name,
-        description=payload.description,
-        tags=payload.tags,
-        template_id=payload.template_id,
-        document=payload.document,
-    )
+    try:
+        canvas = create_canvas(
+            db,
+            name=payload.name,
+            description=payload.description,
+            tags=payload.tags,
+            template_id=payload.template_id,
+            document=payload.document,
+        )
+    except CanvasValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "validation_error",
+                    "message": str(e),
+                    "errors": e.errors},
+        )
     doc = load_latest_document(db, canvas.id)
     return _to_detail(canvas, doc)
 
@@ -315,6 +322,8 @@ def save_document_endpoint(
                     "errors": e.errors},
         )
     doc = load_latest_document(db, canvas_id)
+    # 业务规则只作为「待完善项」回传，绝不让未完成的工作图保存失败。
+    issues = validate_document(payload.document.model_dump())
     return CanvasDocumentResponse(
         version=new_version,
         document=CanvasDocumentPayload(**{
@@ -326,6 +335,7 @@ def save_document_endpoint(
         actor=payload.actor,
         actor_name=payload.actor_name,
         change_summary=payload.change_summary,
+        issues=issues,
     )
 
 

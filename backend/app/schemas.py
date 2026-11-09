@@ -529,13 +529,17 @@ class CanvasDetail(BaseModel):
 
 
 class CanvasDocumentResponse(BaseModel):
-    """文档读接口返回：带 version。"""
+    """文档读接口返回：带 version。
+
+    ``issues`` 是保存后的业务校验提示（待完善项），只提示不阻断写入。
+    """
     version: int
     document: CanvasDocumentPayload
     actor: str = "user"
     actor_name: str = ""
     change_summary: str = ""
     created_at: Optional[str] = None
+    issues: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CanvasDocumentSave(BaseModel):
@@ -575,6 +579,7 @@ class CanvasOperationResult(BaseModel):
     version: int
     applied: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[dict[str, Any]] = Field(default_factory=list)
+    issues: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CanvasValidationItem(BaseModel):

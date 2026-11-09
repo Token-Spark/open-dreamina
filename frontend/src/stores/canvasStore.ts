@@ -28,6 +28,8 @@ interface CanvasState {
   viewport: { x: number; y: number; zoom: number }
   /** 是否有未保存的修改 */
   isDirty: boolean
+  /** 每次本地写操作递增；保存返回时用它判断期间是否又产生了新编辑 */
+  revision: number
 
   setCanvas: (canvasId: string, doc: CanvasDocumentPayload, version: number) => void
   setNodes: (nodes: CanvasNode[]) => void
@@ -39,7 +41,10 @@ interface CanvasState {
   addEdge: (edge: CanvasEdge) => void
   removeEdge: (edgeId: string) => void
   setViewport: (viewport: { x: number; y: number; zoom: number }) => void
-  markSaved: (version: number) => void
+  /** 保存成功：只有发起保存后没有新编辑时才清脏标记 */
+  markSaved: (version: number, savedRevision: number) => void
+  /** 409 冲突后把基线对齐到服务端最新版本，不动本地文档 */
+  setVersion: (version: number) => void
   reset: () => void
 }
 
@@ -50,6 +55,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
   isDirty: false,
+  revision: 0,
 
   setCanvas: (canvasId, doc, version) =>
     set(() => ({
@@ -61,12 +67,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       isDirty: false,
     })),
 
-  setNodes: (nodes) => set({ nodes, isDirty: true }),
+  setNodes: (nodes) => set((s) => ({ nodes, isDirty: true, revision: s.revision + 1 })),
 
-  setEdges: (edges) => set({ edges, isDirty: true }),
+  setEdges: (edges) => set((s) => ({ edges, isDirty: true, revision: s.revision + 1 })),
 
   addNode: (node) =>
-    set((s) => ({ nodes: [...s.nodes, node], isDirty: true })),
+    set((s) => ({ nodes: [...s.nodes, node], isDirty: true, revision: s.revision + 1 })),
 
   removeNode: (nodeId) =>
     set((s) => ({
@@ -75,6 +81,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         (e) => e.source !== nodeId && e.target !== nodeId,
       ),
       isDirty: true,
+      revision: s.revision + 1,
     })),
 
   updateNodeData: (nodeId, patch) =>
@@ -83,6 +90,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n,
       ),
       isDirty: true,
+      revision: s.revision + 1,
     })),
 
   setNodePosition: (nodeId, position) =>
@@ -91,20 +99,29 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         n.id === nodeId ? { ...n, position } : n,
       ),
       isDirty: true,
+      revision: s.revision + 1,
     })),
 
   addEdge: (edge) =>
-    set((s) => ({ edges: [...s.edges, edge], isDirty: true })),
+    set((s) => ({ edges: [...s.edges, edge], isDirty: true, revision: s.revision + 1 })),
 
   removeEdge: (edgeId) =>
     set((s) => ({
       edges: s.edges.filter((e) => e.id !== edgeId),
       isDirty: true,
+      revision: s.revision + 1,
     })),
 
-  setViewport: (viewport) => set({ viewport, isDirty: true }),
+  setViewport: (viewport) =>
+    set((s) => ({ viewport, isDirty: true, revision: s.revision + 1 })),
 
-  markSaved: (version) => set({ version, isDirty: false }),
+  markSaved: (version, savedRevision) =>
+    set((s) => ({
+      version,
+      isDirty: s.revision === savedRevision ? false : s.isDirty,
+    })),
+
+  setVersion: (version) => set({ version }),
 
   reset: () =>
     set({
@@ -114,5 +131,6 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 },
       isDirty: false,
+      revision: 0,
     }),
 }))

@@ -69,6 +69,8 @@ export interface CanvasDocumentResponse {
   actor_name: string
   change_summary: string
   created_at: string | null
+  /** 保存后的业务「待完善项」，只提示不阻断写入 */
+  issues: CanvasValidationItem[]
 }
 
 export interface CanvasCreate {
@@ -111,6 +113,7 @@ export interface CanvasOperationResult {
   version: number
   applied: Record<string, unknown>[]
   warnings: Record<string, unknown>[]
+  issues: CanvasValidationItem[]
 }
 
 export interface CanvasValidationItem {

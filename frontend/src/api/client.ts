@@ -26,6 +26,8 @@ export interface ApiError {
   message: string
   detail?: string
   statusCode?: number
+  /** 原始 detail，供需要结构化字段（如 current_version、errors）的调用方读取 */
+  rawDetail?: unknown
 }
 
 /**
@@ -46,10 +48,23 @@ function detailToMessage(detail: unknown): string | undefined {
       .filter((m): m is string => typeof m === 'string' && m.length > 0)
     if (msgs.length) return msgs.join('；')
   }
-  // 后端自定义错误：{ code, message }
-  if (typeof detail === 'object') {
-    const msg = (detail as { message?: unknown }).message
-    if (typeof msg === 'string' && msg.length > 0) return msg
+  // 后端自定义错误：{ code, message, errors? }
+  // 带上头两条具体原因，避免只显示「校验失败: 3 个错误」这类无信息量提示。
+  if (typeof detail === 'object' && !Array.isArray(detail)) {
+    const obj = detail as { message?: unknown; errors?: unknown }
+    const msg = typeof obj.message === 'string' && obj.message.length > 0 ? obj.message : undefined
+    if (msg) {
+      const parts = Array.isArray(obj.errors)
+        ? obj.errors
+            .map((item) =>
+              typeof item === 'object' && item !== null
+                ? (item as { message?: unknown }).message
+                : undefined,
+            )
+            .filter((item): item is string => typeof item === 'string' && item.length > 0)
+        : []
+      return parts.length ? `${msg}：${parts.slice(0, 2).join('；')}` : msg
+    }
   }
   try {
     return JSON.stringify(detail)
@@ -69,6 +84,7 @@ export function toApiError(err: unknown): ApiError {
         ax.message ??
         '请求失败',
       statusCode: ax.response?.status,
+      rawDetail: ax.response?.data?.detail,
     }
   }
   if (err instanceof Error) return { message: err.message }

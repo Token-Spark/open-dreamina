@@ -21,7 +21,8 @@ import { useTaskStore } from '@/stores/taskStore'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
 import { cn } from '@/lib/utils'
-import { deriveEdgeRefAssets, mergeRefAssets } from '@/lib/canvasRefAssets'
+import { deriveEdgeRefAssets, deriveEdgePrompt, mergeRefAssets } from '@/lib/canvasRefAssets'
+import { inputPorts, outputPorts, useNodeSpecs } from '@/lib/canvasNodeSpecs'
 import { ImageLightbox, type LightboxItem } from '@/components/ImageLightbox'
 
 interface GenerationNodeData extends Record<string, unknown> {
@@ -57,7 +58,15 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
   const [submitting, setSubmitting] = useState(false)
   const [lightboxItem, setLightboxItem] = useState<LightboxItem | null>(null)
 
+  const specs = useNodeSpecs()
   const prompt = nodeData.prompt ?? ''
+  // 连线到 prompt 端口的上游文本作为回退：本地填了提示词就以本地为准，
+  // 没填则使用上游提示词节点，避免「连了线却不起作用」。
+  const edgePrompt = useMemo(
+    () => deriveEdgePrompt(edges, allNodes, id),
+    [edges, allNodes, id],
+  )
+  const effectivePrompt = prompt.trim() ? prompt : (edgePrompt ?? '')
   const providerSlug = nodeData.provider ?? ''
   const modelId = nodeData.model_id ?? ''
   const params = nodeData.params ?? defaultParamsForType(mode === 'image' ? 'text2img' : 'text2video')
@@ -122,7 +131,7 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
   }, [id, live.status, live.progress, live.error, live.data.resultUrl, live.data.resultUrls, updateNodeData])
 
   async function generate() {
-    if (!prompt.trim()) return toast('请输入提示词', 'error')
+    if (!effectivePrompt.trim()) return toast('请输入提示词，或连接一个提示词节点', 'error')
     if (!providerSlug || !modelId) return toast('请选择可用模型', 'error')
     // Spark Hub Seedance：参考素材须全部审核通过才能生成
     if (!checkAuditGate(refAssets)) return
@@ -141,7 +150,7 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
         type: taskType,
         provider: providerSlug,
         model_id: modelId,
-        prompt,
+        prompt: effectivePrompt,
         params: sendParams,
         input_asset_id: assetIds[0] ?? undefined,
         input_asset_ids: hasRef ? assetIds : undefined,
@@ -188,7 +197,20 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
         selected && 'ring-2 ring-accent/50',
       )}
     >
-      <Handle id="ref" type="target" position={Position.Left} className="h-3 w-3 border-2 border-bg-secondary bg-fg-muted" />
+      {inputPorts(specs, nodeType).map((port, index) => (
+        <Handle
+          key={port.id}
+          id={port.id}
+          type="target"
+          position={Position.Left}
+          title={`${port.id} · ${port.types.join(' / ')}`}
+          className={cn(
+            'h-3 w-3 border-2 border-bg-secondary',
+            port.types.includes('text') ? 'bg-purple-400' : 'bg-fg-muted',
+          )}
+          style={{ top: `${26 + index * 22}px` }}
+        />
+      ))}
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-2 text-sm font-medium text-fg-primary">
           <Icon className="h-4 w-4 text-fg-secondary" />
@@ -196,6 +218,12 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
         </div>
         <NodeStatus status={status} />
       </div>
+
+      {edgePrompt && !prompt.trim() && (
+        <div className="border-b border-border px-3 py-1.5 text-[11px] text-fg-muted">
+          提示词来自上游节点（在下方填写可覆盖）
+        </div>
+      )}
 
       {resultUrls.length > 0 && status === 'completed' && (
         <div className="border-b border-border bg-bg-primary/40 p-3">
@@ -282,7 +310,16 @@ export function CanvasGenerationNode({ id, data, selected }: NodeProps) {
           atConcurrencyLimit={false}
         />
       </div>
-      <Handle id="out" type="source" position={Position.Right} className="h-3 w-3 border-2 border-bg-secondary bg-accent" />
+      {outputPorts(specs, nodeType).map((port) => (
+        <Handle
+          key={port.id}
+          id={port.id}
+          type="source"
+          position={Position.Right}
+          title={`${port.id} · ${port.types.join(' / ')}`}
+          className="h-3 w-3 border-2 border-bg-secondary bg-accent"
+        />
+      ))}
 
       <ImageLightbox
         item={lightboxItem}

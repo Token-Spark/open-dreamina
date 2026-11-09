@@ -16,8 +16,9 @@
 
 职责分离：
 - 本模块管「文档是什么」（CRUD / 乐观锁 / operations）
-- canvas_run_service 管「怎么跑」（P1）
-- canvas_graph / canvas_validate 是纯函数，无 DB 依赖
+- canvas_validate.validate_structure 只保证文档可读可渲染，是唯一能阻断保存的校验
+- canvas_validate.validate_document 给出业务「待完善项」，随保存结果返回但不阻断
+- canvas_graph 是纯函数，无 DB 依赖
 """
 from __future__ import annotations
 
@@ -29,8 +30,8 @@ from typing import Any
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
-from .canvas_graph import _find_node, edges_to_port
-from .canvas_validate import validate_document
+from .canvas_graph import _find_node
+from .canvas_validate import validate_document, validate_structure
 from .models import Canvas, CanvasDocument, Conversation
 from .utils.time_utils import now_iso as _now
 
@@ -158,11 +159,11 @@ class VersionConflict(Exception):
 
 
 class CanvasValidationError(Exception):
-    """结构校验未通过。"""
+    """结构校验未通过（唯一会阻断写入的校验失败）。"""
 
     def __init__(self, errors: list[dict[str, Any]]):
         self.errors = errors
-        super().__init__(f"校验失败: {len(errors)} 个错误")
+        super().__init__(f"文档结构有误: {len(errors)} 处，请检查节点与连线")
 
 
 class CanvasOperationError(Exception):
@@ -210,6 +211,13 @@ def create_canvas(
     doc.setdefault("viewport", {"x": 0, "y": 0, "zoom": 1})
     doc.setdefault("nodes", [])
     doc.setdefault("edges", [])
+
+    # 创建入口与保存入口必须走同一套结构校验，否则可以绕过校验写入畸形文档。
+    # 这里只拦结构问题；模板里的空 provider / 空提示词属于合法的初始草稿。
+    errors = validate_structure(doc)
+    if errors:
+        db.rollback()
+        raise CanvasValidationError(errors)
 
     version = CanvasDocument(
         id=str(uuid.uuid4()),
@@ -359,7 +367,13 @@ def save_document(
     actor_name: str = "",
     change_summary: str = "",
 ) -> int:
-    """全量保存文档（乐观锁）。返回新版本号。"""
+    """全量保存文档（乐观锁 + 原子 CAS）。返回新版本号。
+
+    画布是编辑器：用户正在搭建、尚未填完的工作图必须能落库。因此本层只做
+    ``validate_structure``（防止文档无法读取 / 渲染），业务规则（缺提示词、
+    缺模型、端口类型不匹配等）由路由层以 ``issues`` 返回给前端提示，
+    不再阻断自动保存。
+    """
     canvas = db.get(Canvas, canvas_id)
     if not canvas:
         raise ValueError(f"画布 {canvas_id} 不存在")
@@ -367,12 +381,35 @@ def save_document(
     if base_version != canvas.version:
         raise VersionConflict(current=canvas.version, yours=base_version)
 
-    errors = validate_document(document)
-    error_items = [e for e in errors if e["level"] == "error"]
-    if error_items:
-        raise CanvasValidationError(error_items)
+    errors = validate_structure(document)
+    if errors:
+        raise CanvasValidationError(errors)
 
-    new_version = canvas.version + 1
+    nodes = document.get("nodes", [])
+    node_count = len(nodes) if isinstance(nodes, list) else 0
+    new_version = base_version + 1
+
+    # 原子 CAS：并发保存时只有一个请求能推进版本，避免两个请求都通过上面的
+    # 读检查后撞 (canvas_id, version) 唯一索引，把可恢复的冲突变成 500。
+    updated = (
+        db.query(Canvas)
+        .filter(Canvas.id == canvas_id, Canvas.version == base_version)
+        .update(
+            {
+                Canvas.version: new_version,
+                Canvas.node_count: node_count,
+                Canvas.updated_at: _now(),
+            },
+            synchronize_session=False,
+        )
+    )
+    if updated != 1:
+        db.rollback()
+        fresh = db.get(Canvas, canvas_id)
+        raise VersionConflict(
+            current=fresh.version if fresh else -1, yours=base_version
+        )
+
     doc = CanvasDocument(
         id=str(uuid.uuid4()),
         canvas_id=canvas_id,
@@ -383,11 +420,7 @@ def save_document(
         change_summary=change_summary or "保存文档",
     )
     db.add(doc)
-    canvas.version = new_version
-    canvas.node_count = len(document.get("nodes", []))
-    canvas.updated_at = _now()
     db.commit()
-    db.refresh(canvas)
 
     _prune_old_documents(db, canvas_id)
     return new_version
@@ -467,9 +500,10 @@ def apply_operations(
     actor_name: str,
     summary: str,
 ) -> dict[str, Any]:
-    """事务化应用增量操作：CAS 检查 → 逐条应用 → 全图校验 → 落新版本。
+    """事务化应用增量操作：CAS 检查 → 逐条应用 → 结构校验 → 落新版本。
 
-    任一操作非法则整体回滚，绝不留下半成品文档。
+    任一操作非法或文档结构损坏则整体回滚，绝不留下半成品文档。
+    业务规则以 ``issues`` 返回，不阻断写入（与 save_document 保持一致）。
     """
     canvas = get_canvas(db, canvas_id)
     if not canvas:
@@ -500,11 +534,14 @@ def apply_operations(
                 canvas.tags_json = json.dumps(
                     result["tags"], ensure_ascii=False)
 
-    # 全图校验
-    errors = validate_document(working)
-    error_items = [e for e in errors if e["level"] == "error"]
-    if error_items:
-        raise CanvasValidationError(error_items)
+    # 结构校验（唯一阻断项）。set_canvas_meta 可能已经改过 ORM 实体，
+    # 失败时必须显式回滚，否则脏元数据会随下一次 commit 被写入。
+    errors = validate_structure(working)
+    if errors:
+        db.rollback()
+        raise CanvasValidationError(errors)
+
+    issues = validate_document(working)
 
     # 落新版本
     new_version = canvas.version + 1
@@ -526,8 +563,13 @@ def apply_operations(
 
     _prune_old_documents(db, canvas_id)
 
-    warnings = [e for e in errors if e["level"] == "warning"]
-    return {"version": new_version, "applied": applied, "warnings": warnings}
+    warnings = [e for e in issues if e["level"] == "warning"]
+    return {
+        "version": new_version,
+        "applied": applied,
+        "warnings": warnings,
+        "issues": issues,
+    }
 
 
 # ---------------- 操作处理器（表驱动分派） ----------------

@@ -24,6 +24,7 @@ import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
 import { PromptFullscreenEditor } from '@/components/PromptFullscreenEditor'
 import { toast } from '@/stores/uiStore'
 import { toApiError } from '@/api/client'
+import { inputPorts, outputPorts, useNodeSpecs } from '@/lib/canvasNodeSpecs'
 
 const NODE_ICONS: Record<string, typeof ImageIcon> = {
   asset: ImageIcon,
@@ -52,15 +53,8 @@ const NODE_COLORS: Record<string, string> = {
   note: 'border-gray-500/40 bg-gray-500/5',
 }
 
-const NODE_PORT_SPECS: Record<
-  string,
-  { inputs: { id: string }[]; outputs: { id: string }[] }
-> = {
-  asset: { inputs: [], outputs: [{ id: 'out' }] },
-  prompt: { inputs: [{ id: 'in' }], outputs: [{ id: 'out' }] },
-  preview: { inputs: [{ id: 'in' }], outputs: [] },
-  note: { inputs: [], outputs: [] },
-}
+// 端口定义以后端 /canvas/node-specs 为单一真源，见 lib/canvasNodeSpecs.ts。
+// 这里不再维护第二份端口表，避免与后端校验规则漂移。
 
 /** 音频预览：点击播放/暂停，带进度条。 */
 function AudioPreview({ src, className }: { src: string; className?: string }) {
@@ -121,7 +115,9 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
   const Icon = NODE_ICONS[nodeType] ?? StickyNote
   const label = NODE_LABELS[nodeType] ?? nodeType
   const colorClass = NODE_COLORS[nodeType] ?? ''
-  const portSpec = NODE_PORT_SPECS[nodeType] ?? { inputs: [], outputs: [] }
+  const specs = useNodeSpecs()
+  const inputs = inputPorts(specs, nodeType)
+  const outputs = outputPorts(specs, nodeType)
   const updateNodeData = useCanvasStore((state) => state.updateNodeData)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [directorOpen, setDirectorOpen] = useState(false)
@@ -197,7 +193,7 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
         selected && 'ring-2 ring-accent/50',
       )}
     >
-      {portSpec.inputs.map((port, index) => (
+      {inputs.map((port, index) => (
         <Handle
           key={port.id}
           id={port.id}
@@ -326,7 +322,7 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
         />
       )}
 
-      {portSpec.outputs.map((port) => (
+      {outputs.map((port) => (
         <Handle
           key={port.id}
           id={port.id}
