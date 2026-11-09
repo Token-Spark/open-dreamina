@@ -105,7 +105,10 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
         kwargs["width"] = width
         kwargs["height"] = height
         payload = self._build_create_payload(prompt, kwargs)
-        result = await self._run_task(payload, self._extract_result_urls, self._result_mime())
+        result = await self._run_task(
+            payload, self._extract_result_urls, self._result_mime(),
+            submit_id=kwargs.get("submit_id"),
+        )
         # 用真实字节嗅探更准确的 MIME（jpeg/png），并同步到多图 files
         from .sparkhub_base import _detect_mime
         result.mime_type = _detect_mime(result.file_bytes)
@@ -128,7 +131,10 @@ class SparkHubSeedreamProvider(SparkHubBaseProvider):
         kwargs["width"] = kwargs.get("width") or 1024
         kwargs["height"] = kwargs.get("height") or 1024
         payload = self._build_create_payload(prompt, kwargs)
-        result = await self._run_task(payload, self._extract_result_urls, self._result_mime())
+        result = await self._run_task(
+            payload, self._extract_result_urls, self._result_mime(),
+            submit_id=kwargs.get("submit_id"),
+        )
         from .sparkhub_base import _detect_mime
         result.mime_type = _detect_mime(result.file_bytes)
         result.files = [(b, _detect_mime(b)) for b, _ in result.files]

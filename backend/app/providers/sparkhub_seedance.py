@@ -184,7 +184,10 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
         # 需回填，否则 _build_create_payload 读取不到并退化为默认 5 秒。
         kwargs["duration"] = duration
         payload = self._build_create_payload(prompt, kwargs)
-        return await self._run_task(payload, self._extract_result_urls, self._result_mime())
+        return await self._run_task(
+            payload, self._extract_result_urls, self._result_mime(),
+            submit_id=kwargs.get("submit_id"),
+        )
 
     async def image_to_video(
         self,
@@ -213,7 +216,10 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
         legacy_url = kwargs.get("image_url")
         if legacy_url and not kwargs.get("image_urls"):
             payload.setdefault("image_urls", []).append(legacy_url)
-        return await self._run_task(payload, self._extract_result_urls, self._result_mime())
+        return await self._run_task(
+            payload, self._extract_result_urls, self._result_mime(),
+            submit_id=kwargs.get("submit_id"),
+        )
 
     async def text_to_image(
         self,

@@ -255,10 +255,11 @@ class SparkHubBaseProvider(BaseProvider, ABC):
                     task_id, status, json.dumps(data, ensure_ascii=False)[:2000],
                 )
                 err = await self._failure_detail(client, data, task_id)
+                # 上游已给出终态失败：不携带 submit_id。否则 worker 会把该 id
+                # 落库，用户点重试时只会反复查询同一个失败任务，永远无法重新生成。
                 raise ProviderError(
                     f"Spark Hub 任务 {task_id} 未成功（status={status}）"
-                    f"{('：' + err) if err else ''}",
-                    submit_id=task_id,
+                    f"{('：' + err) if err else ''}"
                 )
             if not status:
                 # 状态字段缺失可能意味着结构差异，保守推进轮询
@@ -322,28 +323,40 @@ class SparkHubBaseProvider(BaseProvider, ABC):
         payload: dict[str, Any],
         pick_urls: Callable[[dict[str, Any]], list[str]],
         mime_type: str,
+        submit_id: str | None = None,
     ) -> GenerationResult:
         """提交任务并等待结果，构造 GenerationResult。
 
-        下载全部结果 URL（生图多图时返回多张；生视频通常仅 1 个 URL）。
+        submit_id 非空时跳过 create_task，直接续查已有上游任务：用于上一轮
+        轮询超时 / 结果下载失败后重试，避免重复提交造成二次扣费。
         """
         client = get_async_client()
-        task_id = await self._submit(client, payload)
-        polled = await self._poll(client, task_id)
+        if submit_id:
+            task_id = str(submit_id)
+            logger.info("Spark Hub 断点续查: task_id=%s", task_id)
+        else:
+            task_id = await self._submit(client, payload)
 
-        urls = pick_urls(polled)
-        if not urls:
-            raise ProviderError(f"Spark Hub 任务 {task_id} 成功但未返回结果 URL：{polled}")
-        files: list[tuple[bytes, str]] = []
-        for url in urls:
-            file_bytes = await self._download(url)
-            files.append((file_bytes, mime_type))
-        return GenerationResult(
-            file_bytes=files[0][0],
-            mime_type=mime_type,
-            metadata={"model": payload.get("api_name", ""), "task_id": task_id, "urls": urls},
-            files=files,
-        )
+        try:
+            polled = await self._poll(client, task_id)
+            urls = pick_urls(polled)
+            if not urls:
+                raise ProviderError(f"Spark Hub 任务 {task_id} 成功但未返回结果 URL：{polled}")
+            files: list[tuple[bytes, str]] = []
+            for url in urls:
+                files.append((await self._download(url), mime_type))
+            return GenerationResult(
+                file_bytes=files[0][0],
+                mime_type=mime_type,
+                metadata={"model": payload.get("api_name", ""), "task_id": task_id, "urls": urls},
+                files=files,
+            )
+        except ProviderError:
+            # 由抛出方决定是否可续查（超时带 submit_id，上游终态失败不带）
+            raise
+        except Exception as exc:
+            # 结果下载等环节的意外失败：任务在上游已存在，必须让 worker 记住 id
+            raise ProviderError(f"{type(exc).__name__}: {exc}", submit_id=task_id) from exc
 
     # ---------- 抽象方法由子类实现 ----------
 

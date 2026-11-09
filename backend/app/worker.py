@@ -479,6 +479,8 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             if task:
                 task_params: dict[str, Any] = json.loads(task.params_json or "{}")
                 task_params["result_asset_ids"] = asset_ids
+                # 本轮已成功，清掉断点续查标记，避免后续流程误用旧的上游任务号
+                task_params.pop("submit_id", None)
                 task.params_json = json.dumps(task_params, ensure_ascii=False)
 
         # 从 Provider 元数据提取 token 用量与费用，回填任务记录（需求：任务中心展示 token 信息）

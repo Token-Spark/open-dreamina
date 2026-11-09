@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -32,6 +33,8 @@ import httpx
 
 from .base import BaseProvider, GenerationResult, ProviderError
 from ..utils.http_client import get_async_client
+
+logger = logging.getLogger(__name__)
 
 # 火山引擎官方 API 域名：base_url 指向它时，video_url 已是公网 CDN，无需改写
 _ARK_OFFICIAL_HOST = "ark.cn-beijing.volces.com"
@@ -204,7 +207,9 @@ class SeedanceProvider(BaseProvider):
             await asyncio.sleep(self._POLL_INTERVAL)
             elapsed += self._POLL_INTERVAL
         raise ProviderError(
-            f"Seedance 任务 {task_id} 轮询超时（>{int(self._POLL_TIMEOUT)}s）"
+            f"Seedance 任务 {task_id} 轮询超时（>{int(self._POLL_TIMEOUT)}s）。"
+            "重试将从已有任务断点续查，不会重复提交",
+            submit_id=task_id,
         )
 
     def _resolve_download_url(self, video_url: str) -> str:
@@ -243,41 +248,57 @@ class SeedanceProvider(BaseProvider):
         params = self._build_params(kwargs)
 
         client = get_async_client()
-        task_id = await self._create_task(client, model_id, content, params)
-        result = await self._poll_task(client, task_id)
+        # 断点续查：上一轮轮询超时 / 下载失败后，上游任务仍然存在，
+        # 直接用已落库的 task_id 继续查询，避免重新 create_task 二次扣费。
+        resume_id = kwargs.get("submit_id")
+        if resume_id:
+            task_id = str(resume_id)
+            logger.info("Seedance 断点续查: task_id=%s", task_id)
+        else:
+            task_id = await self._create_task(client, model_id, content, params)
 
-        status = result.get("status")
-        if status != "succeeded":
-            err = result.get("error") or {}
-            code = err.get("code") if isinstance(err, dict) else None
-            message = err.get("message") if isinstance(err, dict) else None
-            raise ProviderError(
-                f"Seedance 任务 {task_id} 未成功（status={status}"
-                + (f", code={code}" if code else "")
-                + (f"）: {message}" if message else "）")
+        try:
+            result = await self._poll_task(client, task_id)
+
+            status = result.get("status")
+            if status != "succeeded":
+                # 上游终态失败：不携带 submit_id，让用户重试时能重新提交任务
+                err = result.get("error") or {}
+                code = err.get("code") if isinstance(err, dict) else None
+                message = err.get("message") if isinstance(err, dict) else None
+                raise ProviderError(
+                    f"Seedance 任务 {task_id} 未成功（status={status}"
+                    + (f", code={code}" if code else "")
+                    + (f"）: {message}" if message else "）")
+                )
+
+            video_url = (result.get("content") or {}).get("video_url")
+            if not video_url:
+                raise ProviderError(f"Seedance 任务 {task_id} 成功但未返回 video_url")
+            video_bytes = await self._download_video(video_url)
+
+            metadata: dict[str, Any] = {
+                "model": model_id,
+                "task_id": task_id,
+            }
+            for k in ("seed", "resolution", "ratio", "duration"):
+                if k in result:
+                    metadata[k] = result[k]
+            usage = result.get("usage") or {}
+            total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
+            if isinstance(total_tokens, (int, float)) and total_tokens >= 0:
+                metadata["tokens_used"] = int(total_tokens)
+            return GenerationResult(
+                file_bytes=video_bytes,
+                mime_type="video/mp4",
+                metadata=metadata,
             )
-
-        video_url = (result.get("content") or {}).get("video_url")
-        if not video_url:
-            raise ProviderError(f"Seedance 任务 {task_id} 成功但未返回 video_url")
-        video_bytes = await self._download_video(video_url)
-
-        metadata: dict[str, Any] = {
-            "model": model_id,
-            "task_id": task_id,
-        }
-        for k in ("seed", "resolution", "ratio", "duration"):
-            if k in result:
-                metadata[k] = result[k]
-        usage = result.get("usage") or {}
-        total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
-        if isinstance(total_tokens, (int, float)) and total_tokens >= 0:
-            metadata["tokens_used"] = int(total_tokens)
-        return GenerationResult(
-            file_bytes=video_bytes,
-            mime_type="video/mp4",
-            metadata=metadata,
-        )
+        except ProviderError:
+            # 由抛出方决定是否可续查（超时带 submit_id，终态失败不带）
+            raise
+        except Exception as exc:
+            # 下载等环节的意外失败：任务已在上游，必须让 worker 记住 id
+            raise ProviderError(f"{type(exc).__name__}: {exc}", submit_id=task_id) from exc
 
     async def text_to_video(
         self,
