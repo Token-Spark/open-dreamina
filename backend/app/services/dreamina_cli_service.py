@@ -19,9 +19,11 @@
   因此本模块所有函数都以 Celery 任务形式调度到 worker 执行，API 层只做转发。
 - 官方已用「即梦画布 CLI」（命令名 dreamina-canvas）替换旧版即梦 CLI（dreamina），
   安装脚本为 `curl -fsSL https://jimeng.jianying.com/canvas-cli/install.sh | bash`。
-- 登录：`dreamina-canvas --non-interactive auth login` 返回 device flow 授权材料
+- 登录：`dreamina-canvas auth login` 返回 device flow 授权材料
   （deviceCode / userCode / verificationUriComplete），由用户在浏览器完成授权；
-  完成检测以 `auth account` 能否返回账号信息为准（服务端认可的最终判据）。
+  随后必须用 `auth wait --device-code <code>` 换取本地凭据（不做这一步，
+  用户即使在浏览器授权成功，`auth status` 仍显示未登录）；
+  最终以 `auth account` 能否返回账号信息作为服务端认可的判据。
 - 登录会话信息临时存 Redis（TTL 30 分钟），供前端轮询。
 """
 from __future__ import annotations
@@ -46,6 +48,7 @@ LEGACY_CLI_NAME = "dreamina"
 _INSTALL_TIMEOUT = 600  # 安装（下载二进制）超时（秒）
 _CMD_TIMEOUT = 60       # 普通 CLI 命令超时（秒）
 _LOGIN_TIMEOUT = 90     # auth login --non-interactive 超时（秒）
+_LOGIN_WAIT_TIMEOUT = 5  # 单次 auth wait 阻塞上限（秒）；超时返回 login_wait_timeout，可继续轮询
 _SNIPPET = 800          # 返回给前端的原始输出截断长度
 
 # Redis key（沿用旧 key 前缀，避免升级后残留状态无法清理）
@@ -86,31 +89,53 @@ def _run(args: list[str], timeout: float = _CMD_TIMEOUT) -> tuple[int, str]:
     return proc.returncode or 0, out.strip()
 
 
+def _is_canvas_cli(path: str) -> bool:
+    """判断路径是否指向新版画布 CLI（文件名必须是 dreamina-canvas）。
+
+    旧版 `dreamina` 与新版 `dreamina-canvas` 常同处一个目录，仅凭「文件存在」会把
+    旧版误当成新版；旧版没有 auth 子命令，后续登录/自检会全部失败并给出误导性提示。
+    """
+    return Path(path).expanduser().name == DEFAULT_CLI_NAME
+
+
+def _drop_resolved_path() -> None:
+    """清掉 Redis 里记录的 CLI 路径缓存（缓存陈旧时会持续指向错误二进制）。"""
+    try:
+        get_redis().delete(_RESOLVED_PATH_KEY)
+    except Exception:
+        pass
+
+
 def resolve_cli_path(cli_path: str | None = None) -> str | None:
     """解析可用的 dreamina-canvas 可执行文件路径。
 
     顺序：显式路径 → Redis 记录的安装路径 → PATH → 常见安装位置 → bash login shell。
+    仅接受文件名为 dreamina-canvas 的二进制；缓存指向其它名字（如旧版 dreamina）时丢弃缓存。
     """
     candidates: list[str] = []
     if cli_path and cli_path != DEFAULT_CLI_NAME:
         candidates.append(cli_path)
     try:
         saved = get_redis().get(_RESOLVED_PATH_KEY)
-        if saved:
-            candidates.append(saved)
     except Exception:
-        pass
+        saved = None
+    if saved:
+        if _is_canvas_cli(saved):
+            candidates.append(saved)
+        else:
+            logger.warning("[即梦CLI] 忽略陈旧的 CLI 路径缓存（不是 dreamina-canvas）：%s", saved)
+            _drop_resolved_path()
     candidates.append(cli_path or DEFAULT_CLI_NAME)
 
     for c in candidates:
         # 绝对/相对路径直接验证
         if "/" in c or c.startswith("~"):
             p = Path(c).expanduser()
-            if p.is_file():
+            if p.is_file() and _is_canvas_cli(str(p)):
                 return str(p)
             continue
         found = shutil.which(c)
-        if found:
+        if found and _is_canvas_cli(found):
             return found
 
     for rel in _FALLBACK_PATHS:
@@ -121,7 +146,9 @@ def resolve_cli_path(cli_path: str | None = None) -> str | None:
     # 最后尝试 login shell（安装脚本通常会把 PATH 写入 ~/.bashrc）
     code, out = _run(["bash", "-lc", f"command -v {DEFAULT_CLI_NAME}"], timeout=15)
     if code == 0 and out.strip():
-        return out.strip().splitlines()[-1]
+        found = out.strip().splitlines()[-1]
+        if found and _is_canvas_cli(found):
+            return found
     return None
 
 
@@ -165,12 +192,24 @@ def _parse_envelope(out: str) -> tuple[bool, dict[str, Any], dict[str, Any]]:
 def _parse_version(out: str) -> str | None:
     """从 `dreamina-canvas version` 输出中解析版本号。
 
-    新版输出为 envelope（data.version），兼容纯文本兜底。
+    新版输出为 envelope（data.version）；旧版为无 ok 字段的 pretty-print JSON
+    （顶层 version），两者都兼容，最后才是纯文本兜底。
     """
     ok, data, _error = _parse_envelope(out)
     if ok and data.get("version"):
         return str(data["version"])[:120]
+    text = out.strip()
+    start = text.find("{")
+    if start >= 0:
+        try:
+            obj = json.loads(text[start:])
+        except json.JSONDecodeError:
+            obj = None
+        if isinstance(obj, dict) and obj.get("version"):
+            return str(obj["version"])[:120]
     lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    # 过滤纯标点行（兜底时不应把 pretty-print JSON 的 "}" 当成版本号）
+    lines = [ln for ln in lines if any(ch.isalnum() for ch in ln)]
     return lines[-1][:120] if lines else None
 
 
@@ -313,13 +352,34 @@ def get_status(cli_path: str | None = None) -> dict[str, Any]:
 # ---- 登录（device flow 引导流程）----
 
 def start_login(cli_path: str | None = None) -> dict[str, Any]:
-    """发起非交互登录：返回需要用户在浏览器完成的授权材料。"""
+    """发起非交互登录：返回需要用户在浏览器完成的授权材料。
+
+    CLI 行为约定（v1.0.2 实测）：
+    - 未登录：data.status=authorization_required，data.challenge 内含 deviceCode 等授权材料；
+    - 已有有效凭据：data.status=reused，不带 challenge（此时无需再走授权流程）。
+    """
     resolved = resolve_cli_path(cli_path)
     if not resolved:
         return {"ok": False, "message": "即梦画布 CLI 尚未安装，请先完成安装步骤"}
 
-    code, out = _run([resolved, "auth", "login"], timeout=_LOGIN_TIMEOUT)
-    ok, data, _error = _parse_envelope(out)
+    args = [resolved, "auth", "login", "--non-interactive", "--format", "json"]
+    code, out = _run(args, timeout=_LOGIN_TIMEOUT)
+    ok, data, error = _parse_envelope(out)
+
+    # 已有登录态被复用：不是错误，直接告知无需重新授权
+    state = data.get("state") if isinstance(data.get("state"), dict) else {}
+    if code == 0 and ok and (
+        str(data.get("status") or "") == "reused" or bool(state.get("loggedIn"))
+    ):
+        logger.info("[即梦CLI] auth login 复用了已有登录态，无需重新授权")
+        return {
+            "ok": True,
+            "already_logged_in": True,
+            "message": "CLI 已有有效登录态，无需重新授权",
+            "cli_path": resolved,
+            "raw_output": out[-_SNIPPET:],
+        }
+
     challenge = data.get("challenge") if isinstance(data.get("challenge"), dict) else {}
     fields: dict[str, str] = {}
     if challenge:
@@ -337,10 +397,19 @@ def start_login(cli_path: str | None = None) -> dict[str, Any]:
             fields["verification_uri"] = verification_uri
 
     if not fields.get("device_code"):
+        # 诊断信息带出真正执行的命令与二进制，避免「提示与实情不符」误导排查
+        reason = ""
+        if error:
+            reason = f"（{error.get('code')}: {str(error.get('message') or '')[:160]}）"
+        elif code != 0:
+            reason = f"（exit={code}）"
         return {
             "ok": False,
-            "message": "无法从 dreamina-canvas auth login 输出中解析授权信息，"
-            "请在 worker 所在终端手动执行 dreamina-canvas auth login 完成登录",
+            "message": f"无法从 {Path(resolved).name} auth login 输出中解析授权信息{reason}。"
+            f"实际执行的命令：{' '.join(args)}；原始输出见下方，"
+            f"也可在 worker 所在终端手动执行 {resolved} auth login 排查",
+            "cli_path": resolved,
+            "command": " ".join(args),
             "raw_output": out[-_SNIPPET:],
         }
 
@@ -366,10 +435,32 @@ def get_login_session() -> dict[str, Any] | None:
         return None
 
 
+def _wait_login(resolved: str, device_code: str) -> dict[str, Any]:
+    """用 `auth wait` 把浏览器授权换取为本地凭据（device flow 的必要收尾）。
+
+    新版 CLI 的 `auth login` 只返回 challenge 并把「待授权」状态写入本地，
+    必须由 `auth wait --device-code` 轮询服务端换取 token；只调用 `auth account`
+    会永远看到「未登录」——即使使用者在浏览器里早已点了授权。
+    同一 device code 可反复 wait（超时返回 cli.login_wait_timeout，可继续轮询）。
+    """
+    args = [
+        resolved, "auth", "wait",
+        "--device-code", device_code,
+        "--timeout", f"{_LOGIN_WAIT_TIMEOUT}s",
+        "--non-interactive", "--format", "json",
+    ]
+    code, out = _run(args, timeout=_LOGIN_WAIT_TIMEOUT + 15)
+    ok, data, error = _parse_envelope(out)
+    state = data.get("state") if isinstance(data.get("state"), dict) else {}
+    done = bool(ok and (data.get("status") == "logged_in" or state.get("loggedIn")))
+    return {"done": done, "code": code, "out": out, "error": error, "data": data}
+
+
 def check_login(cli_path: str | None = None) -> dict[str, Any]:
     """校验登录是否已由用户在浏览器完成。
 
-    判据：`auth account` 能返回服务端认可的账号信息即登录成功。
+    两步：① 已拿到凭据时 `auth account` 直接返回账号信息；
+    ② 否则用 `auth wait` 完成 device flow 的凭据换取，再读一次账号信息。
     """
     session = get_login_session()
     if not session:
@@ -379,20 +470,43 @@ def check_login(cli_path: str | None = None) -> dict[str, Any]:
     if not resolved:
         return {"state": "failed", "logged_in": False, "message": "即梦画布 CLI 不存在，请重新安装"}
 
-    code, out = _run([resolved, "auth", "account"], timeout=30)
-    ok, data, error = _parse_envelope(out)
-    if code == 0 and ok and data.get("userId"):
-        return {
-            "state": "success",
-            "logged_in": True,
-            "message": "登录成功",
-            "account_info": data,
-        }
-    hint = ""
-    if code != 0:
-        hint = f"（auth account exit={code}: {out.strip()[:200]}）"
-    elif error:
-        hint = f"（{error.get('code')}: {error.get('message', '')[:160]}）"
+    def _account() -> tuple[dict[str, Any] | None, str]:
+        code, out = _run([resolved, "auth", "account"], timeout=30)
+        ok, data, error = _parse_envelope(out)
+        if code == 0 and ok and data.get("userId"):
+            return data, ""
+        if code != 0:
+            return None, f"（auth account exit={code}: {out.strip()[:200]}）"
+        if error:
+            return None, f"（{error.get('code')}: {str(error.get('message') or '')[:160]}）"
+        return None, ""
+
+    account, hint = _account()
+    if account:
+        return {"state": "success", "logged_in": True, "message": "登录成功", "account_info": account}
+
+    device_code = str(session.get("device_code") or "")
+    if device_code:
+        waited = _wait_login(resolved, device_code)
+        if waited["done"]:
+            # 已换取到 token：再读一次账号信息（auth wait 不带 userId）
+            account, hint = _account()
+            if account:
+                logger.info("[即梦CLI] 浏览器授权已换取凭据，登录完成（userId=%s）", account.get("userId"))
+                return {"state": "success", "logged_in": True, "message": "登录成功", "account_info": account}
+            hint = hint or "（授权已完成但读取账号失败，请刷新页面重试）"
+        else:
+            err = waited["error"]
+            err_code = str(err.get("code") or "")
+            if "expired" in err_code:
+                clear_login_session()
+                return {
+                    "state": "failed",
+                    "logged_in": False,
+                    "message": "授权链接已过期，请重新发起登录",
+                }
+            hint = hint or f"（{err_code}: 等待浏览器授权中）"
+
     return {
         "state": "waiting",
         "logged_in": False,

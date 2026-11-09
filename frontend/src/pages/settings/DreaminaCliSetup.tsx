@@ -66,11 +66,18 @@ export function DreaminaCliSetup() {
   const loginMut = useMutation({
     mutationFn: startDreaminaCliLogin,
     onSuccess: (r) => {
+      // CLI 已有有效凭据时 auth login 直接复用，不会再返回授权材料
+      if (r.ok && r.already_logged_in) {
+        toast(r.message ?? 'CLI 已有有效登录态，无需重新授权', 'success')
+        qc.invalidateQueries({ queryKey: ['dreamina-cli-status'] })
+        return
+      }
       if (r.ok) {
         setLoginInfo(r)
         setPolling(true)
       } else {
         toast(r.message ?? '发起登录失败', 'error')
+        if (r.command) console.warn('dreamina-canvas 实际执行命令:', r.command)
         if (r.raw_output) console.warn('dreamina-canvas auth login output:', r.raw_output)
       }
     },

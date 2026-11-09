@@ -547,7 +547,7 @@ def fake_service_env(monkeypatch):
                 return response
         raise AssertionError(f"fake_run 未配置命令路由: {args}")
 
-    monkeypatch.setattr(svc, "_redis", lambda: fake)
+    monkeypatch.setattr(svc, "get_redis", lambda: fake)
     monkeypatch.setattr(svc, "_run", fake_run)
     monkeypatch.setattr(svc, "resolve_cli_path", lambda cli_path=None: "/fake/cli")
     return svc, fake, state
@@ -596,21 +596,70 @@ def test_service_check_login_success_and_waiting(fake_service_env):
     svc, fake, state = fake_service_env
     fake.set(svc._LOGIN_SESSION_KEY, json.dumps({"device_code": "dc", "cli_path": "/fake/cli"}))
 
-    # 未完成授权：auth account 返回 auth_required
-    state["routes"] = [(("/fake/cli", "auth", "account"), (11, envelope(
-        False, error={"code": "cli.authentication_required", "class": "auth_required",
-                      "requiredAction": "login"})))]
+    # 未完成授权：auth account 返回 auth_required，auth wait 超时
+    state["routes"] = [
+        (("/fake/cli", "auth", "account"), (11, envelope(
+            False, error={"code": "cli.authentication_required", "class": "auth_required",
+                          "requiredAction": "login"}))),
+        (("/fake/cli", "auth", "wait"), (20, envelope(
+            False, error={"code": "cli.login_wait_timeout", "class": "operation_incomplete",
+                          "requiredAction": "resume"}))),
+    ]
     waiting = svc.check_login()
     assert waiting["state"] == "waiting"
     assert waiting["logged_in"] is False
 
-    # 完成授权：auth account 返回账号信息
+    # 完成授权：auth account 直接返回账号信息（不再需要 wait）
     state["routes"] = [(("/fake/cli", "auth", "account"),
                         (0, envelope(True, {"userId": 42, "isVip": True})))]
     success = svc.check_login()
     assert success["state"] == "success"
     assert success["logged_in"] is True
     assert success["account_info"]["userId"] == 42
+
+
+def test_service_check_login_completes_device_flow_with_wait(fake_service_env, monkeypatch):
+    """浏览器已授权但本地无凭据时，必须靠 auth wait 换取 token 才算登录成功。"""
+    svc, fake, _state = fake_service_env
+    fake.set(svc._LOGIN_SESSION_KEY, json.dumps({"device_code": "dc-1", "cli_path": "/fake/cli"}))
+
+    calls: list[list[str]] = []
+    account_calls = {"n": 0}
+
+    def fake_run(args, timeout=60.0):
+        calls.append(list(args))
+        if args[1:3] == ["auth", "account"]:
+            account_calls["n"] += 1
+            # 第一次（wait 之前）未登录，wait 成功后才有账号信息
+            if account_calls["n"] == 1:
+                return 11, envelope(False, error={
+                    "code": "cli.authentication_required", "class": "auth_required"})
+            return 0, envelope(True, {"userId": 99, "isVip": True})
+        if args[1:3] == ["auth", "wait"]:
+            return 0, envelope(True, {"status": "logged_in", "state": {"loggedIn": True}})
+        raise AssertionError(f"意外的命令: {args}")
+
+    monkeypatch.setattr(svc, "_run", fake_run)
+    result = svc.check_login()
+    assert result["state"] == "success"
+    assert result["account_info"]["userId"] == 99
+    # 确实执行过带 device code 的 auth wait
+    wait_calls = [c for c in calls if c[1:3] == ["auth", "wait"]]
+    assert len(wait_calls) == 1
+    assert "--device-code" in wait_calls[0] and "dc-1" in wait_calls[0]
+
+
+def test_service_check_login_expired_code_fails(fake_service_env):
+    svc, fake, state = fake_service_env
+    fake.set(svc._LOGIN_SESSION_KEY, json.dumps({"device_code": "dc-2", "cli_path": "/fake/cli"}))
+    state["routes"] = [
+        (("/fake/cli", "auth", "account"), (11, envelope(False, error={"code": "cli.authentication_required"}))),
+        (("/fake/cli", "auth", "wait"), (21, envelope(
+            False, error={"code": "cli.device_code_expired", "class": "invalid_input"}))),
+    ]
+    result = svc.check_login()
+    assert result["state"] == "failed"
+    assert "过期" in result["message"]
 
 
 def test_service_check_login_no_session(fake_service_env):
@@ -659,3 +708,67 @@ def test_service_get_status_logged_in(fake_service_env, monkeypatch):
     assert status["logged_in"] is True
     assert status["account_info"]["userId"] == 7
     assert status["message"] == "CLI 已就绪（登录态有效）"
+
+
+def test_service_start_login_reused_is_not_error(fake_service_env):
+    """已登录时 auth login 返回 status=reused（无 challenge），不应报「解析失败」。"""
+    svc, _fake, state = fake_service_env
+    state["routes"] = [(("/fake/cli", "auth", "login"), (0, json.dumps({
+        "schemaVersion": "1", "ok": True,
+        "data": {"status": "reused", "state": {"loggedIn": True}},
+    })))]
+    result = svc.start_login("/fake/cli")
+    assert result["ok"] is True
+    assert result.get("already_logged_in") is True
+    assert "device_code" not in result
+
+
+def test_service_start_login_legacy_output_keeps_diagnostics(fake_service_env):
+    """旧版 dreamina 无 auth 子命令：错误信息需带出真实命令与原始输出。"""
+    svc, _fake, state = fake_service_env
+    state["routes"] = [(("/fake/cli", "auth", "login"),
+                        (1, 'unknown command "auth" for "dreamina"'))]
+    result = svc.start_login("/fake/cli")
+    assert result["ok"] is False
+    assert "unknown command" in result["raw_output"]
+    # 命令带全局参数，且提示里给出实际执行的命令便于排查
+    assert "--non-interactive" in result["command"]
+    assert result["command"] in result["message"]
+
+
+def test_service_resolve_cli_path_ignores_legacy_cached_path(tmp_path, monkeypatch):
+    """Redis 缓存指向旧版 dreamina 时必须丢弃，不能把旧版当新版用。"""
+    from app.services import dreamina_cli_service as svc
+
+    legacy = tmp_path / "dreamina"
+    legacy.write_text("#!/bin/sh\n")
+    canvas = tmp_path / "dreamina-canvas"
+    canvas.write_text("#!/bin/sh\n")
+
+    class _Redis:
+        def __init__(self):
+            self.store = {svc._RESOLVED_PATH_KEY: str(legacy)}
+            self.deleted = []
+
+        def get(self, key):
+            return self.store.get(key)
+
+        def delete(self, key):
+            self.deleted.append(key)
+
+    fake = _Redis()
+    monkeypatch.setattr(svc, "get_redis", lambda: fake)
+    # 模拟 PATH 中能直接找到新版 CLI
+    monkeypatch.setattr(svc, "shutil", type("S", (), {
+        "which": staticmethod(lambda name: str(canvas)),
+    }))
+    resolved = svc.resolve_cli_path()
+    assert resolved == str(canvas)
+    assert svc._RESOLVED_PATH_KEY in fake.deleted
+
+
+def test_service_parse_version_skips_punctuation_only_lines():
+    from app.services import dreamina_cli_service as svc
+
+    # 旧版 pretty-print JSON（无 ok 字段）应解析出顶层的 version，而不是取到最后一行 "}"
+    assert svc._parse_version('{\n  "version": "a857341-dirty"\n}') == "a857341-dirty"

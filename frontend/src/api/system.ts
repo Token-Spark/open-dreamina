@@ -82,6 +82,10 @@ export interface DreaminaCliLoginStart {
   device_code?: string
   raw_output?: string
   worker_offline?: boolean
+  /** CLI 已有有效登录态，无需重新授权 */
+  already_logged_in?: boolean
+  /** 实际执行的 CLI 命令（排查用） */
+  command?: string
 }
 
 /** 登录授权轮询结果。 */
