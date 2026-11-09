@@ -12,21 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Layout } from '@/components/Layout'
-import { CreatePage } from '@/pages/CreatePage'
-import { AssetsPage } from '@/pages/AssetsPage'
-import { CreationAssetsPage } from '@/pages/CreationAssetsPage'
-import { TemplatesPage } from '@/pages/TemplatesPage'
-import { TasksPage } from '@/pages/TasksPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { CanvasListPage } from '@/pages/CanvasListPage'
-import { CanvasEditorPage } from '@/pages/CanvasEditorPage'
-import { ReviewCenterPage } from '@/pages/ReviewCenterPage'
+import { Layout, RouteFallback } from '@/components/Layout'
 import { listTasks, ACTIVE_STATUSES } from '@/api/tasks'
 import { useTaskStore } from '@/stores/taskStore'
+
+// 路由级代码分割：画布编辑器（含 React Flow）、审阅中心、创作资产等重页面
+// 只在被访问时加载，不再全部塞进首屏 bundle。各页面是 named export，
+// lazy 需要 default，故用 then 包一层。
+const CreatePage = lazy(() => import('@/pages/CreatePage').then((m) => ({ default: m.CreatePage })))
+const AssetsPage = lazy(() => import('@/pages/AssetsPage').then((m) => ({ default: m.AssetsPage })))
+const CreationAssetsPage = lazy(() => import('@/pages/CreationAssetsPage').then((m) => ({ default: m.CreationAssetsPage })))
+const TemplatesPage = lazy(() => import('@/pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })))
+const TasksPage = lazy(() => import('@/pages/TasksPage').then((m) => ({ default: m.TasksPage })))
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const CanvasListPage = lazy(() => import('@/pages/CanvasListPage').then((m) => ({ default: m.CanvasListPage })))
+const CanvasEditorPage = lazy(() => import('@/pages/CanvasEditorPage').then((m) => ({ default: m.CanvasEditorPage })))
+const ReviewCenterPage = lazy(() => import('@/pages/ReviewCenterPage').then((m) => ({ default: m.ReviewCenterPage })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,23 +61,27 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          {/* Canvas editor: full-screen, no sidebar */}
-          <Route path="/canvas/:canvasId" element={<CanvasEditorPage />} />
-          <Route element={<Layout />}>
-            <Route path="/" element={<CreatePage />} />
-            <Route path="/canvas" element={<CanvasListPage />} />
-            <Route path="/assets" element={<AssetsPage />} />
-            <Route path="/creation-assets" element={<CreationAssetsPage />} />
-            <Route path="/review" element={<ReviewCenterPage />} />
-            {/* 旧「镜头审片」路由重定向到审阅中心的镜头审片模式 */}
-            <Route path="/shot-review" element={<Navigate to="/review?mode=shot" replace />} />
-            <Route path="/templates" element={<TemplatesPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/settings/providers" element={<SettingsPage />} />
-            <Route path="/settings/general" element={<SettingsPage />} />
-          </Route>
-        </Routes>
+        {/* Layout 内部另有 Suspense 包住 Outlet，侧边栏不会在切页时闪烁；
+            这里的外层边界服务于全屏画布路由。 */}
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            {/* Canvas editor: full-screen, no sidebar */}
+            <Route path="/canvas/:canvasId" element={<CanvasEditorPage />} />
+            <Route element={<Layout />}>
+              <Route path="/" element={<CreatePage />} />
+              <Route path="/canvas" element={<CanvasListPage />} />
+              <Route path="/assets" element={<AssetsPage />} />
+              <Route path="/creation-assets" element={<CreationAssetsPage />} />
+              <Route path="/review" element={<ReviewCenterPage />} />
+              {/* 旧「镜头审片」路由重定向到审阅中心的镜头审片模式 */}
+              <Route path="/shot-review" element={<Navigate to="/review?mode=shot" replace />} />
+              <Route path="/templates" element={<TemplatesPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/settings/providers" element={<SettingsPage />} />
+              <Route path="/settings/general" element={<SettingsPage />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   )

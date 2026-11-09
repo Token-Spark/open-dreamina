@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { Suspense } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   Brush,
@@ -45,6 +46,15 @@ const NAV = [
   { to: '/tasks', label: '任务', icon: ListTodo },
   { to: '/settings/providers', label: '设置', icon: Settings2 },
 ]
+
+/** 路由懒加载时内容区的占位；侧边栏与全局任务条保持常驻，不跟着闪烁。 */
+export function RouteFallback() {
+  return (
+    <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-fg-muted">
+      <span className="animate-pulse">加载中…</span>
+    </div>
+  )
+}
 
 export function Layout() {
   const toasts = useUIStore((s) => s.toasts)
@@ -130,7 +140,9 @@ export function Layout() {
 
         {/* Main content */}
         <main className="flex-1 overflow-auto scrollbar-thin">
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 
