@@ -78,7 +78,9 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: sh -c "mkdir -p /app/data/dreamina-home && exec celery -A app.worker worker --loglevel=info --concurrency=4"
+    # 并发数由 .env 的 CELERY_CONCURRENCY 控制（默认 8），改完需重建本服务：
+    #   docker compose up -d celery-worker
+    command: sh -c "mkdir -p /app/data/dreamina-home && exec celery -A app.worker worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-8}"
 
   celery-beat:
     build: ./backend
