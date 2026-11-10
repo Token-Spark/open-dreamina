@@ -15,6 +15,10 @@
 | MG | Pillow/HTML 渲染静帧 + ffmpeg 动效 | 文生图 | 榜单/条图类不必上生成模型 |
 | Effects | ffmpeg（zoompan / fade / setpts / 闪白） | — | 代码特效零成本，优先于生成 |
 
+> **视频模式口径同短剧管线**：默认多模态 / 全能参考（多图各司其职），首帧（`first`）非必要不用，
+> 首尾帧只在必须把转场两端钉死时用。判定见
+> `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5。
+
 ## 2. 生产顺序（省钱且可回滚）
 
 ```

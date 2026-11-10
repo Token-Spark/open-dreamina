@@ -123,7 +123,8 @@ loc_{场景}_view{A|B|C|Wide}_v1  朝向锚点（必须登记 asset_id）
 + 全局风格四常量（逐字拼接）
 ```
 
-`frame_mode: reference` 优先（Seedance 实测），`first_last` 慎用。
+`frame_mode: reference` 为默认（必须显式传）；全景锚点作内容参考，**不作首帧**。`first` 非必要不用，
+`first_last` 基本不用，判定与例外见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5。
 提示词只写「延续参考图的房间结构、门窗位置与光向」+ 本镜动作，不重述房间。
 
 ## 8. QC 验收

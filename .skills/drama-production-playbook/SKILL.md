@@ -55,7 +55,7 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
   → 素材库生产（人物三视图 / 场景 primary / **集内妆造三视图与场景状态图** / 室内布局与全景锚点 / 道具 / 关系关键帧）→ 素材审阅中心人工验收
   → tools/maps.py 填词库 → drama compile EPxx → drama spec EPxx --write
   → drama assets EPxx（平台 asset_id 全部落位）
-  → 批量生成（Seedance 720p 全能参考）→ video_renders/
+  → 批量生成（Seedance 720p / `--frame-mode reference` 全能参考）→ video_renders/
   → drama qc EPxx（技术验收）+ shot-reviewer 技能初审
   → 镜头审片中心人工终审（自动 markdown 归档）→ drama 修镜迭代 → 成片
 ```
@@ -87,6 +87,7 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 10. 妆造锁定后，人物行与提示词**不得再写服饰描述**（相对修饰也算），只写身份项 + 本镜动作，并用一致性锚句指回参考图；场景陈设同理。
 11. 每集生成后先 `drama qc` 技术验收，再交 shot-reviewer 初审，最后人工终审。
 12. 项目根放入 `data/review_sources/` 前确认挂载配置；审阅系统对素材只读（除镜头审片可写根）。
+13. **视频生成默认全能参考（`--frame-mode reference`），且必须显式传**：`first` 非必要不用（精确起幅 / 平台不支持时才用，须在 sidecar 写「首帧理由」），`first_last` 基本不用。缺省行为按 provider 分叉（直连 seedance 落回首帧、只取第一张图），不要依赖默认。判定口径「能靠多给参考 + 文字锚定解决的，不用首帧」，见 `references/03-seedance-best-practices.md` 规则 5。
 
 ## 6. 成功标准
 

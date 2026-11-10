@@ -47,6 +47,8 @@
 * 空间错乱（spatial mismatch：门窗家具位置跳变 / 反打两面墙对不上 / 光向反转）
 * 妆造漂移（wardrobe drift：跨镜换外套 / 污渍左右跳位 / 配饰消失 / 发型妆容变化）
 * 陈设缺位（set dressing lost：开头有床、后镜空房；椅子翻倍；道具状态与剧情不同步）
+* 生成模式（frame_mode）：应为 `reference`（全能参考）；用了 `first` / `first_last` 须在 sidecar 有「首帧理由」
+  或降级说明，否则按违规处理（判定见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5）
 * 音轨与配乐（audio / BGM）：无背景音乐、垫乐、旋律线与节奏鼓床；仅台词人声（台词镜）＋基础环境音＋动作触发音；无台词镜不得出现人声；未实际听验不得判 PASS，未验听记 `AUDIO_PENDING`（工具无静音开关，须正向前置禁乐＋负向音乐词双通道；模板见 prompt-optimizer §3.4 / §4.5）
 
 ### 连续性 QC（Continuity QC）

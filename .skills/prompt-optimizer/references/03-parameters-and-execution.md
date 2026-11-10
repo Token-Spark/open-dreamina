@@ -51,7 +51,13 @@
 | 参数 | 取值 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `duration` | 秒 | 5 | Seedance 2.5 支持 4~30；Fast/Mini 与 2.0 支持 4~15 |
-| `frame_mode` | `first` / `first_last` / `reference` | — | 首帧 / 首尾帧（需 2 张参考图）/ 内容参考 |
+| `frame_mode` | `first` / `first_last` / `reference` | `reference` | 首帧 / 首尾帧（需 2 张参考图）/ 内容参考。**必须显式传**：缺省按 provider 分叉，直连 seedance 会落回首帧且只取第一张 |
+
+> 视频生成默认**全能参考**（`reference`）：多图各司其职（身份 / 站位 / 房间 / 陈设），谁也不绑架谁。
+> `first` 只在必须精确起幅、或平台不支持 `reference` 时用，且要说明理由；`first_last` 基本不用。
+> **必须显式传**：缺省行为按 provider 分叉——直连 `seedance-2-x` 缺省 `first`，多图只剩第一张；
+> `sparkhub-seedance` 缺省落多模态 `image_urls[]`。完整判定见
+> `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5。
 
 > 白名单外的参数会被后端忽略：`negative_prompt`、`width`、`height`、`steps`、`guidance_scale`、
 > `seed`、`duration`、`strength`、`resolution`、`count`。
@@ -105,14 +111,15 @@ list_models {mode:"video", model_id:"doubao-seedance-2-5"}
 
 ```text
 方式 A（本地文件，工具自动上传）
-generate_video { ..., reference_paths: ["D:/refs/frame.png"], frame_mode: "first" }
+generate_video { ..., reference_paths: ["D:/refs/frame.png"], frame_mode: "reference" }
 
 方式 B（先上传再复用 asset_id）
 upload_asset {file_path:"D:/refs/frame.png"} → asset_id
-generate_video { ..., reference_asset_ids: ["<asset_id>"], frame_mode: "first" }
+generate_video { ..., reference_asset_ids: ["<asset_id>"], frame_mode: "reference" }
 ```
 
 同一素材要在多次生成中复用时用方式 B，避免重复上传。
+只有确需「从这张图精确起幅」时才把 `frame_mode` 换成 `"first"`，并在交付说明里写清理由。
 
 ## 5. 执行序列
 

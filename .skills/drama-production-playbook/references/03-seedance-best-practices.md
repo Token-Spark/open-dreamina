@@ -41,7 +41,22 @@
    自行发挥——让图说话，文字只做锚定。
 4. **禁止夸张特效**：光柱、火花、3D 渲染、建筑地面形变一律负面词伺候；
    用高度写实画面表现超自然。
-5. **首尾帧模式慎用**：优先全能参考（reference）模式；首尾帧易画面不协调。关系关键帧走内容参考（reference）或首帧（first），不走 `first_last`。
+5. **模式纪律：默认全能参考（`reference`），首帧（`first`）非必要不用**（本条为视频生成的硬口径）：
+   - **必须显式写 `--frame-mode reference`**（MCP `frame_mode: "reference"`）。缺省行为按 provider 分叉，不能指望"不传=自动"：
+     直连 `seedance-2-0` / `seedance-2-5` 的 `backend/app/providers/seedance_provider.py` 缺省 `frame_mode="first"`，
+     且 `backend/app/worker.py` 只在 `frame_mode == "reference"` 时才把全部图片塞进 `reference_image_bytes_list`——
+     不传就**只剩第一张图当首帧，其余参考全丢**；`sparkhub-seedance` 缺省落在多模态 `image_urls[]`（行为近似 reference），
+     与直连不一致。统一显式传 `reference`，多参考才算真的交出去。
+   - 全能参考是**多图各司其职**：身份（三视图 / 本集妆造）、空间（`rel_*` 关系帧）、房间结构（`loc_*` 朝向锚点）、
+     外观（场景 primary / 集内状态图）互相独立，谁也绑架不了谁；换一张参考不用重出图。
+   - 首帧把参考图当**画面起点**：模型照着它还原构图 / 景别 / 人物姿态，与分镜要求的景别机位冲突；
+     起幅被钉死，推拉摇移空间受限；改构图就得重出首帧。所以**单镜关键帧、关系帧、三视图、场景图一律作内容参考，不作首帧**。
+   - 「必要」只有三种：① 该镜必须从某个**已批准且不可动**的画面精确起幅（特效合成点、片头尾定格、严格对位剪辑）；
+     ② 平台 / 模型**不支持** `reference`（降级，须写明机型与原因）；③ 需要两端钉死且中间运动极小的固定对话镜
+     （仍属慎用，优先用 `reference` 解决）。
+   - 用 `first` 必须在 `{项目根}/导演设计/EPxx/shot-design.md` sidecar 写**「首帧理由」**，否则视为违规。
+   - `first_last` 基本不用：需 2 张、易画面不协调（两端钉死、中间靠插值，动作一大就崩）。
+   - 判断口径：**能靠「多给参考 + 文字锚定」解决的，不用首帧。**
 6. **音频纪律（禁 BGM · 双通道压制 · 禁止整体静音）**：
    - 生成环节**禁止任何背景音乐 / 垫乐 / 旋律 / 节奏床**；原创 BGM 只在后期统一铺设，
      不得写入生成 prompt；Music Cue（IN/BUILD/DROP/OUT）属后期轨标记，不进生成提示。
@@ -53,12 +68,12 @@
      镜头四行模板见同文件 §3.4。句尾零散的 "no music" 约束力不足，且不得用 "ambience / pad / score" 许可配乐。
    - **成片音轨必检**：无旋律线 / 和弦 / 鼓点 / 乐器垫乐才可 PASS；仍夹带垫乐先按双通道修正重出一次、
      不盲目多次重抽；仍不达标再后期剥离或静音化音轨兜底、画面保持不动。无 ffmpeg 时不得仅凭文件体积小判「无配乐」，未听验记 `AUDIO_PENDING`。
-7. **参数基线**：Seedance 720p / 9:16 / 全能参考 / 轮询上限按平台队列取宽。
+7. **参数基线**：Seedance 720p / 9:16 / `--frame-mode reference`（显式传，见规则 5）/ 轮询上限按平台队列取宽。
 
 ## 生成执行入口
 
-单镜验证：`opendreamina image2video --provider sparkhub-seedance --reference <三视图> --reference <场景图> --prompt "<编译后提示词>" --aspect-ratio 9:16 --auto-wait`
+单镜验证：`opendreamina image2video --provider sparkhub-seedance --reference <三视图> --reference <场景图> --frame-mode reference --prompt "<编译后提示词>" --aspect-ratio 9:16 --auto-wait`
 
 批量生成：读 `tools/episode_specs/EPxx.json` 逐镜执行（refs → --reference，
-prompt + style 常量 → --prompt），产物按 `{镜号}_seedance20/` 落 video_renders；
-断点恢复 = 跳过已有成片的镜号。
+prompt + style 常量 → --prompt，**统一带 `--frame-mode reference`**），产物按
+`{镜号}_seedance20/` 落 video_renders；断点恢复 = 跳过已有成片的镜号。

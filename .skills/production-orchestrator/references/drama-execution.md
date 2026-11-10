@@ -33,8 +33,10 @@ opendreamina drama spec EPxx --project . --write --force
 
 # 5. 批量生成（按 spec 逐镜）
 #    refs（图片+音色）→ --reference；prompt + style → --prompt
+#    --frame-mode reference 必须显式传：不传会落回首帧模式，只用第一张图
 opendreamina image2video --provider sparkhub-seedance \
     --reference <三视图> --reference <场景图> --reference <音色> \
+    --frame-mode reference \
     --prompt "<spec prompt + 风格常量>" --aspect-ratio 9:16 --auto-wait \
     --download-dir "分镜脚本/EPxx/video_renders/S01_seedance20/"
 
@@ -50,9 +52,13 @@ opendreamina drama qc EPxx --project .
 ## 生成参数基线（Seedance）
 
 - provider/model：项目 manifest 的 `provider`/`model`（如 sparkhub-seedance + doubao_seedance_2）
-- 720p / 9:16 / 全能参考（`--frame-mode reference`）；单镜创作建议 ≤6s、lint 硬区间 2–8s（见 `ai-video-director/references/drama-shotlist-spec.md`），4–8s 仅为 Seedance 参数窗口，不是创作约束
-- 参考绑定纪律：人物 = `*_turnaround`，场景 = primary/interior，音色 = anchor-voice；锚点 = `rel_*` / `loc_*` 的 asset_id（走 sidecar 手工追加，不进 spec refs）
-- 首尾帧模式慎用；音色参考被拒时降级为仅图片重试
+- 720p / 9:16 / `--frame-mode reference`（默认且必须显式传）；单镜创作建议 ≤6s、lint 硬区间 2–8s（见 `ai-video-director/references/drama-shotlist-spec.md`），4–8s 仅为 Seedance 参数窗口，不是创作约束
+- 参考绑定纪律：人物 = `*_turnaround`（本集妆造版），场景 = primary/interior 或 `scene_*_ep{xx}_{状态}`，音色 = anchor-voice；锚点 = `rel_*` / `loc_*` 的 asset_id（走 sidecar 手工追加，不进 spec refs）
+- **模式纪律**：默认全能参考 `reference`；`first` 非必要不用，用了须在 sidecar 写「首帧理由」；`first_last` 基本不用。
+  不传 `frame_mode` 的缺省行为按 provider 分叉：直连 `seedance-2-x` 落回首帧、只取第一张图；`sparkhub-seedance`
+  落多模态 `image_urls[]`。统一显式传 `reference`，不要依赖缺省。
+  判定与例外见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5
+- 音色参考被拒时降级为仅图片重试（`frame_mode` 仍为 `reference`）
 - 失败处理：先诊断（审核拒绝/参数越界/内容拦截），再最小修正重试，禁盲目重试
 
 ## 产物落位与版本纪律

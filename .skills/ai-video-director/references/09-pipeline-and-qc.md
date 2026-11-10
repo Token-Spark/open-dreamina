@@ -55,13 +55,17 @@ QC
 
 每个重要 Shot：
 
-1. 生成首帧
+1. 生成关键帧（即该镜的起幅画面）
 2. 检查角色一致性
 3. 检查构图
 4. 检查场景
 5. 检查光线
 6. 检查道具
 7. 通过后进入 Video Generation
+
+> **关键帧是"内容参考"，不是"首帧"。** 进入视频时默认全能参考（`frame_mode: reference`），
+> 把关键帧与三视图 / 关系帧 / 场景锚点一起作为多图参考；只有必须从该格精确起幅时才用 `first`，
+> 且要写明理由。判定与例外见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5。
 
 ## 3. Keyframe QC
 

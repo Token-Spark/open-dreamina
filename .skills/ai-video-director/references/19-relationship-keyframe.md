@@ -70,9 +70,12 @@ rel_{场景}_{人物组合}_{版本}
 
 | 方式 | 参数 | 适用 |
 |---|---|---|
-| **内容参考（优先）** | `reference_asset_ids` / `reference_paths` + `frame_mode: reference` | Seedance 实测首选；多参考可同时给关系帧 + 角色三视图 + 场景 primary |
-| 首帧驱动 | `frame_mode: first` | 平台支持、且该镜从确定布局起幅时 |
-| 首尾帧 | `frame_mode: first_last` | **慎用**：`drama-production-playbook/references/03-seedance-best-practices.md` 补充规则 5 已记录易画面不协调 |
+| **内容参考（默认）** | `reference_asset_ids` / `reference_paths` + `frame_mode: reference` | 一律默认：多参考可同时给关系帧 + 角色三视图 + 场景 primary，谁也不绑架谁 |
+| 首帧驱动 | `frame_mode: first` | **非必要不用**：只在必须从已批准画面精确起幅、或平台不支持 `reference` 时用，须在 sidecar 写「首帧理由」（判定见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5） |
+| 首尾帧 | `frame_mode: first_last` | **基本不用**：需 2 张、两端钉死，中间插值易画面不协调（同上规则 5） |
+
+> 关系帧、单镜关键帧、三视图、场景图**一律作内容参考，不作首帧**——首帧会把构图与景别一起钉死，
+> 与分镜要求冲突，改构图还得重出图。
 
 多参考时的固定组合：
 

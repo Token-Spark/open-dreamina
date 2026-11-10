@@ -86,7 +86,7 @@ ffprobe 缺失时对应检查项如实降级（`ffprobe_available: false`）；
 # 修镜返工闭环（单镜）
 opendreamina drama lint EP05 && \
 opendreamina drama compile EP05 --shot S08 --with-style && \
-opendreamina image2video ... --auto-wait && \
+opendreamina image2video ... --frame-mode reference --auto-wait && \
 opendreamina drama qc EP05
 ```
 

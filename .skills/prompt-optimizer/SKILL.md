@@ -83,3 +83,4 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 12. **短剧视频提示词必须按 `references/02-prompt-templates.md` §3.4 音轨四行填写**：音效设计恒为「无背景音乐」，基础环境音、动作触发音必须实填并绑定秒段，特效音无则写「无」；音乐禁用词随 `negative_prompt` 提交（§4.5），正向前置禁乐＋负向点名乐种双通道；禁止生成期 BGM，也禁止整体静音。
 13. **妆造 / 陈设已由图片锁定时不得再写服饰描述**：人物行与提示词只写身份项 + 本镜动作，用一致性锚句指回参考图；相对修饰（「同样的裙子但更旧」）同样算冲突。发现用户提示词里在描述已锁定的穿搭，先删描述、补锚点，见 `references/drama-prompt-pattern.md`「集内妆造锁定」。
 14. **生成参考与首帧只用 `*_turnaround`**（本集妆造版 `*_ep{xx}_{造型}_turnaround`）；半身照、剧照、成片截帧、拼贴板不得作种子，转了视角必漂移，见 `ai-video-director/references/21-episode-state-lock.md` §6。
+15. **视频默认全能参考（`frame_mode: "reference"`），且必须显式传**：`first` 非必要不用（只在必须精确起幅或平台不支持 `reference` 时用，并写明理由），`first_last` 基本不用。缺省行为按 provider 分叉（直连 seedance 落回首帧、只取第一张参考图），不要依赖默认；判定见 `references/03-parameters-and-execution.md` §2.3。
