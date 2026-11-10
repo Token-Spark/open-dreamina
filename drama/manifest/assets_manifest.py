@@ -12,7 +12,7 @@ schema（对齐《代号奥林匹斯》实测数据）：
       "model": "doubao_seedream_5_pro",
       "style": {"aesthetic": "...", "medium": "...", "audio": "...", "negative": "..."},
       "defaults": {"aspect_ratio": "9:16", "resolution": "2K", "poll": 600},
-      "consistency_strategy": {...},          # 可选，四层锚点说明
+      "consistency_strategy": {...},          # 可选，五层锚点说明
       "assets": [
         {"id": "char_venus_primary", "category": "01_characters", "group": "venus",
          "name_zh": "...", "mode": "text2img|img2img", "is_primary": true, "seed": 10001,

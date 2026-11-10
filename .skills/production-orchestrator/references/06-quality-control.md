@@ -14,6 +14,8 @@
 * 解剖/肢体（anatomy）
 * 风格（style）
 * 参考保真（reference fidelity）
+* 集内妆造细节（episode wardrobe）：款式 / 颜色 / 污渍位置 / 破损 / 配饰 / 发型 / 妆容与剧本一致；
+  细节板（`*_detail`）不得被当作生成参考使用（`ai-video-director/references/21-episode-state-lock.md` §8）
 
 ### 关键帧 QC（Keyframe QC）
 
@@ -27,6 +29,8 @@
 * 情绪（emotion）
 * 相对位置关系（relative position，对照已批准的关系关键帧）
 * 室内结构一致性（structural consistency，对照该朝向的全景锚点）
+* 集内妆造一致性（对照本集妆造三视图：款式、污渍位置、配饰、伤痕；换装点是否切了锚点）
+* 陈设在场（set dressing presence，对照集内场景状态图：该在的床 / 输液架 / 药碗在不在，有没有多出不该有的东西）
 
 ### 视频 QC（Video QC）
 
@@ -41,6 +45,9 @@
 * 时间一致性（temporal consistency）
 * 关系漂移（relationship drift：站位互换 / 越过地标 / 正反打两侧错位）
 * 空间错乱（spatial mismatch：门窗家具位置跳变 / 反打两面墙对不上 / 光向反转）
+* 妆造漂移（wardrobe drift：跨镜换外套 / 污渍左右跳位 / 配饰消失 / 发型妆容变化）
+* 陈设缺位（set dressing lost：开头有床、后镜空房；椅子翻倍；道具状态与剧情不同步）
+* 音轨与配乐（audio / BGM）：无背景音乐、垫乐、旋律线与节奏鼓床；仅台词人声（台词镜）＋基础环境音＋动作触发音；无台词镜不得出现人声；未实际听验不得判 PASS，未验听记 `AUDIO_PENDING`（工具无静音开关，须正向前置禁乐＋负向音乐词双通道；模板见 prompt-optimizer §3.4 / §4.5）
 
 ### 连续性 QC（Continuity QC）
 
@@ -48,7 +55,7 @@
 
 * 角色位置（character position）
 * 屏幕方向（screen direction）
-* 服装（costume）
+* 服装（costume：单集内款式、污渍位置、破损、配饰须与集内妆造锚点一致）
 * 道具（props）
 * 灯光（lighting）
 * 时间（time）

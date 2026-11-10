@@ -28,7 +28,7 @@ description: "短剧项目制作手册与编排技能：基于《代号奥林匹
 1. **先骨架后内容**——项目先有标准目录与 manifest，再有剧本与素材；结构先行让一切可追溯。
 2. **三级剧本逐级确认**——大纲（人工）→ 分集剧本（人工）→ 分镜脚本（机器检查），上一级不确认不进下一级。
 3. **shots.md 是唯一权威数据源**——其余数据（episode_spec / manifest / registry）从它派生或登记，绝不手工双写。
-4. **一致性靠锚点不靠运气**——角色绑三视图、场景绑 primary、**室内多角度绑布局/全景锚点**、**关系绑关系关键帧（多人 / 人物-场景共现）**、全局风格四常量逐字拼接。
+4. **一致性靠锚点不靠运气**——角色绑三视图、场景绑 primary、**室内多角度绑布局/全景锚点**、**关系绑关系关键帧（多人 / 人物-场景共现）**、**单集妆造与陈设绑集内状态锚点**、全局风格四常量逐字拼接。妆造 / 陈设一经图片锁定，提示词只引用不描述。
 5. **所有素材资产人工验收后才能进入生成**——素材审阅中心通过是前置门禁。
 6. **机器检查前置**——生成前 lint / assets 审计，把错误拦在最便宜的环节。
 7. **废弃版本不删除**——`_superseded_*` 目录沉淀，审片中心删前自动归档抢救。
@@ -40,7 +40,7 @@ description: "短剧项目制作手册与编排技能：基于《代号奥林匹
 STEP 1  初始化项目骨架（opendreamina drama init）          → references/01-project-init.md
 STEP 2  三级剧本体系（大纲 → 分集 → 分镜）                  → references/02-pipeline-flow.md
 STEP 3  视频生成实战经验（Seedance 约束与规避）             → references/03-seedance-best-practices.md
-STEP 4  四层锚点一致性策略                                  → references/04-consistency-strategy.md
+STEP 4  五层锚点一致性策略                                  → references/04-consistency-strategy.md
 STEP 5  资产命名与目录规范                                  → references/05-asset-naming-convention.md
 STEP 6  opendreamina drama 工具链逐命令用法                 → references/06-cli-toolchain-guide.md
 STEP 7  标准目录与审阅中心对接                              → references/07-directory-convention.md
@@ -52,7 +52,7 @@ STEP 8  迭代管理与废弃版本沉淀                              → refer
 ```text
 drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）→ shots.md
   → drama lint EPxx（机器检查，errors 清零）
-  → 素材库生产（人物三视图 / 场景 primary / **室内布局与全景锚点** / 道具 / **关系关键帧**）→ 素材审阅中心人工验收
+  → 素材库生产（人物三视图 / 场景 primary / **集内妆造三视图与场景状态图** / 室内布局与全景锚点 / 道具 / 关系关键帧）→ 素材审阅中心人工验收
   → tools/maps.py 填词库 → drama compile EPxx → drama spec EPxx --write
   → drama assets EPxx（平台 asset_id 全部落位）
   → 批量生成（Seedance 720p 全能参考）→ video_renders/
@@ -67,7 +67,7 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 | `references/01-project-init.md` | 项目初始化：drama init、标准目录、manifest/movies 模板填写 | 接任新项目时首先加载 |
 | `references/02-pipeline-flow.md` | 六步流水线与三级剧本体系的详细标准 | 规划制作节奏时 |
 | `references/03-seedance-best-practices.md` | 视频生成实战经验：多人镜头规避、单镜时长、素材引用 | 进入生成环节时必读 |
-| `references/04-consistency-strategy.md` | 四层锚点一致性策略（风格/角色/场景/名场面） | 建立资产生成计划时 |
+| `references/04-consistency-strategy.md` | 五层锚点一致性策略（风格/角色/场景/关系/集内状态） | 建立资产生成计划时 |
 | `references/05-asset-naming-convention.md` | 资产命名规范与素材库目录约定 | 创建/登记资产时 |
 | `references/06-cli-toolchain-guide.md` | opendreamina drama 九个命令的参数、输出与工作流编排 | 每次调用工具链前 |
 | `references/07-directory-convention.md` | 标准目录规范与审阅中心零配置对接 | 布局项目目录时 |
@@ -78,13 +78,15 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 1. 接任任务时先加载 `references/01-project-init.md` 与 `references/06-cli-toolchain-guide.md`，其余按需。
 2. 新项目必须用 `opendreamina drama init` 创建骨架，不得手工拼凑目录。
 3. 分镜脚本必须通过 `drama lint`（errors = 0）才能进入生成；warnings 需逐条给出处理结论。
-4. 生成前必须 `drama assets` 审计：引用资产全部有平台 asset_id，杜绝无参考生成。锚点类资产不在该审计范围内，单独验收见 `ai-video-director/references/19-relationship-keyframe.md` §8。
-5. 人物视频参考一律绑 `*_turnaround` 三视图与 `anchor-voice` 音色；半身照只作三视图的生成基准。
+4. 生成前必须 `drama assets` 审计：引用资产全部有平台 asset_id，杜绝无参考生成。`rel_*` / `loc_*` 不在该审计范围内，单独验收见 `ai-video-director/references/19-relationship-keyframe.md` §8；集内状态锚点（`char_*_ep{xx}_*_turnaround` / `scene_*_ep{xx}_*`）在白名单内，正常审计。
+5. 人物视频参考一律绑 `*_turnaround` 三视图与 `anchor-voice` 音色；三视图择**本集妆造版**（`char_{角色}_ep{xx}_{造型}_turnaround`）。半身照只作三视图的生成基准，**禁止作种子 / 参考 / 首帧**，剧照与成片截帧同样禁止。触发条件与门禁见 `ai-video-director/references/21-episode-state-lock.md` §2/§6/§7。
 6. 全局风格常量逐字拼接，禁止逐镜改写；修改风格 = 改 manifest 的 style 字段一处。
 7. 废弃版本移入 `_superseded_*` 目录或交审片中心删除（自动归档），绝不直接 rm。
 8. 单镜建议 ≤6s（lint 三层口径见 `ai-video-director/references/drama-shotlist-spec.md`）；多人 / 人物-场景共现 / 室内多角度须先批准 `rel_*` / `loc_*` 锚点，未批准不得生成（拆正反打不免除）；触发条件、门禁与登记见 `ai-video-director/references/19-relationship-keyframe.md` §2/§6/§8 与 `20-indoor-layout-anchor.md` §2/§7。
-9. 每集生成后先 `drama qc` 技术验收，再交 shot-reviewer 初审，最后人工终审。
-10. 项目根放入 `data/review_sources/` 前确认挂载配置；审阅系统对素材只读（除镜头审片可写根）。
+9. 同一集内妆造（款式 / 污渍位置 / 破损 / 配饰）与场景陈设（该在的床与道具）必须单独锁定；换装、染血、受伤等状态变化点各锁一套，未批准不得生成。
+10. 妆造锁定后，人物行与提示词**不得再写服饰描述**（相对修饰也算），只写身份项 + 本镜动作，并用一致性锚句指回参考图；场景陈设同理。
+11. 每集生成后先 `drama qc` 技术验收，再交 shot-reviewer 初审，最后人工终审。
+12. 项目根放入 `data/review_sources/` 前确认挂载配置；审阅系统对素材只读（除镜头审片可写根）。
 
 ## 6. 成功标准
 

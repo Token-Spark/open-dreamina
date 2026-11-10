@@ -61,7 +61,7 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 | 文件 | 内容 | 何时加载 |
 |---|---|---|
 | `references/01-optimization-framework.md` | 优化方法论：诊断四问、六工位结构、重写规则、输出格式 | 每次优化任务开始时首先加载 |
-| `references/02-prompt-templates.md` | 图片/视频提示词模板、工位词库、视频运动与镜头语言、负面词库、模板套用规则 | 重写提示词时 |
+| `references/02-prompt-templates.md` | 图片/视频提示词模板、工位词库、视频运动与镜头语言、负面词库、模板套用规则；含短剧音轨四行模板（§3.4）与音乐负面词表（§4.5） | 重写提示词时 |
 | `references/03-parameters-and-execution.md` | MCP 工具清单、参数含义与默认值、尺寸换算、模型能力校验、执行序列与返回处理 | 给出参数建议或直接生成时 |
 | `references/04-quality-and-iteration.md` | 优化自检清单与评分、常见出图/出片问题 → 改词策略、迭代收敛规则 | 交付前自检与结果不理想时 |
 | `references/05-examples.md` | 图片 / 视频 / 图生视频 / 模板套用的前后对照示例 | 需要参考具体写法时 |
@@ -80,3 +80,6 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 9. 调用生成工具前必须先用 `list_providers` 确认 `provider` 已配置、`get_health` 确认 worker 就绪；不确定就如实告知，不猜测。
 10. 生成后必须用 `wait_task` 取回终态并回报 `result_urls_absolute` 与失败原因，禁止在任务未完成时谎称已出结果。
 11. 优化对象涉及多人同镜或室内多角度时，必须提示补已批准的 `rel_*` / `loc_*` 锚点参考图，只优化文字视为未完成；门禁与多参考组合见 `ai-video-director/references/19-relationship-keyframe.md` §2/§8。
+12. **短剧视频提示词必须按 `references/02-prompt-templates.md` §3.4 音轨四行填写**：音效设计恒为「无背景音乐」，基础环境音、动作触发音必须实填并绑定秒段，特效音无则写「无」；音乐禁用词随 `negative_prompt` 提交（§4.5），正向前置禁乐＋负向点名乐种双通道；禁止生成期 BGM，也禁止整体静音。
+13. **妆造 / 陈设已由图片锁定时不得再写服饰描述**：人物行与提示词只写身份项 + 本镜动作，用一致性锚句指回参考图；相对修饰（「同样的裙子但更旧」）同样算冲突。发现用户提示词里在描述已锁定的穿搭，先删描述、补锚点，见 `references/drama-prompt-pattern.md`「集内妆造锁定」。
+14. **生成参考与首帧只用 `*_turnaround`**（本集妆造版 `*_ep{xx}_{造型}_turnaround`）；半身照、剧照、成片截帧、拼贴板不得作种子，转了视角必漂移，见 `ai-video-director/references/21-episode-state-lock.md` §6。
