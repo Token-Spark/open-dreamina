@@ -126,6 +126,7 @@ export function usePromptMention({
           tokens: [`@{${name}}`],
           label: name,
           thumbUrl: a.previewUrl,
+          category: a.category,
         }
       })
 
@@ -151,6 +152,7 @@ export function usePromptMention({
             tokens: [`@{${label}}`],
             label,
             thumbUrl: ca.image_thumbnail_url ?? '',
+            category: ca.category,
           }
         })
       })

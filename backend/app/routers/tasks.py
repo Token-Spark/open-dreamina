@@ -183,23 +183,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskCreat
             )
     else:
         # CLI 等未指定对话的场景：复用固定的受保护默认会话，避免每次生成新建一次性对话
-        conv = (
-            db.query(Conversation)
-            .filter(
-                Conversation.is_protected == 1,
-                Conversation.title == DEFAULT_CONVERSATION_TITLE,
-            )
-            .order_by(Conversation.created_at)
-            .first()
-        )
-        if not conv:
-            conv = Conversation(
-                id=str(uuid.uuid4()),
-                title=DEFAULT_CONVERSATION_TITLE,
-                is_protected=1,
-            )
-            db.add(conv)
-            db.flush()
+        conv = task_service.get_or_create_conversation(db, DEFAULT_CONVERSATION_TITLE)
         conversation_id = conv.id
 
     task_id = str(uuid.uuid4())

@@ -23,10 +23,12 @@ import { createPortal } from 'react-dom'
 import { Maximize2, Music, Video, Wand2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PromptMentionOverlay } from '@/components/PromptMentionOverlay'
+import { ReferenceAssetTray } from '@/components/ReferenceAssetTray'
+import { ImageLightbox, type LightboxItem } from '@/components/ImageLightbox'
 import { usePromptMention } from '@/hooks/usePromptMention'
 import { cn } from '@/lib/utils'
 import type { ContentMode } from '@/lib/generation'
-import type { ReferenceAsset } from '@/lib/promptMention'
+import { KIND_LABELS, refAssetGroupLabel, type ReferenceAsset } from '@/lib/promptMention'
 
 export interface PromptFullscreenEditorProps {
   /** 是否打开（打开时挂载到 document.body）。 */
@@ -90,12 +92,15 @@ export function PromptFullscreenEditor({
 
   // textarea 滚动偏移，同步到 mention overlay 保持对齐
   const [scrollSync, setScrollSync] = useState({ top: 0, left: 0 })
+  // 参考素材大图预览：与内联输入条保持一致
+  const [previewItem, setPreviewItem] = useState<LightboxItem | null>(null)
 
-  // Esc 关闭 + body 滚动锁定；打开时自动聚焦编辑器（供键盘直接输入）
+  // Esc 关闭 + body 滚动锁定；打开时自动聚焦编辑器（供键盘直接输入）。
+  // 灯箱打开时 Esc 交给灯箱消费，避免一次按键同时关掉编辑器。
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && !previewItem) onClose()
     }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
@@ -105,7 +110,7 @@ export function PromptFullscreenEditor({
       document.body.style.overflow = ''
       window.clearTimeout(t)
     }
-  }, [open, onClose, textareaRef])
+  }, [open, onClose, textareaRef, previewItem])
 
   if (!open) return null
 
@@ -136,6 +141,28 @@ export function PromptFullscreenEditor({
           <span>退出</span>
         </Button>
       </div>
+
+      {/* 已引用的参考素材：全屏编辑时同样按类别陈列，便于核对提示词里的 @ 引用 */}
+      {enableMention && refAssets.length > 0 && (
+        <div className="border-b border-border/60 px-5 py-1.5">
+          <ReferenceAssetTray
+            assets={refAssets}
+            onRemove={
+              onRefAssetsChange
+                ? (assetId) => onRefAssetsChange(refAssets.filter((a) => a.assetId !== assetId))
+                : undefined
+            }
+            onPreview={(asset) => {
+              const kind = asset.kind ?? 'image'
+              setPreviewItem({
+                url: asset.previewUrl,
+                type: kind === 'image' ? 'image' : kind === 'video' ? 'video' : 'audio',
+                title: asset.name ?? KIND_LABELS[kind],
+              })
+            }}
+          />
+        </div>
+      )}
 
       {/* 主体编辑区 */}
       <div
@@ -203,6 +230,11 @@ export function PromptFullscreenEditor({
                         )}
                       </span>
                       <span className="truncate">{item.label}</span>
+                      {item.category && (
+                        <span className="shrink-0 text-[10px] opacity-60">
+                          {refAssetGroupLabel(item.category)}
+                        </span>
+                      )}
                       {item.source === 'library' && (
                         <span className="shrink-0 rounded bg-bg-tertiary px-1 py-0.5 text-[10px] text-fg-muted">
                           素材库
@@ -274,6 +306,11 @@ export function PromptFullscreenEditor({
           </div>
         </div>
       </div>
+      <ImageLightbox
+        item={previewItem}
+        open={previewItem != null}
+        onClose={() => setPreviewItem(null)}
+      />
     </div>,
     document.body,
   )

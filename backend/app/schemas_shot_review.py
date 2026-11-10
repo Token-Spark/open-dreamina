@@ -40,6 +40,13 @@ class ShotReviewItemResponse(BaseModel):
     session_id: str
     episode: Optional[str] = None
     shot_id: str
+    # 剧目名称：集号目录的上级目录名，解析不到时回落为会话标题
+    drama_title: Optional[str] = None
+    # 内容类型：video|image，任务卡片上的类型标签与返工模式依据
+    content_type: str = "video"
+    # scan=扫描自素材目录的原始交付物；regen=审阅中心返工生成的新版本
+    origin: str = "scan"
+    asset_id: Optional[str] = None
     file_path: str
     file_name: str
     file_size: Optional[int] = None
@@ -152,4 +159,54 @@ class ShotReviewScanResponse(BaseModel):
 
     added: int = 0
     removed: int = 0
+    total: int = 0
+
+
+# ---------------- 返工生成（任务卡片内改提示词重生成） ----------------
+
+
+class ShotReviewRegenerationCreate(BaseModel):
+    """在任务卡片上发起一次返工生成。
+
+    - prompt：改写后的提示词（必填）。
+    - task_type：显式指定任务类型；缺省时按条目的内容类型 + 是否带参考图派生。
+    - provider / model_id：复用创作页所选服务与模型。
+    - params：与创作页一致的生成参数（画幅、分辨率、时长、帧模式等）。
+    - input_asset_ids：参考素材（首帧图、参考视频等），空表示纯文本生成。
+    """
+
+    prompt: str = Field(..., min_length=1)
+    task_type: Optional[str] = Field(None, pattern="^(text2img|img2img|text2video|img2video)$")
+    provider: str = Field(..., min_length=1, max_length=64)
+    model_id: Optional[str] = Field(None, max_length=200)
+    params: dict[str, Any] = Field(default_factory=dict)
+    input_asset_ids: list[str] = Field(default_factory=list)
+
+
+class ShotReviewRegenerationResponse(BaseModel):
+    """返工生成记录：任务卡片据此展示进度、结果与「采用为新版本」入口。"""
+
+    id: str
+    session_id: str
+    item_id: str
+    episode: Optional[str] = None
+    shot_id: str
+    task_id: Optional[str] = None
+    prompt: str = ""
+    provider: Optional[str] = None
+    model_id: Optional[str] = None
+    task_type: str = "text2video"
+    params: dict[str, Any] = Field(default_factory=dict)
+    status: str = "queued"
+    progress: int = 0
+    result_asset_id: Optional[str] = None
+    result_url: Optional[str] = None
+    error_msg: Optional[str] = None
+    adopted_item_id: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ShotReviewRegenerationListResponse(BaseModel):
+    items: list[ShotReviewRegenerationResponse]
     total: int = 0

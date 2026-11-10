@@ -358,9 +358,14 @@ class ShotReviewSession(Base):
 
 
 class ShotReviewItem(Base):
-    """镜头审片条目：剧集目录下的一个镜头视频，附带评分与修改意见。
+    """镜头审片条目：剧集目录下的一个镜头视频/关键帧图，附带评分与修改意见。
 
     - episode / shot_id：从路径与文件名解析出的集号与镜号（如 EP05 / EP05-S01）。
+    - drama_title：剧目名称（集号目录的上级目录名），任务卡片上的核心标签之一；
+      解析不到时回落为会话标题。
+    - asset_id：非空表示该条目来自审阅中心内的返工生成（文件在 data/assets 下），
+      为空表示扫描自外部素材目录的原始交付物。
+    - origin：scan（扫描所得）| regen（审阅中心返工生成的新版本）。
     - score：制片人打分 0–100，未打分为 None；档位由 score 派生，不落库避免漂移。
     - feedback：修改意见（纯文本）。
     - source_prompt：扫描时从同集 shots.md 提取的提示词底稿（人物/场景/动作等字段原文），
@@ -380,8 +385,14 @@ class ShotReviewItem(Base):
     )
     episode: Mapped[str | None] = mapped_column(String, nullable=True)
     shot_id: Mapped[str] = mapped_column(String, nullable=False)
+    drama_title: Mapped[str | None] = mapped_column(String, nullable=True)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_name: Mapped[str] = mapped_column(String, nullable=False)
+    # 返工生成产物：文件不在会话根目录下，改由资产表指向 data/assets
+    asset_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    origin: Mapped[str] = mapped_column(String, nullable=False, default="scan")
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -413,4 +424,48 @@ class ShotReviewItem(Base):
     __table_args__ = (
         Index("idx_shot_review_items_session", "session_id"),
         Index("idx_shot_review_items_episode", "episode"),
+    )
+
+
+class ShotReviewRegeneration(Base):
+    """审阅中心内的返工生成记录：一条任务卡片上的一次「改提示词 → 重新生成」。
+
+    - 与 Task 一对一（task_id）：生成本身复用创作页的任务管线与 Provider 能力，
+      进度、结果资产都由 Task/Asset 承载，本表只记录「哪一镜、用什么提示词返工」。
+    - prompt：本次返工提交的提示词原文（也是采用为新版本后的 source_prompt）。
+    - status：queued|running|completed|failed|cancelled|discarded。
+      discarded 表示审阅人放弃该结果（软删除，留痕不占用卡片）。
+    - result_asset_id：生成成功后由 Task.params.result_asset_ids[0] 回填，
+      采用为新版本时作为新条目的 asset_id。
+    - adopted_item_id：已采用生成的审片条目 id，避免同一结果被重复采用。
+    """
+
+    __tablename__ = "shot_review_regenerations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String, ForeignKey("shot_review_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    item_id: Mapped[str] = mapped_column(
+        String, ForeignKey("shot_review_items.id", ondelete="CASCADE"), nullable=False
+    )
+    episode: Mapped[str | None] = mapped_column(String, nullable=True)
+    shot_id: Mapped[str] = mapped_column(String, nullable=False)
+    task_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    task_type: Mapped[str] = mapped_column(String, nullable=False, default="text2video")
+    params_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_asset_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adopted_item_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)
+
+    __table_args__ = (
+        Index("idx_shot_review_regenerations_session", "session_id"),
+        Index("idx_shot_review_regenerations_item", "item_id"),
     )

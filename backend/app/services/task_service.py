@@ -148,6 +148,34 @@ def safe_json_loads(s: str | None, default: Any) -> Any:
         return default
 
 
+def get_or_create_conversation(db, title: str, is_protected: bool = True):
+    """按标题取（或建）固定对话，用于没有显式对话上下文的生成入口。
+
+    CLI / MCP / 审阅中心返工都属于「不属于某个创作对话」的生成，统一收进
+    一个受保护对话，避免每次生成新建一次性对话把对话列表刷爆。
+    仅 flush 不 commit：由调用方与任务创建一起提交，保证原子性。
+    """
+    import uuid
+
+    from ..models import Conversation
+
+    conv = (
+        db.query(Conversation)
+        .filter(Conversation.is_protected == 1, Conversation.title == title)
+        .order_by(Conversation.created_at)
+        .first()
+    )
+    if conv is None:
+        conv = Conversation(
+            id=str(uuid.uuid4()),
+            title=title,
+            is_protected=1 if is_protected else 0,
+        )
+        db.add(conv)
+        db.flush()
+    return conv
+
+
 def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
     """将长时间卡在 running / pending 状态的任务标记为 failed（孤儿任务恢复）。
 

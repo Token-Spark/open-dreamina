@@ -21,7 +21,7 @@
 import type * as React from 'react'
 import { Image as ImageIcon, Images, Wand2 } from 'lucide-react'
 import { assetFileUrl } from '@/api/assets'
-import type { CreationAsset } from '@/api/creationAssets'
+import type { CreationAsset, CreationAssetCategory } from '@/api/creationAssets'
 import type { ContentMode } from '@/lib/generation'
 import type { ReferenceKind } from '@/components/ReferenceSlot'
 
@@ -33,6 +33,16 @@ export interface ReferenceAsset {
   kind?: ReferenceKind
   /** 素材名称（素材库项为素材名，上传项为文件名）；用于 @ 引用标签展示。 */
   name?: string
+  /**
+   * 素材库分类（人物/场景/道具/关键帧），仅 @ 引用素材库时写入。
+   * 本地上传、画布连线与历史草稿缺省，输入区统一归入「上传」分组。
+   */
+  category?: CreationAssetCategory
+  /**
+   * 素材库缩略图地址；小图列表优先用它，避免为了 40px 的格子下载整张原图。
+   * 缺省时回落到 previewUrl。大图预览仍用 previewUrl 保证清晰度。
+   */
+  thumbUrl?: string
   /** Seedance 参考素材审核状态（仅 Spark Hub Seedance 需要）；undefined 表示未提交审核。 */
   auditStatus?: 'pending' | 'active' | 'failed'
   /** 审核失败原因。 */
@@ -60,6 +70,8 @@ export interface MentionItem {
   label: string
   /** 缩略图地址；slot 用 file 原图，library 用素材缩略图。 */
   thumbUrl: string
+  /** 素材库分类；用于在候选项上标记「角色/场景/道具」等类别。 */
+  category?: CreationAssetCategory
 }
 
 /**
@@ -89,6 +101,58 @@ export const KIND_LABELS: Record<ReferenceKind, string> = {
   image: '参考图',
   video: '参考视频',
   audio: '参考音频',
+}
+
+/**
+ * 输入区参考素材的分组维度：素材库四类 + 无分类的一组。
+ * 「上传」承载本地上传、画布连线推导与历史草稿，保证旧数据也能稳定展示。
+ * 标签用词与创作语境一致（角色），对应素材库里的「人物」分类。
+ */
+export type RefAssetGroupKey = CreationAssetCategory | 'upload'
+
+export const REF_ASSET_GROUPS: { key: RefAssetGroupKey; label: string }[] = [
+  { key: 'character', label: '角色' },
+  { key: 'scene', label: '场景' },
+  { key: 'prop', label: '道具' },
+  { key: 'keyframe', label: '关键帧' },
+  { key: 'upload', label: '上传' },
+]
+
+/** 分类值 → 展示标签；未知值回落到「上传」。 */
+export function refAssetGroupLabel(key: RefAssetGroupKey | string | undefined): string {
+  return REF_ASSET_GROUPS.find((g) => g.key === key)?.label ?? '上传'
+}
+
+/** 参考素材所属分组；无分类或非法值归入「上传」。 */
+export function refAssetGroupKey(asset: ReferenceAsset): RefAssetGroupKey {
+  const category = asset.category
+  return category && REF_ASSET_GROUPS.some((g) => g.key === category)
+    ? (category as RefAssetGroupKey)
+    : 'upload'
+}
+
+export interface RefAssetGroup {
+  key: RefAssetGroupKey
+  label: string
+  items: ReferenceAsset[]
+}
+
+/**
+ * 把扁平的参考列表聚合成有内容的分组，组间顺序固定，组内保持引用/上传顺序。
+ * 空分组不返回，输入框上方只展示真正用到的类别。
+ */
+export function groupRefAssets(assets: ReferenceAsset[]): RefAssetGroup[] {
+  const buckets = new Map<RefAssetGroupKey, ReferenceAsset[]>()
+  for (const asset of assets) {
+    const key = refAssetGroupKey(asset)
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(asset)
+    else buckets.set(key, [asset])
+  }
+  return REF_ASSET_GROUPS.flatMap((group) => {
+    const items = buckets.get(group.key)
+    return items?.length ? [{ ...group, items }] : []
+  })
 }
 
 /**
@@ -208,6 +272,8 @@ export function pendingAssetsOf(
       assetId: ca.image_asset_id,
       previewUrl: assetFileUrl(ca.image_asset_id),
       kind: 'image',
+      category: ca.category,
+      thumbUrl: ca.image_thumbnail_url ?? undefined,
     })
   }
   if (mode === 'video' && allowAudio && ca.audio_asset_id) {
@@ -215,6 +281,9 @@ export function pendingAssetsOf(
       assetId: ca.audio_asset_id,
       previewUrl: assetFileUrl(ca.audio_asset_id),
       kind: 'audio',
+      category: ca.category,
+      // 音色条目沿用角色形象缩略图，陈列时能看到「谁的音色」
+      thumbUrl: ca.image_thumbnail_url ?? undefined,
     })
   }
   return list

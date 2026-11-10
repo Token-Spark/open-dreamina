@@ -13,10 +13,17 @@
 // limitations under the License.
 
 import { apiClient } from './client'
+import type { TaskType } from './tasks'
 import { createReviewApi } from './reviewCore'
 
 /** 评分档位：未打分待审 / 通过（≥70）/ 需重生成（60–69）/ 需重新设计（<60）。 */
 export type ShotVerdict = 'pending' | 'pass' | 'revise' | 'redesign'
+
+/** 内容类型：镜头成片视频，或以镜号命名的分镜图/关键帧。 */
+export type ShotContentType = 'video' | 'image'
+
+/** 条目来源：素材目录扫描所得 / 审阅中心返工生成。 */
+export type ShotItemOrigin = 'scan' | 'regen'
 
 export type ShotReviewSessionStatus = 'draft' | 'in_review' | 'completed' | 'archived'
 
@@ -25,6 +32,14 @@ export interface ShotReviewItem {
   session_id: string
   episode: string | null
   shot_id: string
+  /** 剧目名称（任务卡片标签）；后端解析不到时回落为会话标题。 */
+  drama_title: string | null
+  /** 内容类型，决定预览形态与返工生成的内容模式。 */
+  content_type: ShotContentType
+  /** 来源：扫描所得 / 返工生成的新版本。 */
+  origin: ShotItemOrigin
+  /** 返工生成的产物指向素材库资产；扫描条目为 null。 */
+  asset_id: string | null
   file_path: string
   file_name: string
   file_size: number | null
@@ -187,6 +202,92 @@ export async function deleteShotReviewItem(
   const { data } = await apiClient.delete<ShotReviewBulkDeleteResult>(
     `/shot-reviews/items/${itemId}`,
     { params: deleteFile ? { delete_file: true } : undefined },
+  )
+  return data
+}
+
+// ---------------- 返工生成（任务卡片内改提示词重生成） ----------------
+
+export type ShotRegenerationStatus =
+  | 'pending'
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'discarded'
+
+/** 一条返工生成记录：卡片据此展示进度、结果与「采用为新版本」入口。 */
+export interface ShotReviewRegeneration {
+  id: string
+  session_id: string
+  item_id: string
+  episode: string | null
+  shot_id: string
+  task_id: string | null
+  prompt: string
+  provider: string | null
+  model_id: string | null
+  task_type: TaskType
+  params: Record<string, unknown>
+  status: ShotRegenerationStatus
+  progress: number
+  result_asset_id: string | null
+  /** 结果预览地址（/assets/{id}/file）；未完成时为 null。 */
+  result_url: string | null
+  error_msg: string | null
+  /** 已采用生成的新版本条目 id；非空表示不可重复采用。 */
+  adopted_item_id: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface ShotRegenerationPayload {
+  prompt: string
+  provider: string
+  model_id?: string
+  /** 缺省时后端按内容类型 + 是否带参考素材派生。 */
+  task_type?: TaskType
+  params?: Record<string, unknown>
+  input_asset_ids?: string[]
+}
+
+/** 会话内全部返工记录（接口会顺手把在途任务状态同步回库）。 */
+export async function listShotReviewRegenerations(
+  sessionId: string,
+): Promise<ShotReviewRegeneration[]> {
+  const { data } = await apiClient.get<{ items: ShotReviewRegeneration[]; total: number }>(
+    `/shot-reviews/sessions/${sessionId}/regenerations`,
+  )
+  return data.items
+}
+
+/** 按卡片上改写的提示词发起返工生成（复用创作页任务管线）。 */
+export async function createShotReviewRegeneration(
+  itemId: string,
+  payload: ShotRegenerationPayload,
+): Promise<ShotReviewRegeneration> {
+  const { data } = await apiClient.post<ShotReviewRegeneration>(
+    `/shot-reviews/items/${itemId}/regenerations`,
+    payload,
+  )
+  return data
+}
+
+/** 把返工结果采用为同镜号的新版本，返回新建的审片条目。 */
+export async function adoptShotReviewRegeneration(regenId: string): Promise<ShotReviewItem> {
+  const { data } = await apiClient.post<ShotReviewItem>(
+    `/shot-reviews/regenerations/${regenId}/adopt`,
+  )
+  return data
+}
+
+/** 放弃某次返工结果（后端软删除留痕）。 */
+export async function discardShotReviewRegeneration(
+  regenId: string,
+): Promise<ShotReviewRegeneration> {
+  const { data } = await apiClient.delete<ShotReviewRegeneration>(
+    `/shot-reviews/regenerations/${regenId}`,
   )
   return data
 }

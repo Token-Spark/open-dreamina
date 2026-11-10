@@ -15,12 +15,14 @@
 """剧集镜头审片业务服务。
 
 负责：
-- 扫描剧集视频根目录（如 分镜脚本/），递归收集镜头视频；
-- 从相对路径与文件名解析集号/镜号，并关联同集 shots.md 与生成报告的分镜信息；
+- 扫描剧集视频根目录（如 分镜脚本/），递归收集镜头视频（及以镜号命名的分镜图/关键帧）；
+- 从相对路径与文件名解析集号/镜号/剧目，并关联同集 shots.md 与生成报告的分镜信息；
 - 生成缩略图（复用制片人审阅的 ffmpeg 抽帧能力，落在 data/review_thumbs/ 下）；
 - 打分（0–100）、修改意见、精修提示词的读写，以及按评分档位的汇总统计；
 - 同镜号多版本管理：为同一栏目内的视频标记「选定保留版本」（组内互斥），
-  并支持删除废弃版本条目及对应视频文件（路径经允许根目录双重校验）。
+  并支持删除废弃版本条目及对应视频文件（路径经允许根目录双重校验）；
+- 审阅中心内的返工生成：改写提示词后复用创作页任务管线重新生成，
+  结果可直接采用为同镜号的新版本（文件落在 data/assets，不写外部素材目录）。
 
 评分档位（对齐 ai-video-director 规范，由 score 派生，不落库）：
   ≥70 通过（pass）｜60–69 需重生成（revise）｜<60 需重新设计（redesign）｜未打分 待审（pending）。
@@ -32,12 +34,14 @@ import shutil
 import uuid
 from pathlib import Path
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
-from ..models import ShotReviewItem, ShotReviewSession
+from ..models import Asset, ShotReviewItem, ShotReviewRegeneration, ShotReviewSession, Task
 from ..utils.file_utils import detect_mime_type
 from ..utils.time_utils import now_iso as _now_iso
 from . import shot_review_archive as _archive
+from . import task_service
+from .asset_service import resolve_asset_path as _resolve_asset_path
 from .review_common import (
     delete_thumbnail_file as _delete_thumbnail_file,
     generate_review_thumbnail as _generate_review_thumbnail,
@@ -55,12 +59,20 @@ from .shot_script_meta import (
     parse_shot_key,
 )
 
-# 镜头审片只面向成片视频
+# 镜头审片面向的成片视频
 _VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv"}
+# 以镜号命名的分镜图/关键帧同样纳入审阅（其余参考图不入列表，避免噪声）
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 # 评分档位阈值
 PASS_SCORE = 70
 REVISE_SCORE = 60
+
+# 返工生成任务的归属对话（受保护，便于在创作页历史里集中查看）
+REGEN_CONVERSATION_TITLE = "审阅返工"
+
+# 返工生成记录的非终态，用于列表接口按需同步任务状态
+_REGEN_ACTIVE_STATUSES = {"pending", "queued", "running"}
 
 _HEAD_BYTES = 1024
 _ANCESTOR_PARTS = 6
@@ -81,6 +93,16 @@ def verdict_for_score(score: int | None) -> str:
     return "redesign"
 
 
+def content_type_of(item: ShotReviewItem) -> str:
+    """条目的内容类型：image | video（任务卡片的类型标签与返工模式依据）。"""
+    mime = (item.mime_type or "").lower()
+    if mime.startswith("image/"):
+        return "image"
+    if mime.startswith("video/"):
+        return "video"
+    return "image" if Path(item.file_name).suffix.lower() in _IMAGE_EXTS else "video"
+
+
 # ---------------- 扫描 ----------------
 
 def _read_head_bytes(abs_file: Path) -> bytes:
@@ -92,7 +114,11 @@ def _read_head_bytes(abs_file: Path) -> bytes:
 
 
 def _collect_videos(abs_root: Path) -> dict[str, Path]:
-    """递归收集根目录下的视频文件，键为相对根目录的 posix 路径。
+    """递归收集可审阅的媒体文件，键为相对根目录的 posix 路径。
+
+    - 视频：全部收集（成片镜头）；
+    - 图片：只收集文件名带镜号（如 EP05-S01.png / S03_首帧.jpg）的分镜图与关键帧，
+      角色定妆照、场景参考图等不以镜号命名的素材不进入审片列表，避免噪声。
 
     跳过以 ``_`` 开头的目录：本项目中 ``_superseded_*``（被淘汰的历史版本）与
     ``_model_compare``（模型对比产物）属于辅助产物，混入审片列表会与当前交付版本
@@ -100,13 +126,36 @@ def _collect_videos(abs_root: Path) -> dict[str, Path]:
     """
     found: dict[str, Path] = {}
     for child in abs_root.rglob("*"):
-        if not child.is_file() or child.suffix.lower() not in _VIDEO_EXTS:
+        if not child.is_file():
+            continue
+        suffix = child.suffix.lower()
+        if suffix in _VIDEO_EXTS:
+            pass
+        elif suffix in _IMAGE_EXTS:
+            if not parse_shot_key(child.name)[1]:
+                continue
+        else:
             continue
         rel = child.relative_to(abs_root)
         if any(part.startswith("_") for part in rel.parts[:-1]):
             continue
         found[str(rel).replace("\\", "/")] = child
     return found
+
+
+def _resolve_drama_title(abs_root: Path, rel: str, script_dir: Path | None) -> str:
+    """解析剧目名称：优先取集号目录（含 shots.md 的 EPxx）的上级目录名。
+
+    找不到分镜目录时退回「集号目录在相对路径中的前一级」，再退回扫描根目录名，
+    保证卡片上的剧目标签永远有值。
+    """
+    if script_dir is not None and script_dir.parent.name:
+        return script_dir.parent.name
+    parts = rel.split("/")[:-1]
+    for idx, part in enumerate(parts):
+        if EPISODE_DIR_RE.match(part) and idx > 0:
+            return parts[idx - 1]
+    return abs_root.name
 
 
 def _resolve_identity(rel: str, abs_root: Path, meta_cache: dict[Path, dict]) -> tuple[str | None, str | None, str, dict]:
@@ -138,6 +187,7 @@ def _resolve_identity(rel: str, abs_root: Path, meta_cache: dict[Path, dict]) ->
 def _build_item(session_id: str, abs_root: Path, rel: str, meta_cache: dict[Path, dict]) -> ShotReviewItem:
     abs_file = abs_root / rel
     episode, _, shot_id, meta = _resolve_identity(rel, abs_root, meta_cache)
+    script_dir = locate_script_dir(abs_file, abs_root)
     mime_type = detect_mime_type(abs_file.name, _read_head_bytes(abs_file))
     width, height, duration = _probe_media_meta(abs_file, mime_type)
     # ffprobe 不可用时回落到生成报告中的实测时长，保证「应有 vs 实际」仍可对照
@@ -152,8 +202,10 @@ def _build_item(session_id: str, abs_root: Path, rel: str, meta_cache: dict[Path
         session_id=session_id,
         episode=episode,
         shot_id=shot_id,
+        drama_title=_resolve_drama_title(abs_root, rel, script_dir),
         file_path=rel,
         file_name=abs_file.name,
+        origin="scan",
         file_size=abs_file.stat().st_size,
         mime_type=mime_type,
         width=width,
@@ -210,6 +262,9 @@ def scan_root(db: Session, session: ShotReviewSession, root_path: str) -> dict:
     scan_overrides: list[dict] = []
     backfilled = 0
     for rel, item in existing.items():
+        # 返工生成产生的版本不在目录里，属于会话自有数据，不参与「文件已消失」比对
+        if item.asset_id:
+            continue
         if rel not in found:
             removed_keys.append((item.episode, item.shot_id))
             scan_overrides.append(_archive.missing_override(item))
@@ -224,6 +279,11 @@ def scan_root(db: Session, session: ShotReviewSession, root_path: str) -> dict:
             if source:
                 item.source_prompt = source
                 backfilled += 1
+        # 旧条目回填剧目名称（任务卡片分类标签）
+        if not item.drama_title:
+            script_dir = locate_script_dir(abs_root / rel, abs_root)
+            item.drama_title = _resolve_drama_title(abs_root, rel, script_dir)
+            backfilled += 1
     if backfilled:
         db.flush()
 
@@ -439,7 +499,11 @@ def _delete_item_file(item: ShotReviewItem) -> int:
     """从磁盘删除条目对应的视频文件，返回释放的字节数。
 
     文件已不存在时视为成功（返回 0）；删除失败抛 ValueError/OSError 由上层转 HTTP 错误。
+    返工生成的版本（asset_id 非空）不删资产文件：素材库中的产出可能被其他任务复用，
+    这里只把条目移出审片列表，避免误删。
     """
+    if item.asset_id:
+        return 0
     path = _resolve_item_file_checked(item)
     if not path.exists():
         return 0
@@ -504,8 +568,22 @@ def bulk_delete_items(db: Session, session: ShotReviewSession, item_ids: list[st
     return {"deleted": deleted, "failed": failed, "freed_bytes": freed_bytes, "errors": errors}
 
 
+def _asset_of(item: ShotReviewItem) -> Asset | None:
+    """取条目关联的资产（返工生成产物），非资产条目返回 None。"""
+    if not item.asset_id:
+        return None
+    db = object_session(item)
+    return db.get(Asset, item.asset_id) if db is not None else None
+
+
 def resolve_item_file(item: ShotReviewItem) -> Path | None:
-    """解析审片条目对应的视频绝对路径。"""
+    """解析审片条目对应的媒体绝对路径。
+
+    扫描条目取会话根目录下的相对路径；返工生成条目取资产文件（data/assets）。
+    """
+    if item.asset_id:
+        asset = _asset_of(item)
+        return _resolve_asset_path(asset) if asset else None
     session = item.session
     if not session:
         return None
@@ -543,3 +621,256 @@ def ensure_thumbnail(db: Session, item: ShotReviewItem) -> Path | None:
     else:
         _delete_thumbnail_file(thumb_rel)
     return _resolve_thumbnail_path(item.thumbnail_path)
+
+
+# ---------------- 返工生成（任务卡片内改提示词重生成） ----------------
+
+def _derive_regen_task_type(content_type: str, has_ref: bool) -> str:
+    """内容类型 + 是否带参考素材 → 任务类型（与创作页 deriveTaskType 同规则）。"""
+    if content_type == "image":
+        return "img2img" if has_ref else "text2img"
+    return "img2video" if has_ref else "text2video"
+
+
+def _regen_asset_ids(task: Task) -> list[str]:
+    """任务结果资产 id（优先 worker 落库的有序列表）。"""
+    params = task_service.safe_json_loads(task.params_json, {})
+    stored = params.get("result_asset_ids")
+    if isinstance(stored, list) and stored:
+        return [str(a) for a in stored]
+    return []
+
+
+def create_regeneration(
+    db: Session,
+    item: ShotReviewItem,
+    *,
+    prompt: str,
+    provider: str,
+    model_id: str | None,
+    params: dict,
+    input_asset_ids: list[str],
+    task_type: str | None = None,
+) -> ShotReviewRegeneration:
+    """按任务卡片上改写的提示词创建一次返工生成任务（尚未入队）。
+
+    生成本身完全复用创作页的任务管线：同样的 Provider/模型/参数、同样的
+    params_json 契约（含 result_asset_ids），因此进度、结果资产、失败原因
+    都能直接沿用现有 SSE 与任务中心；本表只额外记录「哪一镜、用什么提示词返工」。
+
+    入队由调用方负责（与 /tasks 创建接口一致，便于入队失败时明确报错）。
+    """
+    session = item.session
+    if not session:
+        raise ValueError("条目所属会话不存在")
+    cleaned_prompt = (prompt or "").strip()
+    if not cleaned_prompt:
+        raise ValueError("提示词不能为空")
+
+    refs = [aid for aid in (input_asset_ids or []) if aid]
+    content_type = content_type_of(item)
+    resolved_type = task_type or _derive_regen_task_type(content_type, bool(refs))
+    if resolved_type in {"img2img", "img2video"} and not refs:
+        raise ValueError("图生图/图生视频需要至少一个参考素材")
+
+    task_params = dict(params or {})
+    if refs:
+        task_params["input_asset_ids"] = refs
+    # 返工来源标记：任务中心可据此回溯本次生成来自哪个审片条目的哪一镜
+    task_params.update(
+        {
+            "review_session_id": session.id,
+            "review_item_id": item.id,
+            "review_episode": item.episode,
+            "review_shot_id": item.shot_id,
+            "content_mode": content_type,
+        }
+    )
+
+    conversation = task_service.get_or_create_conversation(db, REGEN_CONVERSATION_TITLE)
+    task = Task(
+        id=_new_uuid(),
+        type=resolved_type,
+        status="pending",
+        progress=0,
+        provider=provider,
+        model_id=model_id,
+        prompt=cleaned_prompt,
+        params_json=json.dumps(task_params, ensure_ascii=False),
+        input_asset_id=refs[0] if refs else None,
+        conversation_id=conversation.id,
+    )
+    db.add(task)
+
+    regen = ShotReviewRegeneration(
+        id=_new_uuid(),
+        session_id=session.id,
+        item_id=item.id,
+        episode=item.episode,
+        shot_id=item.shot_id,
+        task_id=task.id,
+        prompt=cleaned_prompt,
+        provider=provider,
+        model_id=model_id,
+        task_type=resolved_type,
+        params_json=json.dumps(params or {}, ensure_ascii=False),
+        status="pending",
+        progress=0,
+    )
+    db.add(regen)
+    db.commit()
+    db.refresh(regen)
+    return regen
+
+
+def sync_regeneration(db: Session, regen: ShotReviewRegeneration) -> ShotReviewRegeneration:
+    """把任务的最新状态同步回返工记录（终态不再查询，避免重复写库）。"""
+    if regen.status not in _REGEN_ACTIVE_STATUSES or not regen.task_id:
+        return regen
+    task = db.get(Task, regen.task_id)
+    if task is None:
+        return regen
+
+    changed = False
+    status = task.status
+    if regen.status != status:
+        regen.status = status
+        changed = True
+    if regen.progress != task.progress:
+        regen.progress = task.progress
+        changed = True
+    if task.error_msg and regen.error_msg != task.error_msg:
+        regen.error_msg = task.error_msg
+        changed = True
+    if status == "completed":
+        asset_ids = _regen_asset_ids(task)
+        if asset_ids and regen.result_asset_id != asset_ids[0]:
+            regen.result_asset_id = asset_ids[0]
+            changed = True
+    if changed:
+        regen.updated_at = _now_iso()
+        db.commit()
+        db.refresh(regen)
+    return regen
+
+
+def list_regenerations(db: Session, session_id: str) -> list[ShotReviewRegeneration]:
+    """会话内的全部返工记录（含已放弃的，前端按状态过滤），顺手同步在途任务。"""
+    from sqlalchemy import desc
+
+    regens = (
+        db.query(ShotReviewRegeneration)
+        .filter(ShotReviewRegeneration.session_id == session_id)
+        .order_by(desc(ShotReviewRegeneration.created_at))
+        .all()
+    )
+    for regen in regens:
+        sync_regeneration(db, regen)
+    return regens
+
+
+def get_regeneration(db: Session, regen_id: str) -> ShotReviewRegeneration | None:
+    return db.get(ShotReviewRegeneration, regen_id)
+
+
+def _regen_version_name(db: Session, regen: ShotReviewRegeneration, suffix: str) -> str:
+    """返工版本的文件名：{镜号}__regen{N}{后缀}，N 在该镜已采用版本中递增。"""
+    used = (
+        db.query(ShotReviewItem)
+        .filter(
+            ShotReviewItem.session_id == regen.session_id,
+            ShotReviewItem.shot_id == regen.shot_id,
+            ShotReviewItem.origin == "regen",
+        )
+        .count()
+    )
+    return f"{regen.shot_id}__regen{used + 1}{suffix}"
+
+
+def adopt_regeneration(db: Session, regen: ShotReviewRegeneration) -> ShotReviewItem:
+    """把返工结果采用为同镜号的一个新版本（自动选定为保留版本）。
+
+    生成产物落在 data/assets，不写回外部素材目录：新条目用 asset_id 指向资产，
+    实体文件仍归素材库管理；审阅结论、评分与版本链与其他版本完全一致。
+    """
+    regen = sync_regeneration(db, regen)
+    if regen.status != "completed" or not regen.result_asset_id:
+        raise ValueError("该返工结果尚未生成成功，无法采用")
+
+    if regen.adopted_item_id:
+        existing = db.get(ShotReviewItem, regen.adopted_item_id)
+        if existing:
+            return existing
+
+    source = db.get(ShotReviewItem, regen.item_id)
+    if source is None:
+        raise ValueError("原审片条目已删除，无法采用该结果")
+    session = source.session
+    if session is None:
+        raise ValueError("条目所属会话不存在")
+
+    asset = db.get(Asset, regen.result_asset_id)
+    if asset is None:
+        raise ValueError("生成结果资产不存在，无法采用")
+
+    suffix = Path(asset.file_path).suffix or (
+        ".png" if content_type_of(source) == "image" else ".mp4"
+    )
+    file_name = _regen_version_name(db, regen, suffix)
+
+    item = ShotReviewItem(
+        id=_new_uuid(),
+        session_id=session.id,
+        episode=source.episode,
+        shot_id=source.shot_id,
+        drama_title=source.drama_title,
+        file_path=file_name,
+        file_name=file_name,
+        asset_id=asset.id,
+        origin="regen",
+        file_size=asset.file_size,
+        mime_type=asset.mime_type,
+        width=asset.width,
+        height=asset.height,
+        duration=asset.duration,
+        thumbnail_path=None,
+        score=None,
+        feedback="",
+        selected=False,
+        source_prompt=regen.prompt,
+        revised_prompt=regen.prompt,
+        shot_function=source.shot_function,
+        script_duration=source.script_duration,
+        shot_size=source.shot_size,
+        movement=source.movement,
+        dialogue=source.dialogue,
+        render_status="completed",
+        model=regen.model_id,
+        sort_order=source.sort_order,
+    )
+    db.add(item)
+    session.items.append(item)
+    db.flush()
+    # 新版本默认选定为保留版本：返工就是为了替换掉不满意的旧版本
+    _set_selected(db, item, True)
+    _reindex(db, session)
+    regen.adopted_item_id = item.id
+    regen.updated_at = _now_iso()
+    session.updated_at = _now_iso()
+    db.commit()
+    db.refresh(item)
+    recompute_summary(db, session)
+    # 数据沉淀：新版本的提示词与来源一并写入该镜档案
+    _archive.sync_shots(session, [item])
+    return item
+
+
+def discard_regeneration(db: Session, regen: ShotReviewRegeneration) -> ShotReviewRegeneration:
+    """放弃某次返工结果（软删除留痕，不删除任务与资产）。"""
+    if regen.adopted_item_id:
+        raise ValueError("该结果已采用为新版本，无法放弃")
+    regen.status = "discarded"
+    regen.updated_at = _now_iso()
+    db.commit()
+    db.refresh(regen)
+    return regen

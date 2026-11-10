@@ -16,7 +16,7 @@
 
 与制片人审阅（reviews）共用相同的路径安全与缩略图能力；
 差异在于按「集 → 镜」组织、以 0–100 评分代替状态标记，
-并支持同镜号多版本「选定保留版本」与废弃视频删除。
+并支持同镜号多版本「选定保留版本」、废弃视频删除与卡片内返工生成。
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import get_db
-from ..models import ShotReviewItem, ShotReviewSession
+from ..models import ShotReviewItem, ShotReviewRegeneration, ShotReviewSession
 from ..schemas_shot_review import (
     ShotReviewBatchUpdateRequest,
     ShotReviewBatchUpdateResponse,
@@ -38,6 +38,9 @@ from ..schemas_shot_review import (
     ShotReviewFolderListResponse,
     ShotReviewItemResponse,
     ShotReviewItemUpdate,
+    ShotReviewRegenerationCreate,
+    ShotReviewRegenerationListResponse,
+    ShotReviewRegenerationResponse,
     ShotReviewScanResponse,
     ShotReviewSessionCreate,
     ShotReviewSessionListResponse,
@@ -46,22 +49,30 @@ from ..schemas_shot_review import (
 )
 from ..services.review_common import list_review_folders
 from ..services.shot_review_service import (
+    adopt_regeneration,
     batch_update_items,
     bulk_delete_items,
     compute_summary,
+    content_type_of,
+    create_regeneration,
     create_session,
     delete_item,
     delete_session,
+    discard_regeneration,
     ensure_thumbnail,
     get_item,
+    get_regeneration,
     get_session,
+    list_regenerations,
     list_sessions,
     resolve_item_file,
     scan_root,
+    sync_regeneration,
     update_item,
     update_session,
     verdict_for_score,
 )
+from ..worker import run_generation_task
 
 router = APIRouter(prefix="/shot-reviews", tags=["shot-reviews"])
 
@@ -88,6 +99,11 @@ def _item_to_response(item: ShotReviewItem) -> ShotReviewItemResponse:
         session_id=item.session_id,
         episode=item.episode,
         shot_id=item.shot_id,
+        # 剧目名称缺失时回落为会话标题，保证任务卡片的标签位不出现空白
+        drama_title=item.drama_title or (item.session.title if item.session else None),
+        content_type=content_type_of(item),
+        origin=item.origin or "scan",
+        asset_id=item.asset_id,
         file_path=item.file_path,
         file_name=item.file_name,
         file_size=item.file_size,
@@ -116,6 +132,31 @@ def _item_to_response(item: ShotReviewItem) -> ShotReviewItemResponse:
         # 缩略图按需生成，扫描时未知是否有，故始终暴露该地址（前端首屏可视区域才会请求）
         thumbnail_url=f"/api/v1/shot-reviews/items/{item.id}/thumbnail",
         file_url=f"/api/v1/shot-reviews/items/{item.id}/file",
+    )
+
+
+def _regen_to_response(regen: ShotReviewRegeneration) -> ShotReviewRegenerationResponse:
+    result_id = regen.result_asset_id
+    return ShotReviewRegenerationResponse(
+        id=regen.id,
+        session_id=regen.session_id,
+        item_id=regen.item_id,
+        episode=regen.episode,
+        shot_id=regen.shot_id,
+        task_id=regen.task_id,
+        prompt=regen.prompt,
+        provider=regen.provider,
+        model_id=regen.model_id,
+        task_type=regen.task_type,
+        params=json.loads(regen.params_json or "{}"),
+        status=regen.status,
+        progress=regen.progress,
+        result_asset_id=result_id,
+        result_url=f"/api/v1/assets/{result_id}/file" if result_id else None,
+        error_msg=regen.error_msg,
+        adopted_item_id=regen.adopted_item_id,
+        created_at=regen.created_at,
+        updated_at=regen.updated_at,
     )
 
 
@@ -331,3 +372,118 @@ def get_shot_review_item_thumbnail(item_id: str, db: Session = Depends(get_db)):
     if not path:
         raise HTTPException(status_code=404, detail={"code": "no_thumbnail", "message": "该条目无缩略图"})
     return FileResponse(path=path, media_type="image/webp")
+
+
+# ---------------- 返工生成（任务卡片内改提示词重生成） ----------------
+
+@router.get(
+    "/sessions/{session_id}/regenerations",
+    response_model=ShotReviewRegenerationListResponse,
+)
+def list_shot_review_regenerations(
+    session_id: str,
+    db: Session = Depends(get_db),
+) -> ShotReviewRegenerationListResponse:
+    """会话内全部返工记录（含进行中与已放弃），并顺手把在途任务状态同步到库。"""
+    session = get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"审片会话 {session_id} 不存在"})
+    regens = list_regenerations(db, session_id)
+    return ShotReviewRegenerationListResponse(
+        items=[_regen_to_response(r) for r in regens],
+        total=len(regens),
+    )
+
+
+@router.post(
+    "/items/{item_id}/regenerations",
+    response_model=ShotReviewRegenerationResponse,
+    status_code=201,
+)
+def create_shot_review_regeneration(
+    item_id: str,
+    payload: ShotReviewRegenerationCreate,
+    db: Session = Depends(get_db),
+) -> ShotReviewRegenerationResponse:
+    """按卡片上改写的提示词发起返工生成，复用创作页的任务管线与 Provider 能力。"""
+    from .tasks import _validate_generation_count
+
+    item = get_item(db, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"审片条目 {item_id} 不存在"})
+
+    _validate_generation_count(payload.params)
+    try:
+        regen = create_regeneration(
+            db,
+            item,
+            prompt=payload.prompt,
+            provider=payload.provider,
+            model_id=payload.model_id,
+            params=payload.params,
+            input_asset_ids=payload.input_asset_ids,
+            task_type=payload.task_type,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": str(e)})
+
+    # 入队失败必须明确报错：返回 201 会让卡片挂在一个永远不推进的任务上
+    try:
+        run_generation_task.delay(regen.task_id)
+    except Exception as e:
+        task = db.get(Task, regen.task_id) if regen.task_id else None
+        if task is not None:
+            task.status = "failed"
+            task.error_msg = f"任务入队失败: {e}"
+        regen.status = "failed"
+        regen.error_msg = f"任务入队失败: {e}"
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "enqueue_failed", "message": f"任务入队失败: {e}"},
+        )
+
+    return _regen_to_response(regen)
+
+
+@router.get("/regenerations/{regen_id}", response_model=ShotReviewRegenerationResponse)
+def get_shot_review_regeneration(
+    regen_id: str,
+    db: Session = Depends(get_db),
+) -> ShotReviewRegenerationResponse:
+    regen = get_regeneration(db, regen_id)
+    if not regen:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"返工记录 {regen_id} 不存在"})
+    return _regen_to_response(sync_regeneration(db, regen))
+
+
+@router.post("/regenerations/{regen_id}/adopt", response_model=ShotReviewItemResponse)
+def adopt_shot_review_regeneration(
+    regen_id: str,
+    db: Session = Depends(get_db),
+) -> ShotReviewItemResponse:
+    """把返工结果采用为同镜号的新版本（自动选定为保留版本）。"""
+    regen = get_regeneration(db, regen_id)
+    if not regen:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"返工记录 {regen_id} 不存在"})
+    try:
+        item = adopt_regeneration(db, regen)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "invalid_state", "message": str(e)})
+    return _item_to_response(item)
+
+
+@router.delete("/regenerations/{regen_id}", response_model=ShotReviewRegenerationResponse)
+def discard_shot_review_regeneration(
+    regen_id: str,
+    db: Session = Depends(get_db),
+) -> ShotReviewRegenerationResponse:
+    """放弃某次返工结果（软删除留痕）；已采用的不可放弃。"""
+    regen = get_regeneration(db, regen_id)
+    if not regen:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"返工记录 {regen_id} 不存在"})
+    try:
+        regen = discard_regeneration(db, regen)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "invalid_state", "message": str(e)})
+    return _regen_to_response(regen)

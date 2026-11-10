@@ -170,6 +170,11 @@ def _run_lightweight_migrations() -> None:
     _ensure_column("shot_review_items", "revised_prompt", "TEXT")
     # 镜头审片：同镜号多版本时的「选定保留版本」标记
     _ensure_column("shot_review_items", "selected", "BOOLEAN NOT NULL DEFAULT 0")
+    # 镜头审片：任务卡片上的剧目名称标签
+    _ensure_column("shot_review_items", "drama_title", "TEXT")
+    # 镜头审片：审阅中心返工生成产物的资产引用与来源标记（scan|regen）
+    _ensure_column("shot_review_items", "asset_id", "TEXT")
+    _ensure_column("shot_review_items", "origin", "TEXT NOT NULL DEFAULT 'scan'")
 
 
 def init_db() -> None:

@@ -85,8 +85,9 @@ export function ImageLightbox({ item, gallery, open, onClose }: ImageLightboxPro
 
   // Lightbox forces a near-black backdrop in both themes; text must stay light
   // even when the app is in light mode, otherwise it would be invisible.
+  // 层级需高于全屏提示词编辑器（z-70）与素材悬浮预览（z-80）。
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 animate-fade-in text-white">
+    <div className="fixed inset-0 z-[90] flex flex-col bg-black/95 animate-fade-in text-white">
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-white">

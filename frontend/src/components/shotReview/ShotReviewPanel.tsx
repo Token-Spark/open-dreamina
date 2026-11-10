@@ -12,17 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BadgeCheck,
   CheckCircle2,
   Clapperboard,
   Clock,
+  Film,
   Gauge,
+  Image as ImageIcon,
   Layers,
   LayoutGrid,
   List,
   Loader2,
+  Rows3,
   Trash2,
   TriangleAlert,
   Wand2,
@@ -30,20 +34,36 @@ import {
 } from 'lucide-react'
 import {
   shotGroupKey,
+  useAdoptShotReviewRegeneration,
   useBulkDeleteShotReviewItems,
+  useCreateShotReviewRegeneration,
   useDeleteShotReviewItem,
   useDeleteShotReviewSession,
+  useDiscardShotReviewRegeneration,
   useRescanShotReviewSession,
   useShotReviewItems,
+  useShotReviewRegenerations,
   useShotReviewSessions,
   useUpdateShotReviewItem,
   useUpdateShotReviewSession,
+  SHOT_REVIEW_REGENS_KEY,
+  isActiveRegeneration,
 } from '@/hooks/useShotReviews'
-import type { ShotReviewItem, ShotReviewSession, ShotVerdict } from '@/api/shotReviews'
+import type {
+  ShotContentType,
+  ShotRegenerationPayload,
+  ShotReviewItem,
+  ShotReviewRegeneration,
+  ShotReviewSession,
+  ShotVerdict,
+} from '@/api/shotReviews'
 import { shotReviewItemFileUrl } from '@/api/shotReviews'
+import { getTask } from '@/api/tasks'
+import { getSystemSettings } from '@/api/system'
 import { ShotCompareDialog } from '@/components/shotReview/ShotCompareDialog'
 import { ShotGroupCard } from '@/components/shotReview/ShotGroupCard'
 import { ShotReviewCard, VERDICT_META, isPortraitItem } from '@/components/shotReview/ShotReviewCard'
+import { ReviewTaskCard } from '@/components/reviewCenter/ReviewTaskCard'
 import { FilterPill } from '@/components/reviewCenter/FilterPill'
 import { SessionListPanel } from '@/components/reviewCenter/SessionListPanel'
 import type { SessionListItem } from '@/components/reviewCenter/SessionListPanel'
@@ -54,15 +74,17 @@ import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { Select } from '@/components/ui/Select'
 import { toast } from '@/stores/uiStore'
+import { useActiveTaskList, useTaskStore } from '@/stores/taskStore'
 import { toApiError } from '@/api/client'
 import { cn, formatFileSize } from '@/lib/utils'
 
 type VerdictFilter = ShotVerdict | 'all'
-type ViewMode = 'grouped' | 'flat'
+type ContentTypeFilter = ShotContentType | 'all'
+type ViewMode = 'tasks' | 'grouped' | 'flat'
 
 /** 分组视图单页渲染的栏目数：整批可达数百个镜头，分批渲染避免 DOM 与并发请求过重。 */
 const PAGE_SIZE_GROUPS = 10
-/** 平铺视图单页渲染的镜头卡片数。 */
+/** 平铺视图 / 任务卡片视图单页渲染的条目数。 */
 const PAGE_SIZE_FLAT = 48
 
 const VERDICT_FILTERS: { key: VerdictFilter; label: string; icon: typeof Clock }[] = [
@@ -73,13 +95,19 @@ const VERDICT_FILTERS: { key: VerdictFilter; label: string; icon: typeof Clock }
   { key: 'redesign', label: '需重新设计', icon: XCircle },
 ]
 
+const CONTENT_TYPE_FILTERS: { key: ContentTypeFilter; label: string; icon: typeof Film }[] = [
+  { key: 'all', label: '全部类型', icon: Rows3 },
+  { key: 'video', label: '视频', icon: Film },
+  { key: 'image', label: '图片', icon: ImageIcon },
+]
+
 /** 从镜号中提取数字用于自然排序（如 EP05-S12 → 12），无数字的排最后。 */
 function shotNoOf(shotId: string): number {
   const m = /S(\d+)/i.exec(shotId)
   return m ? Number.parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER
 }
 
-/** 审阅中心的镜头审片面板：按集→镜分组打分、多版本对比与废弃版本清理。 */
+/** 审阅中心的镜头审片面板：任务卡片为主视图，另保留栏目分组与平铺列表。 */
 export function ShotReviewPanel({
   selectedId,
   onSelectSession,
@@ -87,11 +115,14 @@ export function ShotReviewPanel({
   selectedId: string | null
   onSelectSession: (id: string | null) => void
 }) {
+  const qc = useQueryClient()
   const { data: sessions, isLoading: sessionsLoading } = useShotReviewSessions()
   const [episodeFilter, setEpisodeFilter] = useState('all')
+  const [dramaFilter, setDramaFilter] = useState('all')
+  const [contentTypeFilter, setContentTypeFilter] = useState<ContentTypeFilter>('all')
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>('all')
-  // 分组视图（默认）：同镜号的多个版本合并进同一栏目，选定保留版本并清理废弃视频
-  const [viewMode, setViewMode] = useState<ViewMode>('grouped')
+  // 任务卡片（默认）：以生成任务为单位，卡片内看结果、改提示词、直接返工重生成
+  const [viewMode, setViewMode] = useState<ViewMode>('tasks')
   const [multiOnly, setMultiOnly] = useState(false)
   const [openItem, setOpenItem] = useState<ShotReviewItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<ShotReviewSession | null>(null)
@@ -104,6 +135,8 @@ export function ShotReviewPanel({
   // 切换会话（含新建后自动选中）时重置筛选
   useEffect(() => {
     setEpisodeFilter('all')
+    setDramaFilter('all')
+    setContentTypeFilter('all')
     setVerdictFilter('all')
     setMultiOnly(false)
   }, [selectedId])
@@ -135,13 +168,24 @@ export function ShotReviewPanel({
     return Array.from(set).sort()
   }, [allItems])
 
+  // 剧目下拉：一次扫描可能覆盖多部剧，卡片与筛选用同一份取值口径
+  const dramas = useMemo(() => {
+    const set = new Set<string>()
+    for (const it of allItems ?? []) {
+      if (it.drama_title) set.add(it.drama_title)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+  }, [allItems])
+
   const items = useMemo(() => {
     return (allItems ?? []).filter(
       (it) =>
         (episodeFilter === 'all' || it.episode === episodeFilter) &&
+        (dramaFilter === 'all' || it.drama_title === dramaFilter) &&
+        (contentTypeFilter === 'all' || it.content_type === contentTypeFilter) &&
         (verdictFilter === 'all' || it.verdict === verdictFilter),
     )
-  }, [allItems, episodeFilter, verdictFilter])
+  }, [allItems, episodeFilter, dramaFilter, contentTypeFilter, verdictFilter])
 
   // 同镜号分组：键为 集|镜号，组内按文件名自然排序，组间按 集 → 镜号 排序
   const groups = useMemo(() => {
@@ -163,11 +207,34 @@ export function ShotReviewPanel({
     })
   }, [items])
 
+  // 全量分组：用于版本序号与「多版本对比」，不受当前筛选影响，避免筛选后版本号跳变
+  const allGroups = useMemo(() => {
+    const map = new Map<string, ShotReviewItem[]>()
+    for (const it of allItems ?? []) {
+      const key = shotGroupKey(it)
+      const arr = map.get(key)
+      if (arr) arr.push(it)
+      else map.set(key, [it])
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => a.file_name.localeCompare(b.file_name, 'zh-Hans-CN', { numeric: true }))
+    }
+    return map
+  }, [allItems])
+
+  const versionInfo = useMemo(() => {
+    const map = new Map<string, { index: number; count: number; siblings: ShotReviewItem[] }>()
+    for (const [, arr] of allGroups) {
+      arr.forEach((it, i) => map.set(it.id, { index: i + 1, count: arr.length, siblings: arr }))
+    }
+    return map
+  }, [allGroups])
+
   const visibleGroups = useMemo(() => (multiOnly ? groups.filter(([, arr]) => arr.length > 1) : groups), [groups, multiOnly])
 
   const multiTakeCount = useMemo(
-    () => groups.reduce((n, [, arr]) => (arr.length > 1 ? n + 1 : n), 0),
-    [groups],
+    () => Array.from(allGroups.values()).reduce((n, arr) => (arr.length > 1 ? n + 1 : n), 0),
+    [allGroups],
   )
 
   const [visibleGroupCount, setVisibleGroupCount] = useState(PAGE_SIZE_GROUPS)
@@ -186,7 +253,7 @@ export function ShotReviewPanel({
   useEffect(() => {
     setVisibleGroupCount(PAGE_SIZE_GROUPS)
     setVisibleCount(PAGE_SIZE_FLAT)
-  }, [selectedId, episodeFilter, verdictFilter, viewMode, multiOnly])
+  }, [selectedId, episodeFilter, dramaFilter, contentTypeFilter, verdictFilter, viewMode, multiOnly])
 
   const deleteMutation = useDeleteShotReviewSession()
   const rescanMutation = useRescanShotReviewSession()
@@ -194,6 +261,82 @@ export function ShotReviewPanel({
   const updateItemMutation = useUpdateShotReviewItem(selectedId ?? '')
   const deleteItemMutation = useDeleteShotReviewItem(selectedId ?? '')
   const bulkDeleteMutation = useBulkDeleteShotReviewItems(selectedId ?? '')
+  const createRegenMutation = useCreateShotReviewRegeneration()
+  const adoptRegenMutation = useAdoptShotReviewRegeneration(selectedId ?? '')
+  const discardRegenMutation = useDiscardShotReviewRegeneration(selectedId ?? '')
+
+  // 返工记录：按条目归并出「最近一次」，卡片据此展示进度 / 待采用结果
+  const { data: regenerations } = useShotReviewRegenerations(selectedId)
+  const regenByItem = useMemo(() => {
+    const map = new Map<string, ShotReviewRegeneration>()
+    // 接口按创建时间倒序返回；进行中的优先展示，其次是最近一次完成的
+    for (const regen of regenerations ?? []) {
+      if (regen.status === 'discarded') continue
+      const prev = map.get(regen.item_id)
+      if (!prev) {
+        map.set(regen.item_id, regen)
+        continue
+      }
+      if (isActiveRegeneration(regen) && !isActiveRegeneration(prev)) {
+        map.set(regen.item_id, regen)
+      }
+    }
+    return map
+  }, [regenerations])
+
+  // 并发上限：与创作页同一门禁，避免在审阅中心无限堆叠生成任务
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: getSystemSettings,
+    staleTime: 60_000,
+  })
+  const maxConcurrent = systemSettings?.max_concurrent_tasks ?? 2
+  const activeTasks = useActiveTaskList()
+  const addActiveTask = useTaskStore((s) => s.addActive)
+  const atConcurrencyLimit =
+    activeTasks.filter((t) => t.status === 'pending' || t.status === 'queued' || t.status === 'running').length >=
+    maxConcurrent
+
+  const handleRegenerationSettled = useCallback(() => {
+    if (!selectedId) return
+    qc.invalidateQueries({ queryKey: [...SHOT_REVIEW_REGENS_KEY, selectedId] })
+  }, [qc, selectedId])
+
+  async function handleRegenerate(item: ShotReviewItem, payload: ShotRegenerationPayload) {
+    try {
+      const regen = await createRegenMutation.mutateAsync({ itemId: item.id, payload })
+      // 同步挂到全局任务条：切到别的页面也能看到这单返工的进度
+      if (regen.task_id) {
+        try {
+          addActiveTask(await getTask(regen.task_id))
+        } catch {
+          /* 任务条只是辅助展示，取不到不影响卡片内的进度 */
+        }
+      }
+      toast(`已提交返工生成：${item.shot_id}`, 'success')
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+      throw e
+    }
+  }
+
+  async function handleAdopt(regen: ShotReviewRegeneration) {
+    try {
+      await adoptRegenMutation.mutateAsync(regen.id)
+      toast('已采用为新版本，可继续打分或选定', 'success')
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    }
+  }
+
+  async function handleDiscardRegen(regen: ShotReviewRegeneration) {
+    try {
+      await discardRegenMutation.mutateAsync(regen.id)
+      toast('已放弃该返工结果', 'success')
+    } catch (e) {
+      toast(toApiError(e).message, 'error')
+    }
+  }
 
   async function handleDelete() {
     if (!confirmDelete) return
@@ -352,7 +495,7 @@ export function ShotReviewPanel({
                     <SummaryDot
                       icon={BadgeCheck}
                       label="已选定"
-                      count={groups.reduce((n, [, arr]) => (arr.some((i) => i.selected) ? n + 1 : n), 0)}
+                      count={Array.from(allGroups.values()).reduce((n, arr) => (arr.some((i) => i.selected) ? n + 1 : n), 0)}
                       className="text-success"
                     />
                     <span className="text-fg-muted">
@@ -364,8 +507,21 @@ export function ShotReviewPanel({
 
               {/* 筛选 */}
               <div className="mb-4 flex flex-wrap items-center gap-2">
-                {/* 视图切换：栏目分组（同镜号合并）/ 平铺列表 */}
+                {/* 视图切换：任务卡片（默认）/ 栏目分组（同镜号合并）/ 平铺列表 */}
                 <div className="flex items-center rounded-card border border-border p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('tasks')}
+                    className={cn(
+                      'flex items-center gap-1 rounded-btn px-2.5 py-1 text-xs font-medium transition-all',
+                      viewMode === 'tasks'
+                        ? 'bg-accent/10 text-fg-primary'
+                        : 'text-fg-muted hover:text-fg-secondary',
+                    )}
+                  >
+                    <Rows3 className="h-3.5 w-3.5" />
+                    任务卡片
+                  </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('grouped')}
@@ -417,18 +573,54 @@ export function ShotReviewPanel({
                     onClick={() => setMultiOnly((v) => !v)}
                   />
                 )}
-                <div className="ml-auto w-40">
-                  <Select
-                    value={episodeFilter}
-                    onChange={(e) => setEpisodeFilter(e.target.value)}
-                  >
-                    <option value="all">全部剧集</option>
-                    {episodes.map((ep) => (
-                      <option key={ep} value={ep}>
-                        {ep}
-                      </option>
-                    ))}
-                  </Select>
+                <div className="ml-auto flex items-center gap-2">
+                  {/* 内容类型：视频成片 / 镜号命名的分镜图 */}
+                  <div className="flex items-center rounded-card border border-border p-0.5">
+                    {CONTENT_TYPE_FILTERS.map((f) => {
+                      const Icon = f.icon
+                      return (
+                        <button
+                          key={f.key}
+                          type="button"
+                          onClick={() => setContentTypeFilter(f.key)}
+                          className={cn(
+                            'flex items-center gap-1 rounded-btn px-2 py-1 text-[11px] font-medium transition-all',
+                            contentTypeFilter === f.key
+                              ? 'bg-accent/10 text-fg-primary'
+                              : 'text-fg-muted hover:text-fg-secondary',
+                          )}
+                        >
+                          <Icon className="h-3 w-3" />
+                          {f.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {dramas.length > 1 && (
+                    <div className="w-36">
+                      <Select value={dramaFilter} onChange={(e) => setDramaFilter(e.target.value)}>
+                        <option value="all">全部剧目</option>
+                        {dramas.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+                  <div className="w-32">
+                    <Select
+                      value={episodeFilter}
+                      onChange={(e) => setEpisodeFilter(e.target.value)}
+                    >
+                      <option value="all">全部剧集</option>
+                      {episodes.map((ep) => (
+                        <option key={ep} value={ep}>
+                          {ep}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 </div>
               </div>
 
@@ -438,6 +630,67 @@ export function ShotReviewPanel({
                   <Loader2 className="h-4 w-4 animate-spin" />
                   加载中…
                 </div>
+              ) : viewMode === 'tasks' ? (
+                visibleItems.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+                      {visibleItems.map((item) => {
+                        const info = versionInfo.get(item.id)
+                        const siblings = info?.siblings ?? [item]
+                        const regen = regenByItem.get(item.id) ?? null
+                        return (
+                          <ReviewTaskCard
+                            key={item.id}
+                            item={item}
+                            versionIndex={info?.index ?? 1}
+                            versionCount={info?.count ?? 1}
+                            regeneration={regen}
+                            regenerationSubmitting={
+                              createRegenMutation.isPending &&
+                              createRegenMutation.variables?.itemId === item.id
+                            }
+                            atConcurrencyLimit={atConcurrencyLimit}
+                            onRegenerate={(payload) => handleRegenerate(item, payload)}
+                            onAdopt={handleAdopt}
+                            onDiscard={handleDiscardRegen}
+                            onRegenerationSettled={handleRegenerationSettled}
+                            onScoreChange={(score) => handleScoreChange(item.id, score)}
+                            onClearScore={() => handleClearScore(item.id)}
+                            onFeedbackChange={(feedback) => handleFeedbackChange(item.id, feedback)}
+                            onPromptSave={(prompt) => handlePromptSave(item.id, prompt)}
+                            onSelect={() => handleSelect(item.id)}
+                            onDeselect={() => handleDeselect(item.id)}
+                            onDelete={() => setConfirmTakeDelete(item)}
+                            onCompare={() => setCompareShot({ shotId: item.shot_id, items: siblings })}
+                            onOpen={() => setOpenItem(item)}
+                          />
+                        )
+                      })}
+                    </div>
+                    {items.length > visibleItems.length && (
+                      <div className="mt-4 flex justify-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setVisibleCount((n) => n + PAGE_SIZE_FLAT)}
+                        >
+                          加载更多（已显示 {visibleItems.length} / {items.length}）
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex h-40 items-center justify-center rounded-card border border-dashed border-border text-center">
+                    <p className="text-sm text-fg-muted">
+                      {verdictFilter === 'all' &&
+                      episodeFilter === 'all' &&
+                      dramaFilter === 'all' &&
+                      contentTypeFilter === 'all'
+                        ? '该目录下暂未扫描到镜头视频，也没有以镜号命名的分镜图'
+                        : '当前筛选条件下没有任务卡片'}
+                    </p>
+                  </div>
+                )
               ) : viewMode === 'grouped' ? (
                 shownGroups.length > 0 ? (
                   <>

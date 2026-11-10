@@ -30,6 +30,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
 import { ReferenceSlot, type ReferenceKind } from '@/components/ReferenceSlot'
+import { ReferenceAssetTray } from '@/components/ReferenceAssetTray'
 import { ModelPicker } from '@/components/ModelPicker'
 import { SizePicker } from '@/components/SizePicker'
 import { DirectorDeskDialog } from '@/components/DirectorDeskDialog'
@@ -68,6 +69,7 @@ import {
   isSeedanceProvider,
   isSparkHubSeedance,
   normalizeFrameMode,
+  refAssetGroupLabel,
   type FrameMode,
   type ReferenceAsset,
 } from '@/lib/promptMention'
@@ -418,8 +420,9 @@ export function GenerationInputBar({
     }
   }
 
-  function removeRef(index: number) {
-    onRefAssetsChange(refAssets.filter((_, i) => i !== index))
+  /** 按 assetId 移除：分组展示后列表顺序会随类别变化，下标不可靠。 */
+  function removeRefById(assetId: string) {
+    onRefAssetsChange(refAssets.filter((a) => a.assetId !== assetId))
   }
 
   function onDrop(e: React.DragEvent) {
@@ -474,6 +477,10 @@ export function GenerationInputBar({
   const activeFrameSpec = frameModeSpec(mode, isSeedance, frameMode)
   const frameSlots = activeFrameSpec?.slots ?? null
   const frameImages = frameSlots ? refAssets.filter((a) => (a.kind ?? 'image') === 'image') : []
+  // 固定格子模式下图片已在下方按「首帧/尾帧」角色展示，陈列区只收视频/音频，避免重复。
+  const trayAssets = frameSlots
+    ? refAssets.filter((a) => (a.kind ?? 'image') !== 'image')
+    : refAssets
 
   /** 移除固定格子中第 slotIndex 张图片（对应 frameImages 的下标）。 */
   function removeFrameImage(slotIndex: number) {
@@ -494,29 +501,22 @@ export function GenerationInputBar({
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
         >
-          {/* 已上传的参考素材列表（图片/视频/音频）；首帧/首尾帧模式下图片在下方固定格子中展示 */}
-          {refAssets.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {refAssets.map((ref, i) =>
-                frameSlots && (ref.kind ?? 'image') === 'image' ? null : (
-                  <ReferenceSlot
-                    key={ref.assetId}
-                    previewUrl={ref.previewUrl}
-                    kind={ref.kind ?? 'image'}
-                    auditStatus={ref.auditStatus}
-                    auditError={ref.auditError}
-                    onPick={() => {}}
-                    onClear={() => removeRef(i)}
-                    onPreview={() =>
-                      setPreviewItem({
-                        url: ref.previewUrl,
-                        type: (ref.kind ?? 'image') === 'image' ? 'image' : (ref.kind ?? 'image') === 'video' ? 'video' : 'audio',
-                        title: KIND_LABELS[ref.kind ?? 'image'],
-                      })
-                    }
-                  />
-                ),
-              )}
+          {/* 已引用/上传的参考素材：按角色、场景、道具、关键帧、上传分组，横向小图列表 */}
+          {trayAssets.length > 0 && (
+            <div className="mb-3 border-b border-border/50 pb-2.5">
+              <ReferenceAssetTray
+                assets={trayAssets}
+                onRemove={removeRefById}
+                onPreview={(ref) => {
+                  const kind = ref.kind ?? 'image'
+                  setPreviewItem({
+                    url: ref.previewUrl,
+                    type: kind === 'image' ? 'image' : kind === 'video' ? 'video' : 'audio',
+                    title: ref.name ?? KIND_LABELS[kind],
+                  })
+                }}
+                compact={compact}
+              />
             </div>
           )}
 
@@ -631,6 +631,11 @@ export function GenerationInputBar({
                               )}
                             </span>
                             <span className="truncate">{item.label}</span>
+                            {item.category && (
+                              <span className="shrink-0 text-[10px] opacity-60">
+                                {refAssetGroupLabel(item.category)}
+                              </span>
+                            )}
                             {item.source === 'library' && (
                               <span className="shrink-0 rounded bg-bg-tertiary px-1 py-0.5 text-[10px] text-fg-muted">
                                 素材库

@@ -77,7 +77,7 @@ export function ReviewCenterPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-fg-primary">审阅中心</h1>
           <p className="mt-1 text-sm text-fg-secondary">
-            素材审阅与镜头审片的统一入口：标记审核结论、按镜打分，多版本对比与废弃版本清理
+            按任务卡片审阅生成结果：卡片内直接看片、改提示词并重新生成，不必回创作页重建上下文
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">

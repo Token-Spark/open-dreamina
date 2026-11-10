@@ -18,21 +18,27 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import {
+  adoptShotReviewRegeneration,
   batchUpdateShotReviewItems,
   bulkDeleteShotReviewItems,
+  createShotReviewRegeneration,
   createShotReviewSession,
   deleteShotReviewItem,
   deleteShotReviewSession,
+  discardShotReviewRegeneration,
   getShotReviewSession,
   listShotReviewFolders,
   listShotReviewItems,
+  listShotReviewRegenerations,
   listShotReviewSessions,
   rescanShotReviewSession,
   updateShotReviewItem,
   updateShotReviewSession,
+  type ShotRegenerationPayload,
   type ShotReviewBatchEntry,
   type ShotReviewItem,
   type ShotReviewItemPatch,
+  type ShotReviewRegeneration,
   type ShotReviewSession,
   type ShotReviewSessionStatus,
   type ShotVerdict,
@@ -41,6 +47,7 @@ import {
 export const SHOT_REVIEW_SESSIONS_KEY = ['shot-reviews', 'sessions'] as const
 export const SHOT_REVIEW_FOLDERS_KEY = ['shot-reviews', 'folders'] as const
 export const SHOT_REVIEW_ITEMS_KEY = ['shot-reviews', 'items'] as const
+export const SHOT_REVIEW_REGENS_KEY = ['shot-reviews', 'regenerations'] as const
 
 /** 按分数派生的档位，用于乐观更新时同步前端展示。 */
 export function verdictFromScore(score: number | null | undefined): ShotVerdict {
@@ -344,6 +351,64 @@ export function useBulkDeleteShotReviewItems(sessionId: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: SHOT_REVIEW_SESSIONS_KEY })
+    },
+  })
+}
+
+// ---------------- 返工生成 ----------------
+
+/** 在途返工状态：需要持续同步任务状态，其余（完成/失败/放弃）不再轮询。 */
+const ACTIVE_REGENERATION_STATUSES = new Set(['pending', 'queued', 'running'])
+
+export function isActiveRegeneration(regen: Pick<ShotReviewRegeneration, 'status'>): boolean {
+  return ACTIVE_REGENERATION_STATUSES.has(regen.status)
+}
+
+/** 会话内的返工记录；存在在途任务时按 4s 轮询同步状态，全部终态后自动停止。 */
+export function useShotReviewRegenerations(sessionId: string | null) {
+  return useQuery({
+    queryKey: [...SHOT_REVIEW_REGENS_KEY, sessionId],
+    queryFn: () => listShotReviewRegenerations(sessionId as string),
+    enabled: !!sessionId,
+    refetchInterval: (query) => {
+      const items = query.state.data as ShotReviewRegeneration[] | undefined
+      return items?.some(isActiveRegeneration) ? 4000 : false
+    },
+  })
+}
+
+/** 按卡片上改写的提示词发起返工生成。 */
+export function useCreateShotReviewRegeneration() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: string; payload: ShotRegenerationPayload }) =>
+      createShotReviewRegeneration(itemId, payload),
+    onSuccess: (regen) => {
+      qc.invalidateQueries({ queryKey: [...SHOT_REVIEW_REGENS_KEY, regen.session_id] })
+    },
+  })
+}
+
+/** 把返工结果采用为同镜号的新版本（返回新建条目）。 */
+export function useAdoptShotReviewRegeneration(sessionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (regenId: string) => adoptShotReviewRegeneration(regenId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...SHOT_REVIEW_ITEMS_KEY, sessionId] })
+      qc.invalidateQueries({ queryKey: [...SHOT_REVIEW_REGENS_KEY, sessionId] })
+      qc.invalidateQueries({ queryKey: SHOT_REVIEW_SESSIONS_KEY })
+    },
+  })
+}
+
+/** 放弃某次返工结果（软删除留痕）。 */
+export function useDiscardShotReviewRegeneration(sessionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (regenId: string) => discardShotReviewRegeneration(regenId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...SHOT_REVIEW_REGENS_KEY, sessionId] })
     },
   })
 }
