@@ -100,6 +100,13 @@ _VIDEO_PARAM_PROPS: dict[str, Any] = {
         "enum": ["first", "first_last", "reference"],
         "description": "参考图用法：first=首帧；first_last=首尾帧（需 2 张参考图）；reference=内容参考。省略则按普通图生视频。",
     },
+    "generate_audio": {
+        "type": "boolean",
+        "description": "是否让模型生成同步音轨（台词人声 / 基础环境音 / 动作触发音）；仅视频模式且仅对"
+        "支持原生音频的模型生效（如 sparkhub-seedance / doubao_seedance_2_5）。省略则沿用模型默认（通常为开）。"
+        "false 生成完全无声视频，台词镜不要关；它只控制整条音轨有无，不能单独禁背景音乐——"
+        "禁乐仍需在 AUDIO 段前置声明 + negative_prompt 点名乐种做双通道压制。",
+    },
 }
 
 _TASK_ID = {"type": "string", "description": "任务 id（generate_* / create_task 返回的 task_id）。"}
@@ -141,7 +148,8 @@ TOOLS: list[dict[str, Any]] = [
     _tool(
         "generate_video",
         "生成视频（文生视频 / 图生视频）。传入 reference_asset_ids 或 reference_paths 时自动走图生视频，"
-        "可用 frame_mode 指定首帧 / 首尾帧 / 内容参考。只返回 task_id，需再用 wait_task 等待完成。",
+        "可用 frame_mode 指定首帧 / 首尾帧 / 内容参考；generate_audio 可显式控制是否生成同步音轨"
+        "（台词人声随画面同期产出）。只返回 task_id，需再用 wait_task 等待完成。",
         {
             "provider": _PROVIDER,
             "model_id": _MODEL_ID,

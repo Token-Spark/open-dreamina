@@ -192,6 +192,7 @@ opendreamina generate <prompt> [options]
 | --- | --- |
 | `--duration N` | 时长（秒）。Seedance 2.5 支持 4~30；Fast/Mini 与 2.0 支持 4~15，默认 5 |
 | `--frame-mode` | `first` / `first_last`（需 2 张）/ `reference` |
+| `--generate-audio` / `--no-generate-audio` | 显式开 / 关视频同步音轨（台词人声＋基础环境音＋动作触发音）。仅对支持原生音频的视频模型生效；省略沿用模型默认，`--no-generate-audio` 出完全无声视频。**只控制整条音轨有无，不能单独禁背景音乐** |
 
 **尺寸参数**（优先传「比例 + 分辨率」，由工具换算像素；也可直接传 `--width` + `--height`）
 
@@ -225,6 +226,12 @@ opendreamina frames2video "镜头从城市推向雪山" \
     --reference D:/refs/first.png --reference D:/refs/last.png \
     --duration 5 --poll 600
 
+# 台词同期：生视频时同步出人声（Seedance 2.5 原生音频）
+opendreamina image2video 'Spoken dialogue from GRANDMA: "Lord, she is thirty."' \
+    --provider sparkhub-seedance --model doubao_seedance_2_5 \
+    --reference D:/refs/grandma.png --frame-mode reference \
+    --generate-audio --duration 4 --resolution 720p --aspect-ratio 9:16 --poll 600
+
 # 仅提交不等待，拿到 task_id 后再用 query_result 跟进
 opendreamina text2image "..." --auto-provider --auto-model
 opendreamina query_result <task_id> --wait --download-dir D:/out
@@ -240,7 +247,8 @@ opendreamina create-task --type text2img --provider seedream "prompt..." \
 ```
 
 - `--type`（必填）：`text2img` / `img2img` / `text2video` / `img2video`。
-- `--params`：JSON 字符串，直接透传给后端。参数白名单见 `mcp/catalog.py`（`negative_prompt`、`width`、`height`、`steps`、`guidance_scale`、`seed`、`duration`、`strength`、`resolution`、`count`），白名单外字段后端会忽略。
+- `--params`：JSON 字符串，直接透传给后端。参数白名单见 `mcp/catalog.py`（`negative_prompt`、`width`、`height`、`steps`、`guidance_scale`、`seed`、`duration`、`strength`、`resolution`、`count`、`generate_audio`），白名单外字段后端会忽略。
+- 视频音轨：也可用 `--generate-audio` 显式开启同步音轨（台词人声随画面同期产出），或 `--no-generate-audio` 生成完全无声视频；省略沿用模型默认。台词仍必须逐字写进 prompt，开关不负责生成台词或咬口型。
 
 ### 5.3 `progress` —— 进度查询与等待
 

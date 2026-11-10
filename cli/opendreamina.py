@@ -50,7 +50,7 @@ from mcp import catalog, sizes, tools as tools_module  # noqa: E402
 from mcp.client import ApiClient, ApiError  # noqa: E402
 from cli import skills_catalog  # noqa: E402 - 纯本地技能目录，不需后端在线
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 # ---------------- 输出整形 ----------------
 
@@ -397,6 +397,8 @@ def cmd_generate(ns: argparse.Namespace) -> int:
     if mode == "video":
         args["duration"] = ns.duration
         args["frame_mode"] = ns.frame_mode
+        # None 时不写进 params，沿用模型默认；True / False 都要保留（False = 明确生成无声视频）
+        args["generate_audio"] = ns.generate_audio
         tool_name = "generate_video"
     else:
         args["count"] = ns.count
@@ -790,6 +792,10 @@ def _add_generate_args(p: argparse.ArgumentParser) -> None:
     # 视频专用
     p.add_argument("--duration", type=int, help="视频时长（秒）。Seedance 2.5 支持 4~30，Fast/Mini 与 2.0 支持 4~15。")
     p.add_argument("--frame-mode", choices=list(catalog.FRAME_MODES), help="参考图用法：first=首帧；first_last=首尾帧（需 2 张）；reference=内容参考。")
+    p.add_argument("--generate-audio", action=argparse.BooleanOptionalAction, default=None,
+                   help="是否让视频模型生成同步音轨（台词人声 / 环境音 / 动作音），仅视频模式且仅支持原生音频的模型生效。"
+                        "省略则沿用模型默认；--no-generate-audio 生成完全无声视频。"
+                        "它只控制整条音轨有无，不能单独禁背景音乐（禁乐靠 AUDIO 段前置 + --negative-prompt 音乐词）。")
     p.add_argument("--auto-wait", action="store_true", help="生成后自动轮询到终态并打印结果地址。")
     p.add_argument("--poll", type=int, help="生成后等待终态最多 N 秒（对应即梦 CLI 的 --poll）；与 --auto-wait 等价，二者任选其一。")
     p.add_argument("--wait-timeout", type=int, default=600, help="--auto-wait 的等待上限秒数（默认 600，上限 1800）。")

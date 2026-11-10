@@ -52,6 +52,8 @@ class TaskParams(BaseModel):
     guidance_scale: float = 7.0
     seed: Optional[int] = None
     duration: int = 5
+    # 仅视频：是否生成同步音轨（None=沿用模型默认；False=完全无声视频）
+    generate_audio: Optional[bool] = None
 
 
 class TaskResponse(BaseModel):

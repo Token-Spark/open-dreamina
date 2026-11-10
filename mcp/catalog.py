@@ -35,6 +35,7 @@ MODE_TASK_TYPES: dict[str, tuple[str, str]] = {
 
 # worker.py 透传给 Provider 的参数白名单（必须与 backend/app/worker.py 保持一致）。
 # 不在此列的参数会被后端静默忽略，因此 MCP 侧不再暴露冗余字段。
+# CLI 复用本白名单：generate_audio 控制视频模型是否生成同步音轨（台词人声 / 环境音 / 动作音）。
 PARAM_WHITELIST = (
     "negative_prompt",
     "width",
@@ -46,6 +47,7 @@ PARAM_WHITELIST = (
     "strength",
     "resolution",
     "count",
+    "generate_audio",
 )
 
 # 图生视频参考图模式（worker.py 支持）。

@@ -356,8 +356,12 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         kwargs: dict[str, Any] = {}
         if model_id:
             kwargs["model_id"] = model_id
-        # 透传常用参数
-        for k in ("negative_prompt", "width", "height", "steps", "guidance_scale", "seed", "duration", "strength", "resolution", "count"):
+        # 透传常用参数（与 mcp/catalog.py 的 PARAM_WHITELIST 保持一致）。
+        # generate_audio 控制 Seedance 2.5 等模型是否生成同步音轨；None 表示沿用模型默认。
+        for k in (
+            "negative_prompt", "width", "height", "steps", "guidance_scale",
+            "seed", "duration", "strength", "resolution", "count", "generate_audio",
+        ):
             if k in params:
                 kwargs[k] = params[k]
         # 断点续查：上一轮失败后落库的 submit_id 透传给 provider，避免重新 submit 重复扣费

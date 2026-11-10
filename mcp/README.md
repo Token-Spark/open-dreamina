@@ -95,7 +95,7 @@ Windows 若 `python` 不在 PATH，可把 `command` 换成解释器绝对路径�
 | 工具 | 必填 | 常用可选 |
 | --- | --- | --- |
 | `generate_image` | `provider`、`prompt` | `model_id`、`count`、`steps`、`guidance_scale`、`seed`、`strength`、`aspect_ratio`、`resolution`、`negative_prompt`、`reference_asset_ids`、`reference_paths`、`conversation_id` |
-| `generate_video` | `provider`、`prompt` | `model_id`、`duration`、`frame_mode`、`aspect_ratio`、`resolution`、`seed`、`negative_prompt`、`reference_asset_ids`、`reference_paths`、`conversation_id` |
+| `generate_video` | `provider`、`prompt` | `model_id`、`duration`、`frame_mode`、`generate_audio`、`aspect_ratio`、`resolution`、`seed`、`negative_prompt`、`reference_asset_ids`、`reference_paths`、`conversation_id` |
 | `create_task` | `type`、`provider` | `model_id`、`prompt`、`params`、与上两者相同的参数（通用兜底入口） |
 | `upload_asset` | `file_path` | — |
 
@@ -146,13 +146,15 @@ generate_video {
   reference_paths: ["D:/refs/frame.png"],   // 本地路径会自动上传
   frame_mode: "first",                      // 首帧
   duration: 5,
-  resolution: "1080p"
+  resolution: "1080p",
+  generate_audio: true                      // 显式生成同步音轨（省略则沿用模型默认）
 }
 ```
 
 已有素材时可先 `upload_asset` 拿到 `asset_id`，再用 `reference_asset_ids` 复用，避免重复上传。
 
 - `frame_mode`: `first`（首帧）｜`first_last`（首尾帧，需 2 张图）｜`reference`（内容参考）。
+- `generate_audio`: 布尔，是否生成同步音轨（台词人声＋环境音＋动作音）；仅视频且仅对支持原生音频的模型生效，省略沿用模型默认，`false` 出完全无声视频。它只控制整条音轨有无，**不能单独禁背景音乐**——禁乐靠 AUDIO 段前置 + `negative_prompt` 音乐词双通道。台词镜不要关。
 - 传了参考素材时，任务类型自动从 `text2img`/`text2video` 切到 `img2img`/`img2video`。
 
 ### 6.3 多对话分组
@@ -190,7 +192,8 @@ retry_task {task_id}      → 重新入队，再 wait_task
 调用 `list_models {mode:"video", model_id:"..."}` 可拿到精确区间；超出范围会被提前拦下并说明原因。
 
 > 注意后端参数名为 **`guidance_scale`**（Web 界面显示为「提示词权重」，前端内部叫 `guidance`）。
-> 参数白名单：`negative_prompt`、`width`、`height`、`steps`、`guidance_scale`、`seed`、`duration`、`strength`、`resolution`、`count`——白名单外的字段后端会忽略。
+> 参数白名单：`negative_prompt`、`width`、`height`、`steps`、`guidance_scale`、`seed`、`duration`、`strength`、`resolution`、`count`、`generate_audio`——白名单外的字段后端会忽略。
+> `generate_audio` 经 `mcp/catalog.py` 白名单 → 后端 `params` → `worker` 透传给 provider（`kwargs.generate_audio`）；与 CLI `--generate-audio / --no-generate-audio` 等价。
 
 ---
 
