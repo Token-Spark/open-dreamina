@@ -57,12 +57,23 @@
    - 用 `first` 必须在 `{项目根}/导演设计/EPxx/shot-design.md` sidecar 写**「首帧理由」**，否则视为违规。
    - `first_last` 基本不用：需 2 张、易画面不协调（两端钉死、中间靠插值，动作一大就崩）。
    - 判断口径：**能靠「多给参考 + 文字锚定」解决的，不用首帧。**
-6. **音频纪律（禁 BGM · 双通道压制 · 禁止整体静音）**：
+6. **音频纪律（台词同期 · 禁 BGM · 双通道压制 · 禁止整体静音）**：
+   - **台词同期（硬）：人物台词必须在视频生成时一并产出，禁止后期合成语音。**
+     台词镜的台词逐字写进生成 prompt（`Spoken dialogue from {角色}: "<逐字台词>"`，带说话人 / 语气 / 语速），
+     让模型在同一次生成里出声并咬口型；`drama compile` 段 5 已把台词逐字编译进 prompt，**不需要另建配音任务**。
+     后期只做 BGM 铺设、混音与字幕烧录，**不做台词配音、不做口型重对**。
+   - **通道事实**：`generate_audio` 在 provider 层已支持（`backend/app/providers/sparkhub_seedance.py` 读
+     `kwargs.generate_audio`），但 MCP 参数白名单（`mcp/catalog.py` 的 `PARAM_WHITELIST`）与 CLI 都**没暴露**这个开关。
+     当前只能靠「台词写进 prompt + 模型原生音频」出人声，所以**必须听验**——`completed` 不代表有人声；
+     选型时优先挑原生支持同步音频的模型（`opendreamina models --mode video` / `list_models` 核对能力）。
+   - **无台词镜必须显式写「无对白、不出人声」**，负面词补 `voiceover, dialogue, narration`，否则模型会自由加话。
+   - **不通过就重出，不许绕**：没出人声 / 台词错字 / 口型对不上 → 改 prompt（台词前置、标说话人与语气）、
+     换支持同步音频的模型，或重新生成；**不得用后期 TTS + 口型合成补齐**。降级只能由用户明确批准并记录在案。
    - 生成环节**禁止任何背景音乐 / 垫乐 / 旋律 / 节奏床**；原创 BGM 只在后期统一铺设，
      不得写入生成 prompt；Music Cue（IN/BUILD/DROP/OUT）属后期轨标记，不进生成提示。
    - **禁止整体静音**：台词镜保留人声，其余镜必须保留基础环境音＋动作触发音（foley），
      qc 查音轨存在性与电平；无台词 / 单人情绪镜为近静音＋呼吸·动作级底噪，而不是空轨。
-   - **工具无静音 / 禁乐参数开关**：Seedance 图生视频参数不提供 audio 开关，`completed` 不代表音轨合规；
+   - **工具链无静音 / 禁乐开关**（`generate_audio` 在 provider 层可读，但 CLI / MCP 未暴露），`completed` 不代表音轨合规；
      压制靠双通道——① 正向 AUDIO 段**前置**声明禁乐并实填环境音 / 触发音；
      ② `negative_prompt` 点名乐种（词表见 `prompt-optimizer/references/02-prompt-templates.md` §4.5），
      镜头四行模板见同文件 §3.4。句尾零散的 "no music" 约束力不足，且不得用 "ambience / pad / score" 许可配乐。

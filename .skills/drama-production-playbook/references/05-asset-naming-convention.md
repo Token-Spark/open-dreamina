@@ -13,7 +13,7 @@
 ├── 04_iconic_scenes/          # 名场面
 ├── 05_index/                  # primary_asset_ids.json + generation_report.json
 ├── 06_bgm/                    # BGM 风格卡（{编号}_{风格}_{曲名}.mp3，后期用）
-└── 06_voiceover/{EPxx}/       # 画外音成片
+└── 06_voiceover/{EPxx}/       # 画外音成片（仅旁白 / 画外音；台词在生成期同期产出）
 ```
 
 数字前缀即审阅中心呈现顺序；目录层级会完整出现在素材审阅条目的相对路径里。
@@ -27,7 +27,7 @@
 | 后缀 | 含义 | 用途 |
 |---|---|---|
 | `_PRIMARY_anchor-portrait.png` | 基准肖像锚点（固定 seed） | 一切人物变体的 img2img 源 |
-| `_PRIMARY_anchor-voice.wav` | 音色锚点（5s） | 视频音色参考 / TTS 选角 |
+| `_PRIMARY_anchor-voice.wav` | 音色锚点（5s） | 生成期台词的音色参考（不做后期配音；画外音 TTS 选角同用） |
 | `_{EP段}_{造型}_halfbody.png` | 半身像 | 仅作三视图的 img2img 基准，**禁止作种子 / 参考 / 首帧** |
 | `_{EP段}_{造型}_turnaround.png` | 三视图（正/侧/背全身） | **视频与关键帧唯一人物参考入口** |
 | `_{EPxx}_{造型}_detail.png` | 妆造细节板（污渍 / 破损 / 配饰特写，可选） | 人工逐镜核对用，**不进生成参考** |

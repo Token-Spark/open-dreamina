@@ -58,9 +58,9 @@ Asset（资产）
 ```text
 Video Assembly（视频组装）
 ↓
-Voice（配音）
+Voice（配音：仅画外音 / 旁白；台词镜不排后期配音）
 ↓
-Lip Sync（口型同步）
+Lip Sync（口型同步：仅经批准的修复，不得默认用来补台词）
 ↓
 SFX（音效）
 ↓
@@ -78,6 +78,9 @@ Mastering（母带制作）
 ↓
 Final QC（最终质检）
 ```
+
+> 台词已在生成期同期产出（见 `references/04-generation.md` §2.1），后期不做台词配音与口型重对；
+> `Voice` / `Lip Sync` 两步只在画外音与经批准的修复场景存在。
 
 ## 4. 人工升级（Human Escalation）
 

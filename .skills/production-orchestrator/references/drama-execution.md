@@ -9,7 +9,7 @@
 |---|---|---|
 | 分镜脚本 | `分镜脚本/EPxx/shots.md` | 唯一权威数据源（导演产出，lint 已通过） |
 | 资产清单 | `tools/assets_manifest.json` | 资产 prompt/seed/一致性策略/全局风格 |
-| 音色清单 | `tools/voice_manifest.json` | 角色 → TTS 音色选角 |
+| 音色清单 | `tools/voice_manifest.json` | 角色 → 生成期同期台词的音色参考（画外音 TTS 选角同用，不做台词后期配音） |
 | 平台注册表 | `tools/asset_registry.json` | 资产 id → 平台 asset_id |
 | 分集规格 | `tools/episode_specs/EPxx.json` | 每集的生成执行输入（本技能维护） |
 | 项目映射表 | `tools/maps.py` | 中英词库（编译器消费） |

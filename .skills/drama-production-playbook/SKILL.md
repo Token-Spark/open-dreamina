@@ -88,6 +88,7 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 11. 每集生成后先 `drama qc` 技术验收，再交 shot-reviewer 初审，最后人工终审。
 12. 项目根放入 `data/review_sources/` 前确认挂载配置；审阅系统对素材只读（除镜头审片可写根）。
 13. **视频生成默认全能参考（`--frame-mode reference`），且必须显式传**：`first` 非必要不用（精确起幅 / 平台不支持时才用，须在 sidecar 写「首帧理由」），`first_last` 基本不用。缺省行为按 provider 分叉（直连 seedance 落回首帧、只取第一张图），不要依赖默认。判定口径「能靠多给参考 + 文字锚定解决的，不用首帧」，见 `references/03-seedance-best-practices.md` 规则 5。
+14. **台词同期**：人物台词逐字写进生成 prompt（说话人 / 语气 / 语速），在视频生成时一并出声并咬口型；**禁止后期 TTS 配音与口型合成**。后期只做 BGM、混音、字幕。没出声 / 台词错 / 口型不对 → 改 prompt 或换模型重出，不靠后期补；无台词镜显式写「无对白」。见 `references/03-seedance-best-practices.md` 规则 6。
 
 ## 6. 成功标准
 

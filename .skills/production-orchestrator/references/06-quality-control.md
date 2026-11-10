@@ -50,6 +50,8 @@
 * 生成模式（frame_mode）：应为 `reference`（全能参考）；用了 `first` / `first_last` 须在 sidecar 有「首帧理由」
   或降级说明，否则按违规处理（判定见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5）
 * 音轨与配乐（audio / BGM）：无背景音乐、垫乐、旋律线与节奏鼓床；仅台词人声（台词镜）＋基础环境音＋动作触发音；无台词镜不得出现人声；未实际听验不得判 PASS，未验听记 `AUDIO_PENDING`（工具无静音开关，须正向前置禁乐＋负向音乐词双通道；模板见 prompt-optimizer §3.4 / §4.5）
+* 台词同期（dialogue sync）：台词镜人声存在、逐字与 shots.md 一致、音色与 `anchor-voice` 相符、口型与音节对齐；
+  缺人声 / 台词被改写 / 后期硬贴配音 → `RETRY`，不做后期配音补（见 `references/04-generation.md` §2.1）
 
 ### 连续性 QC（Continuity QC）
 

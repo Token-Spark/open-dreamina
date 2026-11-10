@@ -40,7 +40,7 @@ COSTUME（服装）
 VEHICLE（载具）
 CREATURE（生物）
 VFX（特效）
-VOICE（配音）
+VOICE（音色锚点 / 画外音；台词走生成期同期，不排后期配音）
 MUSIC（音乐）
 SFX（音效）
 ```

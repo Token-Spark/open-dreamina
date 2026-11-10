@@ -85,6 +85,9 @@ task:
   result_artifact: ""         # 产物 ID
 ```
 
+`VOICE` 只用于画外音 / 旁白与音色锚点；`LIPSYNC` 仅用于经批准的修复。台词镜的台词随视频生成同期产出
+（见 `references/04-generation.md` §2.1），不为台词单排 `VOICE` / `LIPSYNC` 任务。
+
 ## 5. Shot 对象
 
 ```yaml
