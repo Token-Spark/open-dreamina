@@ -1,6 +1,6 @@
 ---
 name: "prompt-optimizer"
-description: "面向 Open Dreamina 的提示词优化与直执行技能：在 agent 终端把口语化、残缺或风格模糊的原始描述，按内置模板或用户已存模板重写为结构化的图片/视频提示词（含负面词与参数建议），自检打分后可直接通过 MCP 工具（generate_image / generate_video / wait_task）创建生成任务并取回结果。当用户要「优化提示词 / 改写 prompt / 按模板套用 / 把想法变成能出图出视频的提示词 / 帮我直接生成」时调用。不用于剧情创作与分镜设计，也不做生成后的质量验收。"
+description: "面向 Open Dreamina 的提示词优化与直执行技能：在 agent 终端把口语化、残缺或风格模糊的原始描述，按内置模板或用户已存模板重写为结构化的图片/视频提示词（含负面词与参数建议，同场连续的多镜头内容编成连拍组一次生成，Seedance 2.5 单任务可用到 30 秒），自检打分后可直接通过 MCP 工具（generate_image / generate_video / wait_task）创建生成任务并取回结果。当用户要「优化提示词 / 改写 prompt / 按模板套用 / 把想法变成能出图出视频的提示词 / 帮我直接生成」时调用。不用于剧情创作与分镜设计，也不做生成后的质量验收。"
 ---
 
 # Prompt Optimizer Skill
@@ -61,7 +61,7 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 | 文件 | 内容 | 何时加载 |
 |---|---|---|
 | `references/01-optimization-framework.md` | 优化方法论：诊断四问、六工位结构、重写规则、输出格式 | 每次优化任务开始时首先加载 |
-| `references/02-prompt-templates.md` | 图片/视频提示词模板、工位词库、视频运动与镜头语言、负面词库、模板套用规则；含短剧音轨四行模板（§3.4）与音乐负面词表（§4.5） | 重写提示词时 |
+| `references/02-prompt-templates.md` | 图片/视频提示词模板、工位词库、视频运动与镜头语言、负面词库、模板套用规则；含短剧音轨四行模板（§3.4）、**多镜连拍组模板（§3.5）**与音乐负面词表（§4.5） | 重写提示词时 |
 | `references/03-parameters-and-execution.md` | MCP 工具清单、参数含义与默认值、尺寸换算、模型能力校验、执行序列与返回处理 | 给出参数建议或直接生成时 |
 | `references/04-quality-and-iteration.md` | 优化自检清单与评分、常见出图/出片问题 → 改词策略、迭代收敛规则 | 交付前自检与结果不理想时 |
 | `references/05-examples.md` | 图片 / 视频 / 图生视频 / 模板套用的前后对照示例 | 需要参考具体写法时 |
@@ -72,7 +72,7 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 1. 接任任务时先加载 `references/01-optimization-framework.md` 与 `references/02-prompt-templates.md`，其余文件按需加载。
 2. 必须先输出诊断结论（缺什么、歧义在哪），再输出优化后的提示词；禁止直接给结果不给依据。
 3. 优化后的提示词必须包含**正向提示词 + 负面提示词**两部分，二者不可复制同一内容，负面词只写要排除的内容。
-4. 视频提示词必须遵守「一个镜头一个动作」，并明确镜头运动方式；需要多动作时必须拆分任务。
+4. 视频提示词必须遵守「一个镜头一个动作」，并明确镜头运动方式；需要多动作时按 §3.5 编成连拍组的多镜段（一次生成，`Shot N (起-止s)` + `HARD CUT` 分隔），而不是拆成多个互相接不上的任务——这是「一个镜头一个动作」的正确落地方式。
 5. 参数必须经 `list_models`（或用户模板中的既有参数）核对模型能力后才可给出；时长、分辨率超出模型范围时必须说明并给出就近可选值。
 6. 字段名必须使用后端真实参数名：`guidance_scale`（不是 `guidance`）、`aspect_ratio`、`resolution`、`duration`、`count`、`strength`、`seed`、`frame_mode`。
 7. 自检评分 < 80 的提示词不得交付，须按 `references/04-quality-and-iteration.md` 迭代后再输出。
@@ -84,3 +84,4 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 13. **妆造 / 陈设已由图片锁定时不得再写服饰描述**：人物行与提示词只写身份项 + 本镜动作，用一致性锚句指回参考图；相对修饰（「同样的裙子但更旧」）同样算冲突。发现用户提示词里在描述已锁定的穿搭，先删描述、补锚点，见 `references/drama-prompt-pattern.md`「集内妆造锁定」。
 14. **生成参考与首帧只用 `*_turnaround`**（本集妆造版 `*_ep{xx}_{造型}_turnaround`）；半身照、剧照、成片截帧、拼贴板不得作种子，转了视角必漂移，见 `ai-video-director/references/21-episode-state-lock.md` §6。
 15. **视频默认全能参考（`frame_mode: "reference"`），且必须显式传**：`first` 非必要不用（只在必须精确起幅或平台不支持 `reference` 时用，并写明理由），`first_last` 基本不用。缺省行为按 provider 分叉（直连 seedance 落回首帧、只取第一张参考图），不要依赖默认；判定见 `references/03-parameters-and-execution.md` §2.3。
+16. **多镜头连续内容优先用连拍组，不要拆成一堆 5 秒任务**：同场同时段的连续镜头合并为一次生成（Seedance 2.5 单任务 ≤30s，组内 2–4 镜、单镜 ≥3s、推荐 12–20s），`duration` 显式给各段时间码之和；跨场跨时、多人物理接触、精确咬口型特写、复杂运镜/特效合成点、需精确起幅的镜仍拆独立任务。判据见 `ai-video-director/references/23-take-group-multi-shot.md`，模板见 `references/02-prompt-templates.md` §3.5。

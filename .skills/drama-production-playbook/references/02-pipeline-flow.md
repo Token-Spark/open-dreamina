@@ -39,7 +39,7 @@ opendreamina drama assets $EP --project .          # ② 资产缺口清单（�
 # ③ 素材生产：generate_assets → 素材审阅中心人工验收
 opendreamina drama compile $EP --project .         # ④ 编译英文提示词
 opendreamina drama spec $EP --project . --write    # ⑤ 分集执行规格落盘
-# ⑥ 批量生成 → video_renders/
+# ⑥ 批量生成 → video_renders/（同场连续镜先合成连拍组，一次多镜，母版按切点裁开）
 opendreamina drama qc $EP --project .              # ⑦ 技术验收
 # ⑧ shot-reviewer 初审 → 审片中心人工终审 → 返修迭代
 ```
@@ -49,5 +49,5 @@ opendreamina drama qc $EP --project .              # ⑦ 技术验收
 - 大纲 + 40 集分集剧本：先行完成（人工投入最大的环节）
 - 素材生产：93 项资产一次性建库，之后各集零新增（一致性最好的投入）
 - 分镜：每集 18 镜，写作 + lint 修错约 1-2 小时/集
-- 生成 + 质检：批量并发，断点恢复；返修按镜号精确重生成
+- 生成 + 质检：批量并发（按连拍组并发，一次任务出 2–4 镜），断点恢复以「整组」为粒度；返修按镜号精确重生成
 - 成片：转码 → concat → 响度匹配 → BGM 铺设，全部脚本化

@@ -88,6 +88,12 @@ opendreamina drama lint EP05 && \
 opendreamina drama compile EP05 --shot S08 --with-style && \
 opendreamina image2video ... --frame-mode reference --auto-wait && \
 opendreamina drama qc EP05
+
+# 连拍组（同场连续镜一次出多个，母版再按切点裁开）
+opendreamina image2video ... --frame-mode reference --duration 18 \
+    --prompt "<Shot 1 (0-6s)… HARD CUT Shot 2 (6-12s)… HARD CUT Shot 3 (12-18s)…>" \
+    --download-dir "分镜脚本/EP05/video_renders/_takes/"
+# 裁切命令与组级验收见 ai-video-director/references/23-take-group-multi-shot.md §7/§8
 ```
 
 ⚠️ 项目根放在 `./data/` 下时工具链只读扫描（parse/lint/compile/spec/assets/qc 均只读）；

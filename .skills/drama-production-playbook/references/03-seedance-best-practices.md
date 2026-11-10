@@ -18,9 +18,22 @@
 - 多形象（多时期/多造型）必须**完整充足地提供引用素材并合理编号区分**
   （如 `VENUS_EP01-10_white-gown` vs `VENUS_EP21-30_rosegold-queen`），避免错引
 
-### 3. 单镜时长控制
+### 3. 单镜时长控制：先合组，再拆镜
 单个镜头**以 6 秒以内为宜**；例外：多人互动物理接触戏（对打/搀扶）、
 较长台词——这类镜头需要一致性与连贯性，可放宽，但要接受更高重生成率。
+
+但「单镜 ≤6s」是**分镜单位**的约束，不是**生成任务**的约束。
+Seedance 2.5 单次生成支持 **4~30 秒**，所以同一场、同一时段的连续镜头应优先合并成
+**连拍组**，一次任务生成多个镜头（组总长 ≤30s、推荐 12–20s、组内 2–4 镜），
+而不是每个 6 秒镜都独立出任务：
+
+- 一次生成里，人物位置、光向、色温、妆造、道具在场由模型自己延续，不需要靠接续句"说回去"；
+- 动作可以切在中段，下一镜从这一拍接着走，不会重演；
+- 试错从 N 次降到 1 次，接不上整组重出，不用逐镜缝合。
+
+判据、镜段式提示词写法、母版裁切与组级验收见
+`ai-video-director/references/23-take-group-multi-shot.md`。
+**合组不免除锚点门禁**（`19`/`20`/`21` 照旧），跨妆造状态的镜不得同组。
 
 ### 4. 人物参考图要经剧集风格化处理
 通用真人参考图直接用会产生「素材感」与 AI 感。参考图必须在素材生成环节
@@ -82,17 +95,42 @@
    - **成片音轨必检**：无旋律线 / 和弦 / 鼓点 / 乐器垫乐才可 PASS；仍夹带垫乐先按双通道修正重出一次、
      不盲目多次重抽；仍不达标再后期剥离或静音化音轨兜底、画面保持不动。无 ffmpeg 时不得仅凭文件体积小判「无配乐」，未听验记 `AUDIO_PENDING`。
 7. **参数基线**：Seedance 720p / 9:16 / `--frame-mode reference`（显式传，见规则 5）/ 轮询上限按平台队列取宽。
+   `--duration` **必须显式给**：单镜 = 该镜时长；连拍组 = 组内各镜时长之和（≤30s），
+   不传会落回默认 5s，等于只出第一镜之内的内容。
 8. **接续纪律（靠描述，不靠首帧）**：单镜提示词是自足的、模型看不到上一镜，所以每镜必须写**入场态**
    并压成一句英文接续句放进提示词首部：人物位置关系（在哪一侧 / 朝向）+ 环境（光源方位、陈设在场）+
    动作与表情（动作在第几拍、表情余势）。不许重演上一镜的动作，不许表情无过渡地跳变。
    **接续不靠把上一镜画面设成首帧**——那会把构图钉死、让本镜变成复制品、把上一镜瑕疵一路传下去；
    尾帧只用来和本镜第 0 帧并排核对。**缺接续句的镜头视为分镜未设计完，不进生成队列。**
    格式、正反例、门禁与配对播放 QC 见 `ai-video-director/references/22-shot-continuity-in-generation.md` §5/§8/§9。
+   **但先看能不能合组**：同一场、同一时段的连续镜头合成连拍组后，组内切点由模型自己接，
+   接续句只服务组与组之间的缝（`ai-video-director/references/23-take-group-multi-shot.md`）。
+9. **连拍组优先（先合后拆）**：同场同时段、连续动作流、正反打对白、跟拍移动、同场换机位、
+   空镜序列 → 合并为一次生成。必须拆的只有：跨场跨时的 C 级断接、多人物理接触与群像、
+   精确咬口型的台词特写、复杂运镜 / 特效合成点、需精确起幅的镜。组内镜数 2–4、单镜 ≥3s、
+   总长 ≤30s（Seedance 2.5；Fast/Mini 与 2.0 上限 15s，只能做 2–3 镜小组）。
+   产出的多镜母版**必须按切点裁成逐镜文件**再落 `video_renders/{镜号}_seedance25/`，
+   母版存 `video_renders/_takes/`；组级验收（切点数 / 切点两侧 ±0.5s / 后段衰减）在逐镜 QC 之前做。
+   细则见 `ai-video-director/references/23-take-group-multi-shot.md`。
 
 ## 生成执行入口
 
 单镜验证：`opendreamina image2video --provider sparkhub-seedance --reference <三视图> --reference <场景图> --frame-mode reference --prompt "<编译后提示词>" --aspect-ratio 9:16 --auto-wait`
 
+连拍组（2–4 镜，总长 ≤30s，`--duration` 给组总长）：
+
+```bash
+opendreamina image2video --provider sparkhub-seedance \
+  --reference <三视图> --reference <场景图> --reference <loc_* 锚点> \
+  --frame-mode reference --duration 18 \
+  --prompt "<全局段 + Shot 1 (0-6s)… HARD CUT Shot 2 (6-12s)… HARD CUT Shot 3 (12-18s)…>" \
+  --aspect-ratio 9:16 --auto-wait \
+  --download-dir "分镜脚本/EPxx/video_renders/_takes/"
+# 再按切点裁成 S01/S02/S03 逐镜文件落各镜目录（ffmpeg，见 23 §7）
+```
+
 批量生成：读 `tools/episode_specs/EPxx.json` 逐镜执行（refs → --reference，
 prompt + style 常量 → --prompt，**统一带 `--frame-mode reference`**），产物按
 `{镜号}_seedance20/` 落 video_renders；断点恢复 = 跳过已有成片的镜号。
+编组过的镜头按 sidecar 连拍组表（`导演设计/EPxx/shot-design.md`）合并成一次调用，
+spec 结构不变；断点恢复粒度改为「整组」——组内已有母版就整组跳过，不做组内混版。

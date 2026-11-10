@@ -18,6 +18,12 @@
 > **视频模式口径同短剧管线**：默认多模态 / 全能参考（多图各司其职），首帧（`first`）非必要不用，
 > 首尾帧只在必须把转场两端钉死时用。判定见
 > `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5。
+>
+> **A-roll 的连续镜头按连拍组合并**：爆款视频里"同一动作流被切成 3 刀"的段落，不要按切点拆成 3 个任务各出一次
+> （换皮后人物与光每刀都得重猜一遍）。用 Seedance 2.5 一次生成多镜（≤30s，组内 2–4 镜），
+> 提示词用 `Shot N (起-止s)` + `HARD CUT` 标切点，母版按切点裁开再对齐剪辑点。
+> 判据与模板见 `ai-video-director/references/23-take-group-multi-shot.md` 与
+> `prompt-optimizer/references/02-prompt-templates.md` §3.5。
 
 ## 2. 生产顺序（省钱且可回滚）
 

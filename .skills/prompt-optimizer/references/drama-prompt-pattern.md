@@ -99,6 +99,11 @@ opendreamina drama lint EP05                              # 改分镜后守门
 `scene_*_ep{xx}_{状态}`）+ 音色；半身照、剧照、成片截帧不得作种子。
 先 `opendreamina providers` / `get_health` 确认环境。
 
+**连拍组里的镜不单 roll。** 该镜来自一次多镜生成（母版在 `video_renders/_takes/`），
+单独重出等于把「组内连续」换回「跨任务拼接」，前后接缝立刻变。重出粒度是**整组**：
+改镜段与切点后整组重生成，再重新裁切（`ai-video-director/references/23-take-group-multi-shot.md` §4/§9）。
+只有当该镜被判定必须独立（台词口型、多人接触、复杂运镜）时，才拆出组、单独走上面的单镜基线。
+
 ## 与通用模式的分工
 
 本技能通用六工位模板（主体/场景/光线/镜头/风格/质感）适用于：

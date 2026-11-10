@@ -50,7 +50,7 @@
 
 | 参数 | 取值 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `duration` | 秒 | 5 | Seedance 2.5 支持 4~30；Fast/Mini 与 2.0 支持 4~15 |
+| `duration` | 秒 | 5 | Seedance 2.5 支持 **4~30**；Fast/Mini 与 2.0 支持 4~15。**多镜连拍组给各镜时长之和**（见 2.5），不传就只出一镜 |
 | `frame_mode` | `first` / `first_last` / `reference` | `reference` | 首帧 / 首尾帧（需 2 张参考图）/ 内容参考。**必须显式传**：缺省按 provider 分叉，直连 seedance 会落回首帧且只取第一张 |
 
 > 视频生成默认**全能参考**（`reference`）：多图各司其职（身份 / 站位 / 房间 / 陈设），谁也不绑架谁。
@@ -61,6 +61,30 @@
 
 > 白名单外的参数会被后端忽略：`negative_prompt`、`width`、`height`、`steps`、`guidance_scale`、
 > `seed`、`duration`、`strength`、`resolution`、`count`。
+
+### 2.5 多镜连拍组（一次生成多个镜头）
+
+用户要「一段连续戏」「几个镜头连起来」「走两步再转身再回头」这类**多镜头连续动作**时，
+不要拆成多个 5 秒任务各出一镜，而是编成一个**连拍组**：一次生成，总长 ≤30s（Seedance 2.5），
+提示词里用镜段与切点标注镜头边界。
+
+```text
+[全局段] 风格 + 场景 + 人物身份（只写一次，禁止每段重述外观服饰）
+[接续句] 仅第一镜：Continuing directly from the previous shot: …
+Shot 1 (0.0-6.0s) — 景别, 机位, 运镜：一个动作；台词
+HARD CUT
+Shot 2 (6.0-13.0s) — 景别, 机位, 运镜：动作从第几拍接着走；台词
+HARD CUT
+Shot 3 (13.0-20.0s) — 景别, 机位, 运镜：一个动作；台词
+[尾段] 负面词 + 音轨约束（全组共用一次）
+```
+
+参数：`duration` = 各段时间码之和且**显式传**；`frame_mode: "reference"` 照旧；
+参考图整组共用一套；`wait_task timeout_seconds ≥ 1200`（30s 任务慢数倍）。
+
+约束：组内 2–4 镜、单镜 ≥3s、推荐总长 12–20s；跨场跨时、多人物理接触、精确咬口型特写、
+复杂运镜/特效合成点、需精确起幅的镜，仍拆独立任务。
+完整判据与验收见 `ai-video-director/references/23-take-group-multi-shot.md`。
 
 ### 2.4 多参考组合（多人 / 室内多角度）
 

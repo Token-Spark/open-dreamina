@@ -1,6 +1,6 @@
 ---
 name: "production-orchestrator"
-description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将导演的分镜方案转化为可执行、可追踪、可质控的生成任务，覆盖资产管理、依赖编排、模型路由、关键帧门禁、Prompt 编译、QC、失败处理、预算与交付。当用户需要把场景/镜头/资产/Prompt/参考/声音/剪辑方案转成生产工作流、选择生成模型、管理依赖/版本/重试/一致性/QC/成本/交付时调用。不用于剧情创作、剧本撰写、创意执导，也不负责项目骨架搭建与 drama CLI 手册（drama-production-playbook）、单条口语描述的提示词改写（prompt-optimizer）。"
+description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将导演的分镜方案转化为可执行、可追踪、可质控的生成任务，覆盖资产管理、依赖编排、模型路由、关键帧门禁、多镜连拍组合并（同场连续镜头用 Seedance 2.5 单任务 30 秒内一次生成多镜、母版按切点裁切落库，优先于逐镜独立生成）、Prompt 编译、QC、失败处理、预算与交付。当用户需要把场景/镜头/资产/Prompt/参考/声音/剪辑方案转成生产工作流、选择生成模型、管理依赖/版本/重试/一致性/QC/成本/交付时调用。不用于剧情创作、剧本撰写、创意执导，也不负责项目骨架搭建与 drama CLI 手册（drama-production-playbook）、单条口语描述的提示词改写（prompt-optimizer）。"
 ---
 
 # Production Orchestrator Skill
@@ -35,14 +35,17 @@ description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将�
 4. 在依赖镜头生成前，先锁定角色、场景、视觉参考与空间锚点（多人 / 共现 / 室内多角度）；触发条件与门禁见 `ai-video-director/references/19-relationship-keyframe.md` §2/§6 与 `20-indoor-layout-anchor.md` §2/§7。
 5. 生成任何非首镜前，先过**接续门禁**：入场态在册、prompt 首部有英文入场句、参考与本段同版本；
    接不上不生成，且不靠多抽几次蒙过去（判定见 `references/04-generation.md` §1.1）。
-6. 可行时先生成关键帧，再生成视频。
-7. 上游问题在上游修复。
-8. 先诊断失败原因，再重试。
-9. 优先简单可控镜头，而非复杂不可靠的生成。
-10. 绝不覆盖已批准资产或生产产物。
-11. 记录每一次生成与失败。
-12. 持续失败应升级处理，而非无限重试。
-13. 以"可用的已批准成片"为目标，而非原始生成数量。
+6. **先合组，再排任务**：同场同时段的连续镜头合并成一次生成（Seedance 2.5 单任务 ≤30s，组内 2–4 镜），
+   不让 N 个镜头各猜一次站位/光向/妆造；任务粒度纪律见 `references/04-generation.md` §2.0，
+   判据与验收见 `ai-video-director/references/23-take-group-multi-shot.md`。
+7. 可行时先生成关键帧，再生成视频。
+8. 上游问题在上游修复。
+9. 先诊断失败原因，再重试。
+10. 优先简单可控镜头，而非复杂不可靠的生成。
+11. 绝不覆盖已批准资产或生产产物。
+12. 记录每一次生成与失败。
+13. 持续失败应升级处理，而非无限重试。
+14. 以"可用的已批准成片"为目标，而非原始生成数量。
 
 ## 3. 使用流程（概览）
 
@@ -54,7 +57,7 @@ STEP 4  锁定关键资产 + 资产版本管理               → references/02-
 STEP 5  编译 Prompt（Prompt Compilation）         → references/03-prompt-and-routing.md
 STEP 6  模型路由（Model Routing）+ 生成策略       → references/03-prompt-and-routing.md
 STEP 7  关键帧门禁（Keyframe Gate）+ 接续门禁（Continuity Gate）→ references/04-generation.md
-STEP 8  视频生成 + 参考传播（Reference Propagation）→ references/04-generation.md
+STEP 8  视频生成 + 连拍组合并 + 参考传播        → references/04-generation.md
 STEP 9  任务队列 + 失败处理 + 镜头重设计           → references/05-task-and-failure.md
 STEP 10 质量管控（QC）与 QC 决策                  → references/06-quality-control.md
 STEP 11 预算追踪 + 粗剪 + 最终制作 + 人工升级       → references/07-budget-and-delivery.md

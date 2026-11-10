@@ -43,7 +43,7 @@
 | 情形 | 原因 |
 |---|---|
 | 跨场 / 跨时间（C 级断接） | 换空间就是换生成上下文；除非把转场本身设计成组内一个镜头 |
-| 多人物理接触（对打、搀扶、拥抱）、三人以上群像 | 多人同镜是最高风险项（`03-seedance-best-practices.md` 经验 1），合并会让瑕疵扩散到整组 |
+| 多人物理接触（对打、搀扶、拥抱）、三人以上群像 | 多人同镜是最高风险项（`drama-production-playbook/references/03-seedance-best-practices.md` 经验 1），合并会让瑕疵扩散到整组 |
 | 需要精确咬口型的台词特写 | 口型是单镜强约束，组内一旦漂移，整组作废 |
 | 单镜有独立复杂运镜 / 特效合成点 | 组内运镜必须简单；复杂调度单独出、单独验收 |
 | 必须从已批准画面精确起幅（合成点、定格、严格对位） | 属首帧的合法用途（`22` §5.3），与连拍互斥 |
@@ -62,6 +62,7 @@
 | 一集 90s 的组数 | 4–6 组 | 代替 18 个独立镜；不是每集都必须全部合并 |
 
 - 上限 30s 是**参数窗口**，不是创作目标。不要为了用满 30s 硬塞镜头。
+- 配额先算再做：4 镜组单镜取 4–6s（4×6=24s 最稳）；8s 满格的四镜组会顶到 32s，超上限，必须减镜。
 - 后段衰减是真实存在的：第 3、4 镜的人脸与一致性会弱于第 1 镜。
   所以**组内越靠后的镜头，越应该给简单任务**（反应镜、空镜、背影），重头戏放前台。
 - 核对模型能力再编组：`opendreamina models --mode video` / `list_models` 看 `duration.max`。
@@ -73,7 +74,7 @@
 核心差异：**组内不重复身份 / 服饰 / 场景描述**，重复即漂移。
 
 ```text
-[全局段] 风格常量 + 场景锚点 + 人物身份锚点（@char_id）+ 音轨纪律（同 §3.4 固定结构）
+[全局段] 风格常量 + 场景锚点 + 人物身份锚点（@char_id）+ 音轨纪律（`prompt-optimizer/references/02-prompt-templates.md` §3.4 四行结构）
 [组接续句] 仅第一镜：Continuing directly from the previous shot: {位置关系}, {动作在第几拍}, {表情余势}; {光源方位} stays the same.
 Shot 1 (0.0-6.0s) — {景别}, {机位}, {运镜}：{单一动作}；{台词}
 HARD CUT
@@ -125,7 +126,7 @@ No dialogue.
 | 项 | 取值 | 说明 |
 |---|---|---|
 | `duration` | 组内各镜时长之和，**显式传** | 不传会落默认 5s，等于只出第一镜 |
-| `frame_mode` | `reference`（显式传） | 与单镜纪律一致，见 `03-seedance-best-practices.md` 规则 5 |
+| `frame_mode` | `reference`（显式传） | 与单镜纪律一致，见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5 |
 | 参考图 | **整组共用一套同一版本**：`*_turnaround` + 场景 primary + `loc_*`（+ 命中时 `rel_*`） | 换版本 = 换空间，组内接不上 |
 | 分辨率 | 720p 打样，定稿再 1080p | 30s 任务在 1080p 下耗时与成本明显上升 |
 | 轮询 | `wait_task timeout_seconds ≥ 1200` / `--poll` 放宽 | 30s 任务比 5s 任务慢数倍，按 600s 等会误判超时 |
@@ -192,7 +193,7 @@ ffmpeg -ss 9  -to 15 -i master.mp4 -c copy S03.mp4
    组内仍断 = 提示词没写清切点，或单段动作过载。
 3. **后段一致性**：第 3、4 镜人脸 / 妆造 / 光向与第 1 镜对比，明显衰减 → 缩组（4→2+2）。
 4. **裁切后逐镜时长**与 `shots.md` 偏差 ≤±15%；同时核对 `duration` = 各段时间码之和。
-5. **音轨**：整组一条轨，禁乐（`03-seedance-best-practices.md` 规则 6）、环境音跨切点连续不归零；
+5. **音轨**：整组一条轨，禁乐（`drama-production-playbook/references/03-seedance-best-practices.md` 规则 6）、环境音跨切点连续不归零；
    台词镜台词逐字正确、口型对齐、音色与 `anchor-voice` 一致。
 6. 逐镜通过后再走单镜 QC（`09`）与初审打分（shot-reviewer）——**组级验收不替代单镜评分**。
 

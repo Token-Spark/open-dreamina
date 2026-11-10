@@ -34,7 +34,12 @@
 
 ### 视频 QC（Video QC）
 
-检查：
+**先做组级验收（连拍组）**：切点数与设计一致、切点两侧 ±0.5s 三条主线不断、
+后段镜（第 3/4 镜）无一致性衰减、裁切后逐镜时长偏差 ≤±15%、母版在 `_takes/` 且已裁切落库。
+组级不成立 → 整组 `RETRY` / 缩组 / 二分拆组，**不要逐镜挑单镜毛病**
+（判定与降级路径见 `ai-video-director/references/23-take-group-multi-shot.md` §8/§9）。
+
+逐镜检查：
 
 * 身份一致性（identity consistency）
 * 运动质量（motion quality）

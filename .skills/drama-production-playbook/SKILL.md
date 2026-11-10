@@ -39,7 +39,7 @@ description: "短剧项目制作手册与编排技能：基于《代号奥林匹
 ```text
 STEP 1  初始化项目骨架（opendreamina drama init）          → references/01-project-init.md
 STEP 2  三级剧本体系（大纲 → 分集 → 分镜）                  → references/02-pipeline-flow.md
-STEP 3  视频生成实战经验（Seedance 约束与规避）             → references/03-seedance-best-practices.md
+STEP 3  视频生成实战经验（Seedance 约束与规避 · 连拍组合并）  → references/03-seedance-best-practices.md
 STEP 4  五层锚点一致性策略                                  → references/04-consistency-strategy.md
 STEP 5  资产命名与目录规范                                  → references/05-asset-naming-convention.md
 STEP 6  opendreamina drama 工具链逐命令用法                 → references/06-cli-toolchain-guide.md
@@ -66,7 +66,7 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 |---|---|---|
 | `references/01-project-init.md` | 项目初始化：drama init、标准目录、manifest/movies 模板填写 | 接任新项目时首先加载 |
 | `references/02-pipeline-flow.md` | 六步流水线与三级剧本体系的详细标准 | 规划制作节奏时 |
-| `references/03-seedance-best-practices.md` | 视频生成实战经验：多人镜头规避、单镜时长、素材引用 | 进入生成环节时必读 |
+| `references/03-seedance-best-practices.md` | 视频生成实战经验：多人镜头规避、单镜时长与连拍组合并、素材引用、音频纪律 | 进入生成环节时必读 |
 | `references/04-consistency-strategy.md` | 五层锚点一致性策略（风格/角色/场景/关系/集内状态） | 建立资产生成计划时 |
 | `references/05-asset-naming-convention.md` | 资产命名规范与素材库目录约定 | 创建/登记资产时 |
 | `references/06-cli-toolchain-guide.md` | opendreamina drama 九个命令的参数、输出与工作流编排 | 每次调用工具链前 |
@@ -89,6 +89,7 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 12. 项目根放入 `data/review_sources/` 前确认挂载配置；审阅系统对素材只读（除镜头审片可写根）。
 13. **视频生成默认全能参考（`--frame-mode reference`），且必须显式传**：`first` 非必要不用（精确起幅 / 平台不支持时才用，须在 sidecar 写「首帧理由」），`first_last` 基本不用。缺省行为按 provider 分叉（直连 seedance 落回首帧、只取第一张图），不要依赖默认。判定口径「能靠多给参考 + 文字锚定解决的，不用首帧」，见 `references/03-seedance-best-practices.md` 规则 5。
 14. **台词同期**：人物台词逐字写进生成 prompt（说话人 / 语气 / 语速），在视频生成时一并出声并咬口型；**禁止后期 TTS 配音与口型合成**。后期只做 BGM、混音、字幕。没出声 / 台词错 / 口型不对 → 改 prompt 或换模型重出，不靠后期补；无台词镜显式写「无对白」。见 `references/03-seedance-best-practices.md` 规则 6。
+15. **连拍组优先（先合后拆）**：同场同时段的连续镜头（A 硬接、正反打、跟拍、同场换机位、空镜序列）合并成一次生成，Seedance 2.5 单任务 30 秒内出多镜（推荐 12–20s、组内 2–4 镜）；`--duration` 给组总长且必须显式传。多镜母版按切点裁成逐镜文件后再落 `video_renders/{镜号}_*/`，母版留 `_takes/`。合组不免除 `rel_*`/`loc_*`/妆造锁门禁，跨妆造状态不得同组。见 `references/03-seedance-best-practices.md` 规则 9 与 `ai-video-director/references/23-take-group-multi-shot.md`。
 
 ## 6. 成功标准
 
