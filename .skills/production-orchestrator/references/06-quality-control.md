@@ -25,6 +25,8 @@
 * 道具（props）
 * 灯光（lighting）
 * 情绪（emotion）
+* 相对位置关系（relative position，对照已批准的关系关键帧）
+* 室内结构一致性（structural consistency，对照该朝向的全景锚点）
 
 ### 视频 QC（Video QC）
 
@@ -37,6 +39,8 @@
 * 物理（physics）
 * 背景稳定性（background stability）
 * 时间一致性（temporal consistency）
+* 关系漂移（relationship drift：站位互换 / 越过地标 / 正反打两侧错位）
+* 空间错乱（spatial mismatch：门窗家具位置跳变 / 反打两面墙对不上 / 光向反转）
 
 ### 连续性 QC（Continuity QC）
 

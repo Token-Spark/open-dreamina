@@ -98,3 +98,9 @@ Sound
 Dialogue
 VFX
 ```
+
+> **字段口径说明**：上面 19 项是导演设计稿的内部字段。
+> 对外交付的**分镜头脚本 12 字段**及其取值规范、以及
+> 19 字段 ↔ 12 字段 ↔ drama 15 行 / 15 列 ↔ 生成卡的四向映射表，
+> 见 `references/17-storyboard-vs-shotlist-dual-output.md`。
+> 进入 Open Dreamina 管线时须经该映射表投影，禁止直接改 `shots.md` 模板。

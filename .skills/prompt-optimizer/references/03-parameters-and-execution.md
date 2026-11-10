@@ -56,6 +56,24 @@
 > 白名单外的参数会被后端忽略：`negative_prompt`、`width`、`height`、`steps`、`guidance_scale`、
 > `seed`、`duration`、`strength`、`resolution`、`count`。
 
+### 2.4 多参考组合（多人 / 室内多角度）
+
+涉及多人同镜、人物-场景反复共现、或室内跨 ≥2 机位时，**只优化文字不足以保一致性**，
+必须同时给锚点参考图（规范见 `ai-video-director/references/19-relationship-keyframe.md` §8）：
+
+```text
+该机位朝向的全景锚点（房间结构，loc_*_viewX）
++ 关系关键帧（人物站位，rel_*）
++ 各角色 *_turnaround（身份）
++ 场景 primary（外观）
++ 全局风格四常量（逐字拼接）
+→ frame_mode: reference；提示词只写「延续参考图结构/站位」+ 本镜动作
+```
+
+CLI `--reference` / `--reference-asset` 可多次传、可混用；MCP `reference_asset_ids` /
+`reference_paths` 无 `maxItems`。provider 层软上限：Seedance 图片 30 张、Gemini 图生图 14 张
+（超出静默截断）；`first_last` 需 2 张。锚点类资产的白名单、sidecar 追加与完整命令见 `ai-video-director/references/19-relationship-keyframe.md` §8。
+
 ## 3. 尺寸换算
 
 优先只给「比例 + 分辨率」，由 MCP 服务换算成像素宽高。

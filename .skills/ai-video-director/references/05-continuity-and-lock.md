@@ -67,6 +67,9 @@ Movement Style
 
 ## 3. Location Lock
 
+**室内多角度场景先建布局/全景锚点**：一张 primary 只覆盖一个朝向，反打会换墙；
+触发条件、全景锚点组与朝向映射见 `20-indoor-layout-anchor.md` §2/§3/§5。
+
 每一个主要场景建立：
 
 ```text

@@ -199,19 +199,44 @@ opendreamina drama parse EP01 --shot S01               # 分镜结构化预览
 
 ### 短剧智能体技能链
 
-`.skills/` 内置六技能覆盖短剧全流程（另有独立单技能 `viral-remake`，见下节）；用 `opendreamina skills` 自动列出，`opendreamina skills <name>` 读取 SKILL.md 加载给 AI 助手即用：
+`.skills/` 内置 7 项技能。其中 6 项构成短剧生产链（用 `opendreamina skills` 自动列出，`opendreamina skills <name>` 读取 SKILL.md 加载给 AI 助手即用）：
 
 ```
 drama-production-playbook（制作手册/编排，新开项目从这里进）
-  → short-drama-creator（剧本创作，<80 分自动重写）
-  → ai-video-director（剧本拆分镜，产出 shots.md）
+  → short-drama-creator（剧作与剧本创作；Premise/人物弧光/结构解剖/分层改稿，D4 稿评分判定）
+  → ai-video-director（分镜与导演设计；Storyboard + Shot List 双产物，shots.md 走 lint）
   → production-orchestrator（批量生成执行，消费 episode_spec）
   → shot-reviewer（镜头初审打分，回写审片中心）
   → prompt-optimizer（单点提示词优化与直执行）
 ```
 
+独立单技能 `viral-remake` 见下节。
+
+`short-drama-creator` 与 `ai-video-director` 已按电影学院级方法论升级：
+前者新增剧作工艺层（`premise-theme.md` / `character-arc.md` / `story-anatomy.md` /
+`rewrite-workshop.md`）与七层创作 Pipeline 交接契约（`seven-layer-pipeline.md`）；
+后者新增专业知识层 `12`–`20`（视听语言、轴线与机位图、视点信息差、默奇切点、
+卡茨故事板、双产物字段映射、影片分析档案、关系关键帧、室内布局/全景锚点）。
+两者均保持原有 STEP 编号与短剧定位。
+
 各技能均含短剧管线专章（references/drama-*.md），与 `opendreamina drama`
-命令、审阅中心数据契约对齐。
+命令、审阅中心数据契约对齐。`ai-video-director/references/17-storyboard-vs-shotlist-dual-output.md`
+定义了分镜头脚本 12 字段与 `shots.md` 的映射及管线保护条款——新增分镜规范必须经该
+映射表投影，**禁止改动 15 行模板、15 列列序与 lint 硬规则**，扩展信息写入
+`{项目根}/导演设计/EPxx/shot-design.md` sidecar。
+
+**关系关键帧是生成的硬门禁**：多人同镜、以及人物与场景反复共现的组合，必须先出
+已批准的 `rel_*` 布局定稿图并登记 asset_id，同组合复用同一版本；拆成单人正反打不免除。
+规范见 `ai-video-director/references/19-relationship-keyframe.md`。
+
+室内场景跨 ≥2 个机位/朝向时，还须先生成房间整体布局或全景锚点组，各机位按朝向引用，
+避免正反打两面墙对不上；规范见 `ai-video-director/references/20-indoor-layout-anchor.md`。
+
+**代码事实**：`rel_*` / `loc_*` 不在 `drama` 的 `ASSET_ID_RE` 白名单
+（char|scene|prop|crowd|icon|voice）内，`drama assets` / `drama spec` 的 refs **看不到**它们；
+`drama lint` 不检查前缀，lint 通过不代表已登记。登记走 `opendreamina upload` →
+`tools/asset_registry.json`，生成时按 sidecar 手工组装多参考
+（完整路径见 `ai-video-director/references/19-relationship-keyframe.md` §8）。**未改动 `drama/` 代码**。
 
 ### 爆款视频翻拍技能（viral-remake）
 

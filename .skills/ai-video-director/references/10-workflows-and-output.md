@@ -7,11 +7,16 @@
 
 最终必须输出一个结构化 Shot Table：
 
-| ID     | Scene | Beat | Shot         | 景别        | 镜头        | 动作   | 时长 | 台词           | 音效          | 生成          |
-| ------ | ----- | ---- | ------------ | --------- | --------- | ---- | -: | ------------ | ----------- | ----------- |
-| S01-01 | 01    | 01   | Establishing | ELS       | Slow Push | 城市运行 | 3s | —            | 城市环境声       | Image+Video |
-| S01-02 | 01    | 02   | MCU          | Eye Level | Static    | 女主抬头 | 4s | "什么？"        | 呼吸声         | Image+Video |
-| S01-03 | 01    | 03   | ECU          | Static    | 手机亮起      | 2s   |  — | Notification | Image+Video |             |
+| ID     | Scene | Beat | 镜头功能     | 景别 | 机位       | 运镜       | 人物动作 | 时长 | 台词    | 音效         | 生成        |
+| ------ | ----- | ---- | ------------ | ---- | ---------- | ---------- | -------- | ---: | ------- | ------------ | ----------- |
+| S01-01 | 01    | 01   | Establishing | ELS  | High Angle | Slow Push  | 城市运行 | 3s   | —       | 城市环境声   | Image+Video |
+| S01-02 | 01    | 02   | 对白         | MCU  | Eye Level  | Static     | 女主抬头 | 4s   | "什么？" | 呼吸声       | Image+Video |
+| S01-03 | 01    | 03   | 插入         | ECU  | Eye Level  | Static     | 手机亮起 | 2s   | —       | Notification | Image+Video |
+
+> 本表是**导演台阅读视图**（给人快速核对镜头序列），列名语义固定：
+> 镜头功能 / 景别 / 机位 / 运镜 / 人物动作，不要互相串列。
+> 进入 Open Dreamina 管线时以 `drama-shotlist-spec.md` 的 15 列总览表为唯一机器口径，
+> 字段投影关系见 `references/17-storyboard-vs-shotlist-dual-output.md` §4。
 
 ## 2. 每个 Shot 的最终生成卡
 

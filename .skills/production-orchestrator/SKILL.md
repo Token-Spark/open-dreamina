@@ -1,6 +1,6 @@
 ---
 name: "production-orchestrator"
-description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将导演的分镜方案转化为可执行、可追踪、可质控的生成任务，覆盖资产管理、依赖编排、模型路由、关键帧门禁、Prompt 编译、QC、失败处理、预算与交付。当用户需要把场景/镜头/资产/Prompt/参考/声音/剪辑方案转成生产工作流、选择生成模型、管理依赖/版本/重试/一致性/QC/成本/交付时调用。不用于剧情创作、剧本撰写或创意执导。"
+description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将导演的分镜方案转化为可执行、可追踪、可质控的生成任务，覆盖资产管理、依赖编排、模型路由、关键帧门禁、Prompt 编译、QC、失败处理、预算与交付。当用户需要把场景/镜头/资产/Prompt/参考/声音/剪辑方案转成生产工作流、选择生成模型、管理依赖/版本/重试/一致性/QC/成本/交付时调用。不用于剧情创作、剧本撰写、创意执导，也不负责项目骨架搭建与 drama CLI 手册（drama-production-playbook）、单条口语描述的提示词改写（prompt-optimizer）。"
 ---
 
 # Production Orchestrator Skill
@@ -32,7 +32,7 @@ description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将�
 1. 先规划，后生成。
 2. 先解决依赖，再执行。
 3. 优先复用已批准资产，再新建。
-4. 在依赖镜头生成前，先锁定角色、场景与视觉参考。
+4. 在依赖镜头生成前，先锁定角色、场景、视觉参考与空间锚点（多人 / 共现 / 室内多角度）；触发条件与门禁见 `ai-video-director/references/19-relationship-keyframe.md` §2/§6 与 `20-indoor-layout-anchor.md` §2/§7。
 5. 可行时先生成关键帧，再生成视频。
 6. 上游问题在上游修复。
 7. 先诊断失败原因，再重试。
@@ -67,7 +67,7 @@ STEP 13 工作模式切换 + 响应行为 + 成功标准          → references
 | `references/01-core-and-contracts.md` | 角色定位、核心原则、输入契约、输出契约 | 接任制片执行任务时首先加载 |
 | `references/02-planning.md` | 生产规划：解析、资产注册表、依赖图、锁定关键资产、资产版本管理 | 规划生产时 |
 | `references/03-prompt-and-routing.md` | Prompt 编译、模型路由、生成策略 | 编译 Prompt / 选择模型时 |
-| `references/04-generation.md` | 关键帧门禁、视频生成、参考传播 | 生成关键帧 / 视频时 |
+| `references/04-generation.md` | 关键帧门禁（含关系关键帧硬门禁）、视频生成、参考传播 | 生成关键帧 / 视频时 |
 | `references/05-task-and-failure.md` | 任务队列、失败处理、镜头重设计 | 管理任务 / 处理失败时 |
 | `references/06-quality-control.md` | 质量管控（资产/关键帧/视频/连续性/故事）、QC 决策、最终 QC | 各生产门禁质检时 |
 | `references/07-budget-and-delivery.md` | 生产预算、粗剪、最终制作、人工升级 | 追踪成本 / 进入制作交付时 |
@@ -82,7 +82,7 @@ STEP 13 工作模式切换 + 响应行为 + 成功标准          → references
 2. 先规划后生成；未解决依赖的任务必须标记 `BLOCKED`，不得编造关键创作信息。
 3. 资产必须优先复用已批准版本；绝不静默覆盖已批准版本；变更必须新建版本并保留来源（Provenance）。
 4. 关键资产（角色/场景/风格）在依赖镜头生成前必须锁定，已批准参考视为不可变输入。
-5. 可行时先 Keyframe 后 Video；关键帧失败必须先修关键帧，不得用反复生成视频来解决坏关键帧。
+5. 可行时先 Keyframe 后 Video；关键帧失败必须先修关键帧，不得用反复生成视频来解决坏关键帧。多人 / 共现 / 室内多角度未批准锚点 → `BLOCKED`；门禁与状态落地见本技能 `references/04-generation.md` §1、规范见 `ai-video-director/references/19-relationship-keyframe.md` §6。
 6. 每次生成失败必须先诊断、分类，再采取最小修正重试；禁止盲目重试；超过重试上限转 `HUMAN_REVIEW`。
 7. 一个视频镜头只放一个主要动作；复杂动作拆镜头，用剪辑制造复杂度。
 8. 每个生产门禁必须执行 QC；仅"好看"但未完成叙事功能的镜头视为失败镜头。

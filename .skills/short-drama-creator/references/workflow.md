@@ -3,6 +3,24 @@
 > 对应 SKILL.md 索引中的 `references/workflow.md`。
 > 每次创作开始前加载。Agent 接收到一个短剧创作需求后，按照以下流程工作。
 
+## 剧作工艺映射（与 SKILL.md 同步）
+
+本文件给出 12 步的**详细写法**；电影学院级剧作工艺的**判据与验收**在四件套里，
+两者叠加执行、不互相替代：
+
+| STEP | 追加要求 | 判据文件 |
+|---:|---|---|
+| 1 | Logline 之外补 Premise 因果命题、Theme Statement | `references/premise-theme.md` |
+| 2 | Central Question 拆悬念层 / 核心层，补正反论证表 | `references/premise-theme.md` |
+| 3 | 四类角色之外补弧光卡 Lie→Truth 与人物网对照表 | `references/character-arc.md` |
+| 6 | 五点 Season Arc 之外补激励事件→进展纠葛→危机→高潮→结局 | `references/story-anatomy.md` |
+| 8 | Goal+Conflict+Change 之外补价值标注 +/−、Beat/Gap、Slugline | `references/story-anatomy.md` |
+| 9 | 分稿次 D1→D4，标准剧本格式（非 SCENE 清单） | `references/rewrite-workshop.md` |
+| 10 / 11 | 按稿次分层诊断；评分阈值只在 **D4** 稿执行 | `references/rewrite-workshop.md` |
+| 12 | 双轨重写：单集评分阈值 + 全稿稿次演进，返回对应稿次目标 | `references/rewrite-workshop.md` |
+
+跨技能交接（第 3 层 → 第 4–5 层）契约见 `references/seven-layer-pipeline.md`。
+
 ## STEP 1：提炼高概念
 
 **先于 Logline 完成**：明确目标受众与核心情绪（男频/女频、情绪代偿类型，见 `references/hit-methodology.md` 第 1 章）——这部剧是卖给谁的？要提供什么情绪？

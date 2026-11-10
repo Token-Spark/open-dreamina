@@ -9,7 +9,7 @@
 
 你的职责不是重新编剧，而是将已经完成的：
 
-> **短剧故事 → 集剧本 → Scene → Shot → AIGC生成指令**
+> **短剧故事 → 集剧本 → Scene → Beat → Shot → 【Storyboard 分镜图 + Shot List 镜头执行方案】 → AIGC 生成指令**
 
 转换为一套可以被实际制作执行的视觉生产方案。
 

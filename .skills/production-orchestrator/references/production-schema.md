@@ -33,7 +33,7 @@ episode:
 ```yaml
 asset:
   id: CHAR-A-V01          # 稳定 ID，格式：<TYPE>-<标识>-V<NN>
-  type: CHARACTER         # CHARACTER / LOCATION / PROP / COSTUME / VEHICLE / CREATURE / VFX / VOICE / MUSIC / SFX
+  type: CHARACTER         # CHARACTER / LOCATION / PROP / COSTUME / VEHICLE / CREATURE / VFX / VOICE / MUSIC / SFX / RELATIONSHIP_KEYFRAME / INDOOR_LAYOUT_ANCHOR
   status: APPROVED        # PENDING / GENERATED / QC_PENDING / APPROVED / FAILED / HUMAN_REVIEW
   version: V01
   provenance:             # 来源链
@@ -43,6 +43,19 @@ asset:
   locked: true            # 是否已锁定（批准后视为不可变输入）
   tags: []                # 可选标签
 ```
+
+### 3.1 锚点类资产（RELATIONSHIP_KEYFRAME / INDOOR_LAYOUT_ANCHOR）
+
+| 字段 | 说明 |
+|---|---|
+| `id` | `rel_*` / `loc_*`，命名见 `ai-video-director/references/19-relationship-keyframe.md`、`20-indoor-layout-anchor.md` |
+| `platform_asset_id` | `opendreamina upload` 返回值；登记在 `tools/asset_registry.json` |
+| `approved` | 批准状态；未批准不得通过生成门禁 |
+| `sidecar_ref` | `{项目根}/导演设计/EPxx/shot-design.md` 中对应 `## EPxx-SNN` 块 |
+| `camera_facing` | 仅 `INDOOR_LAYOUT_ANCHOR`：该锚点对应的机位朝向（viewA / viewB / viewWide） |
+
+**这类资产不进 `drama spec` 的 refs**（`ASSET_ID_RE` 白名单静默过滤），生成时由编排层
+按 sidecar 手工组装多参考；完整命令见 `ai-video-director/references/19-relationship-keyframe.md` §8。
 
 ## 4. Task 对象
 
@@ -80,6 +93,9 @@ shot:
   continuity:                 # 连续性锁定引用
     character: [CHAR-A-V01]
     location: LOC-HOSPITAL-V01
+    relationship_keyframe: ""   # rel_* ID（多人 / 共现组合）
+    indoor_view_anchor: ""      # loc_*_viewX ID（室内多角度）
+    camera_facing: ""           # 本镜朝向，须与锚点一致
   screen_direction: ""
   status: APPROVED
 ```

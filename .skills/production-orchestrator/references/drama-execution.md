@@ -38,6 +38,11 @@ opendreamina image2video --provider sparkhub-seedance \
     --prompt "<spec prompt + 风格常量>" --aspect-ratio 9:16 --auto-wait \
     --download-dir "分镜脚本/EPxx/video_renders/S01_seedance20/"
 
+> **锚点类资产不在 spec refs 里**：`rel_*` / `loc_*` 被资产 ID 白名单静默过滤，
+> `drama spec` / `drama assets` 看不到它们。编排层须按 `shot-design.md` sidecar
+> 手工追加 `--reference-asset <asset_id>`；代码事实与完整命令见
+> `ai-video-director/references/19-relationship-keyframe.md` §8。
+
 # 6. 技术验收
 opendreamina drama qc EPxx --project .
 ```
@@ -45,8 +50,8 @@ opendreamina drama qc EPxx --project .
 ## 生成参数基线（Seedance）
 
 - provider/model：项目 manifest 的 `provider`/`model`（如 sparkhub-seedance + doubao_seedance_2）
-- 720p / 9:16 / 全能参考（`--frame-mode reference`）/ 单镜 4-8s
-- 参考绑定纪律：人物 = `*_turnaround`，场景 = primary/interior，音色 = anchor-voice
+- 720p / 9:16 / 全能参考（`--frame-mode reference`）；单镜创作建议 ≤6s、lint 硬区间 2–8s（见 `ai-video-director/references/drama-shotlist-spec.md`），4–8s 仅为 Seedance 参数窗口，不是创作约束
+- 参考绑定纪律：人物 = `*_turnaround`，场景 = primary/interior，音色 = anchor-voice；锚点 = `rel_*` / `loc_*` 的 asset_id（走 sidecar 手工追加，不进 spec refs）
 - 首尾帧模式慎用；音色参考被拒时降级为仅图片重试
 - 失败处理：先诊断（审核拒绝/参数越界/内容拦截），再最小修正重试，禁盲目重试
 

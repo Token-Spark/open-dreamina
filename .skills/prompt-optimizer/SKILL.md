@@ -79,3 +79,4 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 8. 用户未明确要求生成时，只输出提示词与参数，**不得**调用 `generate_image` / `generate_video`。
 9. 调用生成工具前必须先用 `list_providers` 确认 `provider` 已配置、`get_health` 确认 worker 就绪；不确定就如实告知，不猜测。
 10. 生成后必须用 `wait_task` 取回终态并回报 `result_urls_absolute` 与失败原因，禁止在任务未完成时谎称已出结果。
+11. 优化对象涉及多人同镜或室内多角度时，必须提示补已批准的 `rel_*` / `loc_*` 锚点参考图，只优化文字视为未完成；门禁与多参考组合见 `ai-video-director/references/19-relationship-keyframe.md` §2/§8。

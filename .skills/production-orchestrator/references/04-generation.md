@@ -5,16 +5,17 @@
 
 ## 1. 关键帧门禁（Keyframe Gate）
 
+**第 0 步（硬门禁）**：命中多人 / 人物-场景共现 / 共享站位正反打 / 室内跨 ≥2 机位时，
+须有已批准且版本 / 朝向正确的 `rel_*` / `loc_*` 锚点；触发条件与判定见
+`ai-video-director/references/19-relationship-keyframe.md` §2/§6 与 `20-indoor-layout-anchor.md` §2/§7。
+任一不满足 → 任务标记 `BLOCKED`（状态机见本技能 `references/production-schema.md`），
+不得进入下面的流程，也不得靠反复生成视频绕过。
+
 对重要镜头：
 
 1. 生成关键帧。
-2. 校验角色身份（character identity）。
-3. 校验场景（location）。
-4. 校验构图（composition）。
-5. 校验灯光（lighting）。
-6. 校验道具（props）。
-7. 校验情绪状态（emotional state）。
-8. 批准后再生成视频。
+2. 按本技能 `references/06-quality-control.md` §1「关键帧 QC」逐项校验。
+3. 批准后再生成视频。
 
 **关键帧失败则修关键帧。**
 
@@ -77,6 +78,7 @@ Shot C
 
 用于保持：
 
+* **关系关键帧的组合站位**（优先级高于上一镜结束帧：结束帧会随动作漂移，关系帧是基准）
 * 角色身份（character identity）
 * 空间连续性（spatial continuity）
 * 服装（costume）
