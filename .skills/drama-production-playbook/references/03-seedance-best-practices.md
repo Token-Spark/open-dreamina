@@ -62,9 +62,11 @@
      台词镜的台词逐字写进生成 prompt（`Spoken dialogue from {角色}: "<逐字台词>"`，带说话人 / 语气 / 语速），
      让模型在同一次生成里出声并咬口型；`drama compile` 段 5 已把台词逐字编译进 prompt，**不需要另建配音任务**。
      后期只做 BGM 铺设、混音与字幕烧录，**不做台词配音、不做口型重对**。
-   - **通道事实**：`generate_audio` 在 provider 层已支持（`backend/app/providers/sparkhub_seedance.py` 读
-     `kwargs.generate_audio`），但 MCP 参数白名单（`mcp/catalog.py` 的 `PARAM_WHITELIST`）与 CLI 都**没暴露**这个开关。
-     当前只能靠「台词写进 prompt + 模型原生音频」出人声，所以**必须听验**——`completed` 不代表有人声；
+   - **通道事实（2026-11-10 已打通）**：`generate_audio` 在 provider 层已支持（`backend/app/providers/sparkhub_seedance.py` 读
+     `kwargs.generate_audio`），现已由 CLI `--generate-audio / --no-generate-audio` 与 MCP `generate_video.generate_audio`
+     **显式暴露**（`mcp/catalog.py` 的 `PARAM_WHITELIST` → 后端 `params` → `worker` → provider）。省略时沿用模型默认。
+     **开关只控制「整条音轨有无」，不负责生成台词或咬口型**——台词仍必须逐字写进 prompt，靠模型原生音频同期出声；
+     所以**必须听验**——`completed` 不代表有人声；
      选型时优先挑原生支持同步音频的模型（`opendreamina models --mode video` / `list_models` 核对能力）。
    - **无台词镜必须显式写「无对白、不出人声」**，负面词补 `voiceover, dialogue, narration`，否则模型会自由加话。
    - **不通过就重出，不许绕**：没出人声 / 台词错字 / 口型对不上 → 改 prompt（台词前置、标说话人与语气）、
@@ -73,13 +75,19 @@
      不得写入生成 prompt；Music Cue（IN/BUILD/DROP/OUT）属后期轨标记，不进生成提示。
    - **禁止整体静音**：台词镜保留人声，其余镜必须保留基础环境音＋动作触发音（foley），
      qc 查音轨存在性与电平；无台词 / 单人情绪镜为近静音＋呼吸·动作级底噪，而不是空轨。
-   - **工具链无静音 / 禁乐开关**（`generate_audio` 在 provider 层可读，但 CLI / MCP 未暴露），`completed` 不代表音轨合规；
+   - **工具链没有「选择性禁乐」开关**：`generate_audio` 只能整条音轨开 / 关（`false` = 完全无声，台词镜禁用），不能单独去掉配乐；`completed` 不代表音轨合规；
      压制靠双通道——① 正向 AUDIO 段**前置**声明禁乐并实填环境音 / 触发音；
      ② `negative_prompt` 点名乐种（词表见 `prompt-optimizer/references/02-prompt-templates.md` §4.5），
      镜头四行模板见同文件 §3.4。句尾零散的 "no music" 约束力不足，且不得用 "ambience / pad / score" 许可配乐。
    - **成片音轨必检**：无旋律线 / 和弦 / 鼓点 / 乐器垫乐才可 PASS；仍夹带垫乐先按双通道修正重出一次、
      不盲目多次重抽；仍不达标再后期剥离或静音化音轨兜底、画面保持不动。无 ffmpeg 时不得仅凭文件体积小判「无配乐」，未听验记 `AUDIO_PENDING`。
 7. **参数基线**：Seedance 720p / 9:16 / `--frame-mode reference`（显式传，见规则 5）/ 轮询上限按平台队列取宽。
+8. **接续纪律（靠描述，不靠首帧）**：单镜提示词是自足的、模型看不到上一镜，所以每镜必须写**入场态**
+   并压成一句英文接续句放进提示词首部：人物位置关系（在哪一侧 / 朝向）+ 环境（光源方位、陈设在场）+
+   动作与表情（动作在第几拍、表情余势）。不许重演上一镜的动作，不许表情无过渡地跳变。
+   **接续不靠把上一镜画面设成首帧**——那会把构图钉死、让本镜变成复制品、把上一镜瑕疵一路传下去；
+   尾帧只用来和本镜第 0 帧并排核对。**缺接续句的镜头视为分镜未设计完，不进生成队列。**
+   格式、正反例、门禁与配对播放 QC 见 `ai-video-director/references/22-shot-continuity-in-generation.md` §5/§8/§9。
 
 ## 生成执行入口
 

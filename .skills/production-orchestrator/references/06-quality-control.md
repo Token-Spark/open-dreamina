@@ -49,7 +49,7 @@
 * 陈设缺位（set dressing lost：开头有床、后镜空房；椅子翻倍；道具状态与剧情不同步）
 * 生成模式（frame_mode）：应为 `reference`（全能参考）；用了 `first` / `first_last` 须在 sidecar 有「首帧理由」
   或降级说明，否则按违规处理（判定见 `drama-production-playbook/references/03-seedance-best-practices.md` 规则 5）
-* 音轨与配乐（audio / BGM）：无背景音乐、垫乐、旋律线与节奏鼓床；仅台词人声（台词镜）＋基础环境音＋动作触发音；无台词镜不得出现人声；未实际听验不得判 PASS，未验听记 `AUDIO_PENDING`（工具无静音开关，须正向前置禁乐＋负向音乐词双通道；模板见 prompt-optimizer §3.4 / §4.5）
+* 音轨与配乐（audio / BGM）：无背景音乐、垫乐、旋律线与节奏鼓床；仅台词人声（台词镜）＋基础环境音＋动作触发音；无台词镜不得出现人声；未实际听验不得判 PASS，未验听记 `AUDIO_PENDING`（`generate_audio` 只控制整条音轨有无、不能单独去配乐，须正向前置禁乐＋负向音乐词双通道；模板见 prompt-optimizer §3.4 / §4.5）
 * 台词同期（dialogue sync）：台词镜人声存在、逐字与 shots.md 一致、音色与 `anchor-voice` 相符、口型与音节对齐；
   缺人声 / 台词被改写 / 后期硬贴配音 → `RETRY`，不做后期配音补（见 `references/04-generation.md` §2.1）
 
@@ -64,7 +64,18 @@
 * 灯光（lighting）
 * 时间（time）
 * 环境（environment）
-* 动作状态（action state）
+* 动作状态（action state：跨镜是否从同一拍点接续，有没有重演上一镜的动作）
+* 表情与情绪（expression continuity：上一镜末帧的表情余势与本镜第 0 帧是否承接，有无无过渡的跳变）
+
+**执行方法（不要只看单镜）**：配对播放「上一镜尾 1s + 本镜头 1s」循环，按
+`ai-video-director/references/22-shot-continuity-in-generation.md` §2 的三条主线逐条看——
+① 人物位置关系（在哪一侧、朝向、谁看谁、谁在前景）② 环境（陈设在场、光源方位、时段天气）
+③ 动作与表情（动作在第几拍、姿态、表情余势），外加屏幕运动方向与声音。
+单镜 QC 永远查不出这类问题——它是唯一必须成对复查的项。
+
+发现断点时按主线定位：位置、朝向、光向类 → 改接续句与参考版本，**不要重抽卡**；
+动作重演类 → 改接续句的动作拍点；表情断层类 → 改表情余势，或降为软接并补过渡动作；
+妆造类 → 回 `21` 换锚点。
 
 ### 故事 QC（Story QC）
 
