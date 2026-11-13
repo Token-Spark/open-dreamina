@@ -14,7 +14,8 @@
   --bg-tertiary: #1e1e22;
   --fg-primary: #f5f5f7;
   --fg-secondary: #a1a1aa;
-  --fg-muted: #63636b;
+  /* muted 需在深底上达到 WCAG AA 正文对比度（原 #63636b 仅 3.32:1） */
+  --fg-muted: #8a8a93;
   --accent: #ffffff;
   --success: #22c55e;
   --error: #ef4444;
@@ -33,7 +34,8 @@
   --bg-tertiary: #ededf0;
   --fg-primary: #0a0a0b;
   --fg-secondary: #52525b;
-  --fg-muted: #9ca3af;
+  /* muted 需在白底上达到 WCAG AA 正文对比度（原 #9ca3af 仅 2.54:1） */
+  --fg-muted: #71717a;
   --accent: #0a0a0b;
   --success: #16a34a;
   --error: #dc2626;
@@ -126,4 +128,17 @@
 /* Progress bar breathing glow (spec 10.1 动效) */
 .progress-glow {
   animation: breath-glow 2s ease-in-out infinite;
+}
+
+/* 尊重系统「减少动态效果」设置：关停呼吸光晕、脉冲、位移类动画与平滑滚动，
+   避免前庭敏感用户在长时间审阅时不适。功能性进度仍由数字/条宽表达。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

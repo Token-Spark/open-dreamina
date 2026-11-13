@@ -64,11 +64,22 @@ export function Layout() {
 
   return (
     <div className="flex h-screen flex-col bg-bg-primary">
+      {/* 键盘/读屏用户跳过图标导航，直达内容区 */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[80] focus:rounded-btn focus:bg-accent focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-bg-primary"
+      >
+        跳到主要内容
+      </a>
       <div className="flex flex-1 overflow-hidden">
         {/* Left icon rail */}
         <aside className="flex w-16 shrink-0 flex-col bg-bg-secondary">
           <div className="flex h-14 items-center justify-center">
-            <NavLink to="/" className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-bg-primary transition-transform hover:scale-105 active:scale-95">
+            <NavLink
+              to="/"
+              aria-label="Open Dreamina 首页"
+              className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-bg-primary transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg-primary/50 active:scale-95"
+            >
               <Sparkles className="h-4 w-4" />
             </NavLink>
           </div>
@@ -81,9 +92,11 @@ export function Layout() {
                   key={item.to}
                   to={item.to}
                   end={item.to === '/'}
+                  aria-label={item.label}
                   className={({ isActive }) =>
                     cn(
                       'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-all duration-200',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg-primary/40',
                       isActive
                         ? 'bg-bg-tertiary text-fg-primary'
                         : 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
@@ -91,7 +104,10 @@ export function Layout() {
                   }
                 >
                   <Icon className="h-5 w-5" />
-                  <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100">
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                  >
                     {item.label}
                   </span>
                 </NavLink>
@@ -108,11 +124,15 @@ export function Layout() {
               className={cn(
                 'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-all duration-200',
                 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg-primary/40',
               )}
               aria-label="GitHub 仓库"
             >
               <Github className="h-5 w-5" />
-              <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
                 GitHub
               </span>
             </a>
@@ -122,6 +142,7 @@ export function Layout() {
               className={cn(
                 'group relative flex h-10 w-10 items-center justify-center rounded-btn transition-all duration-200',
                 'text-fg-secondary hover:bg-bg-tertiary hover:text-fg-primary',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg-primary/40',
               )}
               aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
               title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
@@ -131,7 +152,10 @@ export function Layout() {
               ) : (
                 <Moon className="h-5 w-5" />
               )}
-              <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-btn border border-border bg-bg-tertiary px-2.5 py-1 text-xs font-medium text-fg-primary opacity-0 shadow-elevated transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
                 {theme === 'dark' ? '亮色模式' : '暗色模式'}
               </span>
             </button>
@@ -139,7 +163,7 @@ export function Layout() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto scrollbar-thin">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto scrollbar-thin focus:outline-none">
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>
@@ -154,6 +178,7 @@ export function Layout() {
         {toasts.map((t) => (
           <div
             key={t.id}
+            role={t.variant === 'error' ? 'alert' : 'status'}
             className={cn(
               'pointer-events-auto flex items-center gap-2 rounded-btn border border-border bg-bg-tertiary px-3 py-2 text-sm text-fg-primary shadow-lg animate-slide-up',
             )}
@@ -165,8 +190,8 @@ export function Layout() {
             <button
               type="button"
               onClick={() => dismiss(t.id)}
-              className="ml-2 text-fg-muted hover:text-fg-primary"
-              aria-label="关闭"
+              className="ml-2 rounded-btn text-fg-muted hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg-primary/40"
+              aria-label="关闭通知"
             >
               <X className="h-3.5 w-3.5" />
             </button>
