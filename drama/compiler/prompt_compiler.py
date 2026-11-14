@@ -147,6 +147,19 @@ def translate_action(text: str) -> str:
     return "; ".join(parts) if parts else ""
 
 
+# 台词段占位符：编译期把台词段与其它段落分开处理，护栏后回填（见 compile_prompt ⑤/⑨）
+_DIALOGUE_PLACEHOLDER = "\u0000DIALOGUE\u0000"
+
+
+def _normalize_punctuation(text: str) -> str:
+    """台词合法标点转 ASCII（em-dash / 弯引号 / 省略号），避免被 CJK 护栏当分隔符吞掉。"""
+    return (text
+            .replace("\u2014", " - ").replace("\u2013", "-")
+            .replace("\u2018", "'").replace("\u2019", "'")
+            .replace("\u201c", '"').replace("\u201d", '"')
+            .replace("\u2026", "..."))
+
+
 # ─────────────── 提示词编译主函数 ───────────────
 
 
@@ -204,22 +217,27 @@ def compile_prompt(shot: dict[str, Any]) -> str:
             "Keep the architecture, materials and light identical to the scene reference image."
         )
 
-    # ⑤ 台词（逐字英文；语气/语速 → delivery 指令，台词文本本身不改写）
-    dialogue_parts: list[str] = []
-    for line in dialogue:
-        speaker = speaker_to_english(line["speaker"])
-        text = line["text"]
-        cue = delivery_cue(line)
-        if line["form"] == "vo":
-            dialogue_parts.append(
-                f'Off-screen voice-over from {speaker}{cue}: "{text}"'
-            )
-        else:
-            dialogue_parts.append(
-                f'Spoken dialogue from {speaker}{cue}: "{text}"'
-            )
-    if dialogue_parts:
-        sections.append(" ".join(dialogue_parts))
+    # ⑤ 台词（逐字保留原文，中文台词不翻译——Seedance 按原文出声；
+    # 语气/语速 → delivery 指令，台词文本本身不改写）。
+    # 台词段先以占位符入列，待 ⑨ 的中文护栏处理完其余段落后回填，
+    # 否则护栏会把中文台词一并剥成空引号（静默丢词）。
+    dialogue_section = ""
+    if dialogue:
+        dialogue_parts: list[str] = []
+        for line in dialogue:
+            speaker = speaker_to_english(line["speaker"])
+            text = line["text"]
+            cue = delivery_cue(line)
+            if line["form"] == "vo":
+                dialogue_parts.append(
+                    f'Off-screen voice-over from {speaker}{cue}: "{text}"'
+                )
+            else:
+                dialogue_parts.append(
+                    f'Spoken dialogue from {speaker}{cue}: "{text}"'
+                )
+        dialogue_section = " ".join(dialogue_parts)
+        sections.append(_DIALOGUE_PLACEHOLDER)
 
     # ⑥ 不入画角色（仅作为视点或声音存在）
     for member in off_screen:
@@ -247,13 +265,16 @@ def compile_prompt(shot: dict[str, Any]) -> str:
     prompt = " ".join(sections)
     # 台词逐字保护：em-dash / 弯引号 / 省略号是台词合法标点，先转 ASCII，
     # 再走中文兜底护栏（CJK_RUN 会把 U+2014 等当分隔符吞掉，导致 sea-girl—I 掉字）
-    prompt = (prompt
-              .replace("\u2014", " - ").replace("\u2013", "-")
-              .replace("\u2018", "'").replace("\u2019", "'")
-              .replace("\u201c", '"').replace("\u201d", '"')
-              .replace("\u2026", "..."))
-    # 兜底护栏：任何漏网中文都不得进入 Seedance 提示词
-    return re.sub(r"\s+", " ", CJK_ANY.sub(" ", prompt)).strip()
+    prompt = _normalize_punctuation(prompt)
+    # 兜底护栏：除台词段（占位符，原文逐字保留）外，任何漏网中文都不得
+    # 进入 Seedance 提示词
+    prompt = re.sub(r"\s+", " ", CJK_ANY.sub(" ", prompt)).strip()
+    if dialogue_section:
+        prompt = prompt.replace(
+            _DIALOGUE_PLACEHOLDER, _normalize_punctuation(dialogue_section)
+        )
+        prompt = re.sub(r"\s+", " ", prompt).strip()
+    return prompt
 
 
 def _character_keys(asset_id: str) -> set[str]:
