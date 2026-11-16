@@ -44,13 +44,14 @@ export function ProvidersTab() {
   const deleteProvider = useDeleteProvider()
   const updateProvider = useUpdateProvider()
 
-  // 即梦 CLI 环境状态（worker 节点）：未就绪时在顶部展示安装/登录引导
+  // 即梦 CLI 环境状态（worker 节点）：就绪后也常驻展示（J-2：账号/VIP/版本与切换入口），
+  // 只在 worker 不在线时隐藏（该状态由 DreaminaCliSetup 内部另行提示）
   const { data: cliStatus } = useQuery({
     queryKey: ['dreamina-cli-status'],
     queryFn: getDreaminaCliStatus,
     retry: false,
   })
-  const showCliSetup = !!cliStatus && !cliStatus.worker_offline && (!cliStatus.installed || !cliStatus.logged_in)
+  const showCliSetup = !!cliStatus && !cliStatus.worker_offline
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [activeService, setActiveService] = useState<ModelService | null>(null)
@@ -121,7 +122,7 @@ export function ProvidersTab() {
 
   return (
     <div className="space-y-4">
-      {/* 即梦 CLI 环境未就绪时提供安装 / 登录引导 */}
+      {/* 即梦 CLI 环境引导：未就绪时安装/登录，就绪后常驻展示账号与状态（J-2） */}
       {showCliSetup && <DreaminaCliSetup />}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
