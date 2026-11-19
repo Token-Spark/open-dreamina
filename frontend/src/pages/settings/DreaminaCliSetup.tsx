@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ExternalLink, Loader2, RefreshCw, Terminal } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, RefreshCw, Terminal } from 'lucide-react'
 import {
   getDreaminaCliLoginStatus,
   getDreaminaCliStatus,
@@ -39,6 +39,22 @@ export function DreaminaCliSetup() {
   // 登录授权材料（start 成功后保存，轮询期间展示）
   const [loginInfo, setLoginInfo] = useState<DreaminaCliLoginStart | null>(null)
   const [polling, setPolling] = useState(false)
+  // J-1：轮询收到 failed / 会话丢失时停止转圈，改显错误与重试入口
+  const [loginFailed, setLoginFailed] = useState<string | null>(null)
+  // J-3：发起登录失败的后端诊断（执行命令与 CLI 原始输出），卡内展示而非只进 console
+  const [loginStartError, setLoginStartError] = useState<{
+    message: string
+    command?: string
+    raw_output?: string
+  } | null>(null)
+
+  /** 发起一次登录：先清掉上一轮的失败/诊断展示，避免旧内容残留。 */
+  function startLogin() {
+    setLoginFailed(null)
+    setLoginStartError(null)
+    setLoginInfo(null)
+    loginMut.mutate()
+  }
 
   const statusQuery = useQuery({
     queryKey: ['dreamina-cli-status'],
@@ -77,11 +93,19 @@ export function DreaminaCliSetup() {
         setPolling(true)
       } else {
         toast(r.message ?? '发起登录失败', 'error')
-        if (r.command) console.warn('dreamina-canvas 实际执行命令:', r.command)
-        if (r.raw_output) console.warn('dreamina-canvas auth login output:', r.raw_output)
+        // J-3：诊断信息在卡内可展开查看（命令 + CLI 原始输出），不再只写 console
+        setLoginStartError({
+          message: r.message ?? '发起登录失败',
+          command: r.command,
+          raw_output: r.raw_output,
+        })
       }
     },
-    onError: (e) => toast(toApiError(e).message, 'error'),
+    onError: (e) => {
+      const message = toApiError(e).message
+      toast(message, 'error')
+      setLoginStartError({ message })
+    },
   })
 
   // 登录授权轮询
@@ -98,10 +122,19 @@ export function DreaminaCliSetup() {
     if (r.state === 'success') {
       setPolling(false)
       setLoginInfo(null)
+      setLoginFailed(null)
       toast('即梦 CLI 登录成功', 'success')
       qc.invalidateQueries({ queryKey: ['dreamina-cli-status'] })
-    } else if (r.state === 'no_session') {
+    } else if (r.state === 'failed') {
+      // J-1：授权失败/验证码过期时停止轮询，显式报错并给重试入口，不再无限转圈
       setPolling(false)
+      setLoginInfo(null)
+      setLoginFailed(r.message || '登录授权失败，请重新发起登录')
+    } else if (r.state === 'no_session') {
+      // 会话不存在或已过期：同样收起等待态，提示重新发起（否则授权面板会一直转圈）
+      setPolling(false)
+      setLoginInfo(null)
+      setLoginFailed(r.message || '登录会话不存在或已过期，请重新发起登录')
     }
   }, [loginStatusQuery.data, qc])
 
@@ -126,33 +159,73 @@ export function DreaminaCliSetup() {
     )
   }
 
-  // 已登录：就绪态
+  // 已登录：就绪态（J-2：就绪后常驻展示账号/VIP/版本，不再隐藏）
   if (status.installed && status.logged_in) {
+    // 后端 get_status 附带 auth account 的账号信息（userId / isVip / vipLevel）
+    const account = status.account_info ?? null
+    const userId =
+      account != null && (typeof account.userId === 'string' || typeof account.userId === 'number')
+        ? String(account.userId)
+        : null
+    const isVip = account?.isVip === true
+    const vipLevel = account?.vipLevel != null ? String(account.vipLevel) : null
     return (
       <SetupShell>
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-success" />
-          <span className="text-xs text-fg-primary">
-            即梦 CLI 已就绪{status.version ? `（${status.version}）` : ''}，登录态有效
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto h-6 px-2 text-[11px]"
-            onClick={() => {
-              setLoginInfo(null)
-              loginMut.mutate()
-            }}
-            disabled={loginMut.isPending}
-          >
-            <RefreshCw className="h-3 w-3" />
-            切换账号
-          </Button>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+            <span className="text-xs text-fg-primary">
+              即梦 CLI 已就绪{status.version ? `（${status.version}）` : ''}，登录态有效
+            </span>
+            <span className="ml-auto flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px]"
+                onClick={() => qc.invalidateQueries({ queryKey: ['dreamina-cli-status'] })}
+                disabled={statusQuery.isFetching}
+                aria-label="重新检测即梦 CLI 状态"
+              >
+                <RefreshCw className="h-3 w-3" />
+                重新检测
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px]"
+                onClick={startLogin}
+                disabled={loginMut.isPending}
+              >
+                <RefreshCw className="h-3 w-3" />
+                切换账号
+              </Button>
+            </span>
+          </div>
+          {account && (
+            <p className="flex flex-wrap items-center gap-1.5 text-xs text-fg-secondary">
+              <span>当前账号：{userId ?? '未知'}</span>
+              {isVip ? (
+                <Badge variant="success">
+                  VIP{vipLevel && vipLevel.toLowerCase() !== 'vip' ? ` ${vipLevel}` : ''}
+                </Badge>
+              ) : (
+                <Badge variant="outline">非会员</Badge>
+              )}
+            </p>
+          )}
+          {loginMut.isPending && (
+            <p className="text-xs text-fg-muted">正在发起登录…</p>
+          )}
+          {loginFailed && (
+            <LoginFailedNotice
+              message={loginFailed}
+              onRetry={startLogin}
+              retryPending={loginMut.isPending}
+            />
+          )}
+          {loginStartError && <LoginStartErrorPanel error={loginStartError} />}
+          {loginInfo && <LoginAuthPanel info={loginInfo} waitingHint={loginStatusQuery.data?.message} />}
         </div>
-        {loginMut.isPending && (
-          <p className="text-xs text-fg-muted">正在发起登录…</p>
-        )}
-        {loginInfo && <LoginAuthPanel info={loginInfo} waitingHint={loginStatusQuery.data?.message} />}
       </SetupShell>
     )
   }
@@ -197,7 +270,7 @@ export function DreaminaCliSetup() {
           <Badge variant="outline">已安装{status.version ? ` · ${status.version}` : ''}</Badge>
           <Badge>未登录</Badge>
           {!loginMut.isPending && !loginInfo && (
-            <Button size="sm" className="ml-auto" onClick={() => loginMut.mutate()}>
+            <Button size="sm" className="ml-auto" onClick={startLogin}>
               开始登录
             </Button>
           )}
@@ -213,6 +286,14 @@ export function DreaminaCliSetup() {
             {status.message}。点击「开始登录」获取授权链接，在浏览器中完成授权。
           </p>
         )}
+        {loginFailed && (
+          <LoginFailedNotice
+            message={loginFailed}
+            onRetry={startLogin}
+            retryPending={loginMut.isPending}
+          />
+        )}
+        {loginStartError && <LoginStartErrorPanel error={loginStartError} />}
         {loginInfo && <LoginAuthPanel info={loginInfo} waitingHint={loginStatusQuery.data?.message} />}
       </div>
     </SetupShell>
@@ -289,6 +370,72 @@ function LoginAuthPanel({
         <pre className="max-h-32 overflow-auto rounded bg-bg-tertiary p-2 text-[10px] text-fg-secondary">
           {info.raw_output}
         </pre>
+      )}
+    </div>
+  )
+}
+
+/** J-1：登录授权失败（轮询收到 failed / 会话丢失）——停转圈、给错误与重试入口。 */
+function LoginFailedNotice({
+  message,
+  onRetry,
+  retryPending,
+}: {
+  message: string
+  onRetry: () => void
+  retryPending: boolean
+}) {
+  return (
+    <div
+      role="alert"
+      className="space-y-2 rounded-lg border border-error/40 bg-error/5 p-3"
+    >
+      <p className="flex items-start gap-1.5 text-xs font-medium text-error">
+        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>登录授权失败：{message}</span>
+      </p>
+      <Button size="sm" onClick={onRetry} disabled={retryPending}>
+        <RefreshCw className="h-3 w-3" />
+        重新发起登录
+      </Button>
+    </div>
+  )
+}
+
+/** J-3：发起登录失败的诊断信息——执行命令与 CLI 原始输出，卡内可展开查看。 */
+function LoginStartErrorPanel({
+  error,
+}: {
+  error: { message: string; command?: string; raw_output?: string }
+}) {
+  return (
+    <div
+      role="alert"
+      className="space-y-2 rounded-lg border border-error/40 bg-error/5 p-3"
+    >
+      <p className="flex items-start gap-1.5 text-xs font-medium text-error">
+        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>{error.message}</span>
+      </p>
+      {(error.command || error.raw_output) && (
+        <details className="text-[11px] text-fg-secondary">
+          <summary className="cursor-pointer text-fg-muted hover:text-fg-primary">
+            查看诊断信息（执行命令与 CLI 原始输出）
+          </summary>
+          {error.command && (
+            <p className="mt-1.5">
+              命令：
+              <code className="break-all rounded bg-bg-tertiary px-1 py-0.5 font-mono text-[10px] text-fg-primary">
+                {error.command}
+              </code>
+            </p>
+          )}
+          {error.raw_output && (
+            <pre className="mt-1.5 max-h-32 overflow-auto rounded bg-bg-tertiary p-2 text-[10px] text-fg-secondary">
+              {error.raw_output}
+            </pre>
+          )}
+        </details>
       )}
     </div>
   )
