@@ -96,6 +96,30 @@ def test_image_resolution_tiers():
     assert _image_resolution_type("seedream5.0", 2048, 1024) == "2k"
 
 
+def test_image_resolution_unregistered_model_trusts_request():
+    """未登记的新模型（用户自行注册）不再被强制降级到 2k，合法档位一律透传。"""
+    assert _image_resolution_type("seedream6.0-ultra", 2048, 2048, "4K") == "4k"
+    assert _image_resolution_type("brand-new-model", 2048, 2048, "3k") == "3k"
+    # 无请求档位仍按最长边近似
+    assert _image_resolution_type("brand-new-model", 1024, 1024) == "1k"
+    # 非法档位兜底到默认
+    assert _image_resolution_type("brand-new-model", 2048, 2048, "8k") == "2k"
+
+
+def test_image_resolution_config_override_and_extend():
+    """config.image_resolution_support 可覆盖内置表、也能声明新模型（含逗号/空格分隔串）。"""
+    cfg = {
+        "image_resolution_support": {
+            "seedream5.0": ["1k", "3k"],  # 覆盖内置 2k/4k
+            "new-model": "1k 4k",
+        }
+    }
+    assert _image_resolution_type("seedream5.0", 2048, 2048, "4k", cfg) == "2k"
+    assert _image_resolution_type("seedream5.0", 2048, 2048, "3k", cfg) == "3k"
+    assert _image_resolution_type("new-model", 2048, 2048, "4k", cfg) == "4k"
+    assert _image_resolution_type("new-model", 2048, 2048, "2k", cfg) == "2k"
+
+
 def test_slugify_title():
     assert _slugify_title("一只橘猫坐在窗台上，清晨柔光", "fb") == "一只橘猫坐在窗台上，清晨柔光"[:24]
     assert _slugify_title("", "fallback") == "fallback"
@@ -301,6 +325,31 @@ def test_i2i_args_uploads_refs():
     text = " ".join(args)
     assert "--mode i2i" in text
     assert "--ref res:img-1" in text
+
+
+def test_t2i_args_registered_new_model_map_and_resolution():
+    """用户自行注册的新模型：model_map 映射到 canonical 名，未登记档位直接透传 4k。"""
+    provider = make_image_provider(
+        canvas_id="proj-1",
+        model_map={"my-ultra-image": "seedream_6.0_ultra_canonical"},
+    )
+    fake = FakeCli([])  # model_map 命中，无需 model find
+    provider._run_cli = fake  # type: ignore[method-assign]
+    args = asyncio.run(provider._build_submit_args(
+        {
+            "prompt": "注册模型出图",
+            "model_id": "my-ultra-image",
+            "width": 2048,
+            "height": 2048,
+            "resolution": "4K",
+        },
+        "proj-1",
+        [],
+    ))
+    text = " ".join(args)
+    assert "--model seedream_6.0_ultra_canonical" in text
+    assert "--resolution 4k" in text  # 不再被强制回退 2k
+    assert fake.calls == []  # model_map 命中时不触发任何 CLI 调用
 
 
 # ============================== 提交 / 轮询 / 下载 ==============================
