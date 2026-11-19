@@ -8,7 +8,7 @@
 |---|---|---|---|
 | A-roll | **多模态参考视频**（参考片段作运动/构图参考）+ 新主体提示词 | 文生视频（首尾帧控制转场） | 复刻运镜的首选；参考片段仅作运动参考，画面内容全部换新，规避版权 |
 | B-roll | 文生图（2K）→ 图生视频（3–5s） | 直接文生视频 | 静帧先行，先过审再动起来，省成本 |
-| 人像 | anchor-portrait（复用 drama 素材库规范） | 用户照片作参考图 | 换主体透镜的一致性方案 |
+| 人像 | anchor-portrait（复用 drama 素材库规范；设定卡 + 四件套见 `drama-production-playbook/references/12-character-design-sheet.md`） | 用户照片作参考图 | 换主体透镜的一致性方案 |
 | 配音 | 即梦 TTS 逐句生成，`voice list` 选音色，`--voice-name` 原样传入 | — | **逐句生成**：句音频时长 = 字幕/切镜锚点；语气用 TONE_MAP 思路编译 |
 | 音乐 | 即梦音乐生成（model list 选含 music mode 的模型） | 用户自有授权 BGM | 生成前确认授权归属 |
 | Caption/Typography | ffmpeg drawtext / ASS 烧录 | — | 时间来自句音频时长；关键词变色用 ASS 内联标签 |

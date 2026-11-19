@@ -1,6 +1,6 @@
 ---
 name: drama-production-playbook
-description: "短剧项目制作手册与编排技能：基于《代号奥林匹斯》实战经验（1 人 3 天完成 40 集 724 镜头），指导从项目初始化、剧本三级体系、素材资产准备、提示词编译，到批量生成、质检与审阅交付的完整制作方法论，并编排 opendreamina drama 命令行工具链。当用户要新开短剧项目、搭建制作骨架、了解制作流程、初始化分镜与资产体系、或复盘/优化短剧制作管线时调用。不负责具体剧本创作（short-drama-creator）、分镜设计（ai-video-director）、单镜生成参数调优（prompt-optimizer）、镜头初审打分（shot-reviewer）与运行期任务编排 / 状态机（production-orchestrator）。"
+description: "短剧项目制作手册与编排技能：基于《代号奥林匹斯》实战经验（1 人 3 天完成 40 集 724 镜头），指导从项目初始化、剧本三级体系、素材资产准备（含每个角色必备的音色锚点 anchor-voice.wav）、提示词编译，到批量生成、质检与审阅交付的完整制作方法论，并编排 opendreamina drama 命令行工具链。当用户要新开短剧项目、搭建制作骨架、了解制作流程、初始化分镜与资产体系、或复盘/优化短剧制作管线时调用。不负责具体剧本创作（short-drama-creator）、分镜设计（ai-video-director）、单镜生成参数调优（prompt-optimizer）、镜头初审打分（shot-reviewer）与运行期任务编排 / 状态机（production-orchestrator）。"
 ---
 
 # Drama Production Playbook Skill — 短剧项目制作手册
@@ -45,6 +45,7 @@ STEP 5  资产命名与目录规范                                  → referen
 STEP 6  opendreamina drama 工具链逐命令用法                 → references/06-cli-toolchain-guide.md
 STEP 7  标准目录与审阅中心对接                              → references/07-directory-convention.md
 STEP 8  迭代管理与废弃版本沉淀                              → references/08-iteration-and-archive.md
+STEP 9  高频错误复盘对照（提交前 / 返工定位）              → references/09-common-pitfalls-checklist.md
 ```
 
 制作一条完整集的标准路径：
@@ -52,7 +53,8 @@ STEP 8  迭代管理与废弃版本沉淀                              → refer
 ```text
 drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）→ shots.md
   → drama lint EPxx（机器检查，errors 清零）
-  → 素材库生产（人物三视图 / 场景 primary / **集内妆造三视图与场景状态图** / 室内布局与全景锚点 / 道具 / 关系关键帧）→ 素材审阅中心人工验收
+  → 素材库生产（人物设定包：设定卡 + 特写/立绘/三视图/表情九宫格 + **anchor-voice.wav 音色锚点**，三件套硬门禁不变 / 场景 primary / **集内妆造三视图与场景状态图** / 室内布局与全景锚点 / 道具 / 关系关键帧）→ 素材审阅中心人工验收
+                  ↑ 角色设定卡先行（见 references/12-character-design-sheet.md）；音色锚点与三视图同批次定稿，缺 wav 的角色未完成（见 references/11-voice-anchor.md）
   → tools/maps.py 填词库 → drama compile EPxx → drama spec EPxx --write
   → drama assets EPxx（平台 asset_id 全部落位）
   → 批量生成（Seedance 720p / `--frame-mode reference` 全能参考）→ video_renders/
@@ -72,6 +74,10 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 | `references/06-cli-toolchain-guide.md` | opendreamina drama 九个命令的参数、输出与工作流编排 | 每次调用工具链前 |
 | `references/07-directory-convention.md` | 标准目录规范与审阅中心零配置对接 | 布局项目目录时 |
 | `references/08-iteration-and-archive.md` | 迭代管理、废弃版本沉淀、审片归档 | 返工/迭代集数时 |
+| `references/09-common-pitfalls-checklist.md` | 高频错误复盘清单：症状→根因→先查→对策（画面文字/背景/道具/角色声音/音轨/装配参数） | 提交生成前与返工定位时对照 |
+| `references/10-contract-owners.md` | **契约归属表**：24 条契约的唯一 owner 文件、允许复述的 7 条硬纪律、数值只改一处的变更纪律 | 写或改任何规范 / 发现两处口径不一致时**必查** |
+| `references/11-voice-anchor.md` | **角色音色锚点**：5s wav 的规格与产出、TTS 选角、五项验收、`voice_manifest` 登记、三件套完成定义与缺 wav 的 `BLOCKED` 门禁、绑定与变声例外 | **生成角色资产前必读**；提交台词镜前复核 |
+| `references/12-character-design-sheet.md` | **角色设定卡与设定图四件套**（契约 #24）：卡字段模板、特写/立绘/表情九宫格/三视图规格、生成顺序、提示词骨架、素材人工验收与过场豁免 | **设计角色 / 建角色资产前必读** |
 
 ## 5. 强制规则
 
@@ -79,7 +85,7 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 2. 新项目必须用 `opendreamina drama init` 创建骨架，不得手工拼凑目录。
 3. 分镜脚本必须通过 `drama lint`（errors = 0）才能进入生成；warnings 需逐条给出处理结论。
 4. 生成前必须 `drama assets` 审计：引用资产全部有平台 asset_id，杜绝无参考生成。`rel_*` / `loc_*` 不在该审计范围内，单独验收见 `ai-video-director/references/19-relationship-keyframe.md` §8；集内状态锚点（`char_*_ep{xx}_*_turnaround` / `scene_*_ep{xx}_*`）在白名单内，正常审计。
-5. 人物视频参考一律绑 `*_turnaround` 三视图与 `anchor-voice` 音色；三视图择**本集妆造版**（`char_{角色}_ep{xx}_{造型}_turnaround`）。半身照只作三视图的生成基准，**禁止作种子 / 参考 / 首帧**，剧照与成片截帧同样禁止。触发条件与门禁见 `ai-video-director/references/21-episode-state-lock.md` §2/§6/§7。
+5. 人物视频参考一律绑 `*_turnaround` 三视图与 `anchor-voice` 音色；三视图择**本集妆造版**（`char_{角色}_ep{xx}_{造型}_turnaround`）。半身照只作三视图的生成基准，**禁止作种子 / 参考 / 首帧**，剧照与成片截帧同样禁止。触发条件与门禁见 `ai-video-director/references/21-episode-state-lock.md` §2/§6/§7。**角色资产 = 基准肖像 + 三视图 + `anchor-voice.wav`（约 5s 纯人声）三件套**，音色锚点与三视图同批次定稿；三件套不齐即该角色未完成，其台词镜 `BLOCKED`，不得"先跑画面、声音以后补"。规格、产出、验收、登记与绑定口径见 `references/11-voice-anchor.md`（契约 #23 的唯一 owner）。**角色身份的文字事实源是设定卡（character-card.md），主要角色须备齐设定卡 + 特写/立绘/三视图/表情九宫格四件视觉产物**，卡字段、四件规格与素材人工验收见 `references/12-character-design-sheet.md`（契约 #24 的唯一 owner）；过场角色豁免立绘与表情格，三件套 `BLOCKED` 口径不变。
 6. 全局风格常量逐字拼接，禁止逐镜改写；修改风格 = 改 manifest 的 style 字段一处。
 7. 废弃版本移入 `_superseded_*` 目录或交审片中心删除（自动归档），绝不直接 rm。
 8. 单镜建议 ≤6s（lint 三层口径见 `ai-video-director/references/drama-shotlist-spec.md`）；多人 / 人物-场景共现 / 室内多角度须先批准 `rel_*` / `loc_*` 锚点，未批准不得生成（拆正反打不免除）；触发条件、门禁与登记见 `ai-video-director/references/19-relationship-keyframe.md` §2/§6/§8 与 `20-indoor-layout-anchor.md` §2/§7。
@@ -90,6 +96,15 @@ drama init → 剧本大纲（人工确认）→ 分集剧本（人工确认）�
 13. **视频生成默认全能参考（`--frame-mode reference`），且必须显式传**：`first` 非必要不用（精确起幅 / 平台不支持时才用，须在 sidecar 写「首帧理由」），`first_last` 基本不用。缺省行为按 provider 分叉（直连 seedance 落回首帧、只取第一张图），不要依赖默认。判定口径「能靠多给参考 + 文字锚定解决的，不用首帧」，见 `references/03-seedance-best-practices.md` 规则 5。
 14. **台词同期**：人物台词逐字写进生成 prompt（说话人 / 语气 / 语速），在视频生成时一并出声并咬口型；**禁止后期 TTS 配音与口型合成**。后期只做 BGM、混音、字幕。没出声 / 台词错 / 口型不对 → 改 prompt 或换模型重出，不靠后期补；无台词镜显式写「无对白」。见 `references/03-seedance-best-practices.md` 规则 6。
 15. **连拍组优先（先合后拆）**：同场同时段的连续镜头（A 硬接、正反打、跟拍、同场换机位、空镜序列）合并成一次生成，Seedance 2.5 单任务 30 秒内出多镜（推荐 12–20s、组内 2–4 镜）；`--duration` 给组总长且必须显式传。多镜母版按切点裁成逐镜文件后再落 `video_renders/{镜号}_*/`，母版留 `_takes/`。合组不免除 `rel_*`/`loc_*`/妆造锁门禁，跨妆造状态不得同组。见 `references/03-seedance-best-practices.md` 规则 9 与 `ai-video-director/references/23-take-group-multi-shot.md`。
+16. **提交生成前过三查（模板 / 参考 / 编组）**：提示词模板字段与段序逐字遵循（只改值不改标签）、
+    四类素材装配到正确版本（角色三视图本集版 / 场景 primary 或集内状态图 / 道具状态版 / 音色锚点是音频）、
+    编组粒度合理。判据、错引症状与 60 秒清单见
+    `production-orchestrator/references/10-generation-preflight.md`；三查不过不提交。
+17. **提交前与返工定位对照高频错误清单**：画面文字、跨组背景、道具变色、串脸串音色、音轨夹带/空轨、参考截断与硬参数漏传等易复发项，
+    逐条过 `references/09-common-pitfalls-checklist.md` 的症状索引；同类问题返工 2 次即停下来修模板/锚点/装配，不继续抽卡。
+18. **契约有唯一 owner，引用不等于重写**：阈值 / 时长 / 镜数 / 权重 / 模板原文 / 字段清单只在
+    `references/10-contract-owners.md` 指定的 owner 文件里定义，其余技能只写「见 X」。
+    发现两处口径不一致时以 owner 为准并修消费方；要新增契约先在归属表登记一行。
 
 ## 6. 成功标准
 

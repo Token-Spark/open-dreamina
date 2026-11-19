@@ -13,7 +13,7 @@
 ├── EP01/
 │   ├── shots.md                 ← 分镜脚本（「应有」的唯一权威来源）
 │   └── video_renders/
-│       ├── S01_seedance20/      ← 同镜一版（目录名常含模型名 → 版本标识）
+│       ├── S01_seedance25/      ← 同镜一版（目录后缀 = 生成时的模型代号 → 版本标识）
 │       │   └── <uuid>_0.mp4
 │       └── S01_klingv2/         ← 同镜另一版 → 多版本镜头
 ├── EP02/ …
@@ -107,8 +107,8 @@ ffmpeg -i "<video>" -af volumedetect -f null - 2>&1 | grep -E "mean_volume|max_v
   "source_root": "/abs/path/to/剧集根",
   "items": [
     {
-      "episode": "EP01", "shot_id": "S01", "version": "seedance20",
-      "file_path": "EP01/video_renders/S01_seedance20/xxx_0.mp4",
+      "episode": "EP01", "shot_id": "S01", "version": "seedance25",
+      "file_path": "EP01/video_renders/S01_seedance25/xxx_0.mp4",
       "score": 72, "verdict": "pass",
       "dimensions": {"D1": 80, "D2": 90, "D3": 70, "D4": 60, "D5": 65, "D6": 70},
       "weights_used": {"D1": 25, "D2": 20, "D3": 15, "D4": 15, "D5": 15, "D6": 10},

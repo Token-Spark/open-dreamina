@@ -145,6 +145,7 @@ opendreamina skills                            # 完整清单（名称 / 描述 
 | `OPEN_DREAMINA_API_BASE`       | `http://localhost:10130/api/v1` | 后端 API 基地址                               |
 | `OPEN_DREAMINA_API_TIMEOUT`    | `60`                            | 单次 HTTP 请求超时秒数                           |
 | `OPEN_DREAMINA_SKILLS_DIR`     | 无                               | 额外技能目录（`os.pathsep` 分隔），追加到内置 `.skills/` |
+| `OPEN_DREAMINA_PRICING_FILE`   | `mcp/pricing.json`              | 任务报告 `usage` / `cost` 所用的人民币价目表             |
 | `OPEN_DREAMINA_NO_SKILLS_HINT` | 无                               | 设为 `1` 关闭生成命令 stderr 的技能提示               |
 
 远程后端：
@@ -188,6 +189,7 @@ opendreamina drama assets EP01 --project ./我的短剧    # 资产引用审计�
 opendreamina drama manifest --project ./我的短剧       # manifest 校验
 opendreamina drama qc EP01 --project ./我的短剧        # 成片技术验收（画幅/时长/音轨）
 opendreamina drama parse EP01 --shot S01               # 分镜结构化预览
+opendreamina drama review-import --project ./我的短剧 --title "我的短剧 · 全季审片"   # 逐镜建审片任务卡片
 ```
 
 要点：
@@ -195,6 +197,9 @@ opendreamina drama parse EP01 --shot S01               # 分镜结构化预览
 - 项目根解析：`--project` > 环境变量 `DRAMA_PROJECT_ROOT` > 当前目录。
 - 中英词库：`{项目根}/tools/maps.py`（init 自动生成模板；lint 会列出未命中词，回填后重跑）。
 - 标准目录见 [drama/README.md](drama/README.md)；项目放入 `data/review_sources/` 后即被审阅中心零配置扫描（素材审阅 + 镜头审片）。
+- 项目不在审阅根目录下时用 `drama review-import` 导入：读分镜表 + 生产状态，把已成片镜头连同
+  分镜「应有」与生成任务「实际」（提示词 / 模型 / 实测时长）建成审片任务卡片；按
+  （集号, 镜号, 文件路径）幂等，`--dry-run` 预演。会话新建默认不扫描目录，避免把参考素材收进列表。
 - 工具链对项目目录**只读**（`init`/`spec --write` 除外），不触碰 `data/` 下任何现有文件。
 
 ### 短剧智能体技能链
@@ -222,7 +227,7 @@ drama-production-playbook（制作手册/编排，新开项目从这里进）
 各技能均含短剧管线专章（references/drama-*.md），与 `opendreamina drama`
 命令、审阅中心数据契约对齐。`ai-video-director/references/17-storyboard-vs-shotlist-dual-output.md`
 定义了分镜头脚本 12 字段与 `shots.md` 的映射及管线保护条款——新增分镜规范必须经该
-映射表投影，**禁止改动 15 行模板、15 列列序与 lint 硬规则**，扩展信息写入
+映射表投影，**禁止改动 14 行模板、15 列列序与 lint 硬规则**，扩展信息写入
 `{项目根}/导演设计/EPxx/shot-design.md` sidecar。
 
 **关系关键帧是生成的硬门禁**：多人同镜、以及人物与场景反复共现的组合，必须先出
@@ -232,11 +237,20 @@ drama-production-playbook（制作手册/编排，新开项目从这里进）
 室内场景跨 ≥2 个机位/朝向时，还须先生成房间整体布局或全景锚点组，各机位按朝向引用，
 避免正反打两面墙对不上；规范见 `ai-video-director/references/20-indoor-layout-anchor.md`。
 
+**角色资产三件套 = 基准肖像 + 三视图 + 音色锚点**：生成角色素材时，必须与三视图同批次产出
+每位角色约 5 秒的纯人声 `anchor-voice.wav`（`素材库/01_characters/{角色}/`），登记
+`tools/voice_manifest.json`，台词镜在「资产绑定」绑 `voice_{角色}`（无台词镜该槽写「—」）。
+缺 wav 即该角色未完成、其台词镜 `BLOCKED`；到视频阶段再补音色，等于该角色台词镜整批重出。
+规格 / TTS 选角产出 / 五项验收 / 变声例外 / QC 口径见
+`.skills/drama-production-playbook/references/11-voice-anchor.md`（契约 #23 的唯一 owner）。
+机器检查：`drama lint` 对缺 `voice_*` 绑定的台词镜出 warning（软检查，不改 valid），
+`drama assets` 把缺失 wav 列进 `missing_files`；两者都替代不了人耳验收。
+
 **代码事实**：`rel_*` / `loc_*` 不在 `drama` 的 `ASSET_ID_RE` 白名单
 （char|scene|prop|crowd|icon|voice）内，`drama assets` / `drama spec` 的 refs **看不到**它们；
 `drama lint` 不检查前缀，lint 通过不代表已登记。登记走 `opendreamina upload` →
 `tools/asset_registry.json`，生成时按 sidecar 手工组装多参考
-（完整路径见 `ai-video-director/references/19-relationship-keyframe.md` §8）。**未改动 `drama/` 代码**。
+（完整路径见 `ai-video-director/references/19-relationship-keyframe.md` §8）。**上述关系门禁未改动 `drama/` 代码**；音色绑定另有 `drama lint` 的软检查（见上段）。
 
 ### 爆款视频翻拍技能（viral-remake）
 
@@ -323,6 +337,10 @@ curl -fsS http://localhost:10130/api/v1/reviews/sessions   # 已有审阅会话�
 
 - API 前缀：`/api/v1/shot-reviews`（页面入口见「审阅中心」；旧路由 `/shot-review` 自动重定向）。
 - 视图：「栏目分组」（默认，同镜号合并）与「平铺列表」可切换；分组视图有「多版本镜头」筛选，快速定位需清理的镜号。
+- **扫描只收已标识镜头**：媒体必须能唯一定位到 `EPxx-Sxx`；`downloads/` 连拍母版、
+  无镜号整段样片、只有镜号没有集号的分段剪片不进审片列表，`_` 前缀辅助目录同样跳过；
+  文件名同时标注多个镜号的跨镜共用素材（背景板/对照图）也排除。
+  重新扫描会移出库中残留的这类 `S??` 空壳条目，评分与修改意见保留。
 - **删除分两级**：「仅移出列表」只删审片条目；「删除文件」同时从磁盘永久删除视频（确认框中列出文件与可释放空间）。
 - 路径安全（删除双重校验）：会话根目录必须在 `SHOT_REVIEW_SOURCE_ROOTS` 之下，且文件路径必须仍在会话根目录内；越界一律拒绝。
 - 只读挂载下「删除文件」会失败并提示改为可写挂载（`SHOT_REVIEW_SOURCES_HOST_PATH`）或到宿主机手动删除后重新扫描；「仅移出列表」不受影响。

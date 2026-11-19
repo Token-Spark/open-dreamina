@@ -51,7 +51,7 @@
 | 参数 | 取值 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `duration` | 秒 | 5 | Seedance 2.5 支持 **4~30**；Fast/Mini 与 2.0 支持 4~15。**多镜连拍组给各镜时长之和**（见 2.5），不传就只出一镜 |
-| `frame_mode` | `first` / `first_last` / `reference` | `reference` | 首帧 / 首尾帧（需 2 张参考图）/ 内容参考。**必须显式传**：缺省按 provider 分叉，直连 seedance 会落回首帧且只取第一张 |
+| `frame_mode` | `first` / `first_last` / `reference` | 无（必须显式传） | 首帧 / 首尾帧（需 2 张参考图）/ 内容参考。MCP 不传即不下发该参数，由 provider 自行决定：直连 seedance 落回首帧且只取第一张，`sparkhub-seedance` 落多模态 `image_urls[]`——**没有可靠的默认值，必须显式传 `reference`** |
 
 > 视频生成默认**全能参考**（`reference`）：多图各司其职（身份 / 站位 / 房间 / 陈设），谁也不绑架谁。
 > `first` 只在必须精确起幅、或平台不支持 `reference` 时用，且要说明理由；`first_last` 基本不用。

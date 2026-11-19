@@ -17,7 +17,7 @@ opendreamina drama init ./data/review_sources/短剧我的项目 \
 - `工作流程和注意事项.md`——流程规范 + 实战注意事项 + 提示词格式参考
 - `剧本大纲.md`——八幕结构骨架表（Logline / 核心人物 / 分幕事件）
 - `分镜脚本/_SPEC_分镜模板规范.md`——shots.md 格式规范（`_` 前缀不被审阅扫描）
-- `分镜脚本/EP01/shots.md`——分镜模板（总览表 15 列 + 单镜 15 行示例）
+- `分镜脚本/EP01/shots.md`——分镜模板（总览表 15 列 + 单镜 14 行示例）
 - `tools/maps.py`——项目级中英映射表（带填充注释）
 - `tools/assets_manifest.json`——资产清单骨架（含一致性策略与 style 四常量）
 - `tools/voice_manifest.json` / `tools/asset_registry.json`——音色与平台注册表骨架
@@ -32,6 +32,11 @@ opendreamina drama init ./data/review_sources/短剧我的项目 \
    - `audio`：音频约定（生成禁 BGM 的标准句式，模板已内置）
    - `negative`：负面词（text, watermark, logo, subtitles, background music, ...）
 3. **provider / model**：素材生成渠道（如 sparkhub-seedream + doubao_seedream_5_pro）。
+
+**素材阶段另有硬交付**：`tools/voice_manifest.json` 骨架只是占位，每个角色必须同三视图一起
+产出 `anchor-voice.wav` 并登记——角色资产三件套缺一即未完成。规格 / 产出 / 验收 / 门禁见
+`11-voice-anchor.md`（契约 #23 owner）。初始化时先把所有出场角色列出来，音色一次选完，别边拍边补；
+同时为每个角色建 `character-card.md` 设定卡（字段模板见 `12-character-design-sheet.md`，契约 #24）。
 
 ## 环境自检
 

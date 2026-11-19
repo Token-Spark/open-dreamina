@@ -26,8 +26,11 @@
 
 | 后缀 | 含义 | 用途 |
 |---|---|---|
-| `_PRIMARY_anchor-portrait.png` | 基准肖像锚点（固定 seed） | 一切人物变体的 img2img 源 |
-| `_PRIMARY_anchor-voice.wav` | 音色锚点（5s） | 生成期台词的音色参考（不做后期配音；画外音 TTS 选角同用） |
+| `_PRIMARY_anchor-portrait.png` | 基准肖像锚点（固定 seed），即设定图四件中的「特写」 | 一切人物变体的 img2img 源 |
+| `_PRIMARY_fullbody.png` | 全身立绘（正面站姿定妆，头到脚完整） | 与 halfbody 同为三视图 img2img 基准（优先 fullbody）；**禁作视频种子 / 参考 / 首帧**。规格见 `12-character-design-sheet.md` |
+| `_PRIMARY_expressions.png` | 表情九宫格（格位=设定卡表情谱行序） | **不进生成参考**（拼贴板）；供表演选词与人工核对。规格见 `12-character-design-sheet.md` |
+| `character-card.md` | 角色设定卡（人物属性/辨识特征/着装描述/表情谱/管线绑定） | 角色身份文字事实源，不入 manifest；模板见 `12-character-design-sheet.md` |
+| `_PRIMARY_anchor-voice.wav` | **角色资产必备件**：音色锚点 | 生成期台词的音色参考（不做后期配音；画外音 TTS 选角同用）。**与基准肖像、三视图同批次定稿**；规格 / 产出 / 验收 / 门禁见 `11-voice-anchor.md` |
 | `_{EP段}_{造型}_halfbody.png` | 半身像 | 仅作三视图的 img2img 基准，**禁止作种子 / 参考 / 首帧** |
 | `_{EP段}_{造型}_turnaround.png` | 三视图（正/侧/背全身） | **视频与关键帧唯一人物参考入口** |
 | `_{EPxx}_{造型}_detail.png` | 妆造细节板（污渍 / 破损 / 配饰特写，可选） | 人工逐镜核对用，**不进生成参考** |
@@ -39,8 +42,8 @@
 卸妆**必须落到单集粒度，即集内状态锚点，见
 `ai-video-director/references/21-episode-state-lock.md` §2/§3。
 
-> 种子纪律：只有 `*_turnaround` 能进生成参考。半身照、单张剧照、上一版成片截帧、
-> 多图拼贴板（`_detail`、布局总览、九宫格）一律不得作种子——单角度素材一转视角就漂移。
+> 种子纪律：只有 `*_turnaround` 能进生成参考。半身照、全身立绘、单张剧照、上一版成片截帧、
+> 多图拼贴板（`_detail`、布局总览、表情九宫格）一律不得作种子——单角度素材一转视角就漂移。
 
 ## 场景 / 道具 / 名场面命名
 
@@ -59,7 +62,7 @@ EP{xx}_{描述}.png                              # 名场面（如 EP26_return-t
 char_{角色}_{时期}_{造型}_turnaround   → 01_characters/{角色}/同名.png
 char_{角色}_ep{xx}_{造型}_turnaround   → 集内妆造三视图（单集锁定，视频参考入口）
 char_{角色}_primary                    → 基准锚点
-voice_{角色}                           → anchor-voice.wav（无需 manifest 条目）
+voice_{角色}                           → anchor-voice.wav（无需 assets_manifest 条目；登记进 tools/voice_manifest.json，见 11）
 scene_{场景}_primary / scene_{场景}_interior
 scene_{场景}_ep{xx}_{状态}             → 集内场景状态图（本集陈设：病床 / 灵堂 / 雨夜）
 prop_{道具}                            → 03_props/props/PROP_*.png

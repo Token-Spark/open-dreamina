@@ -32,8 +32,9 @@
 ## 面向审阅的目录自检清单
 
 - [ ] 素材库分类前缀 01~06 齐全，人物/场景各成子目录
-- [ ] 每个角色的 `*_turnaround` 三视图与 `anchor-voice.wav` 就位
-- [ ] `video_renders/{镜号}_seedance20/` 按镜号成目录，成片在目录内
+- [ ] 每个角色的**三件套**就位：`*_PRIMARY_anchor-portrait.png`、`*_turnaround` 三视图、`anchor-voice.wav`；缺 wav 即该角色未完成（验收五项见 `11-voice-anchor.md`）
+- [ ] 主要角色的**设定卡与四件视觉产物**就位：`character-card.md` + 特写/立绘 `_fullbody`/三视图/表情九宫格 `_expressions`（规格与验收见 `12-character-design-sheet.md`）；过场角色豁免立绘与表情格，设定卡仍必填
+- [ ] `video_renders/{镜号}_{模型代号}/` 按镜号成目录（连拍组裁切产出落 `_seedance25`），成片在目录内
 - [ ] 连拍组母版在 `video_renders/_takes/`（`_` 前缀，审阅扫描跳过），并已按切点裁成逐镜文件落各镜目录
 - [ ] 废弃版本已入 `_superseded_*/`（而不是与当前版本混放）
 - [ ] shots.md 与分集剧本同名可关联（审片条目会读分镜底稿）

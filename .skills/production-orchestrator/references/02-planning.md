@@ -40,7 +40,9 @@ COSTUME（服装）
 VEHICLE（载具）
 CREATURE（生物）
 VFX（特效）
-VOICE（音色锚点 / 画外音；台词走生成期同期，不排后期配音）
+VOICE（角色音色锚点 anchor-voice.wav / 画外音；台词走生成期同期，不排后期配音。
+      音色锚点是角色资产的必备件，与三视图同批次锁定，规格与门禁见
+      drama-production-playbook/references/11-voice-anchor.md）
 MUSIC（音乐）
 SFX（音效）
 ```
@@ -90,13 +92,19 @@ HUMAN_REVIEW（待人工审查）
 
 ### 角色（Character）
 
+* **设定卡（character-card.md）**：角色身份的文字事实源，锁定前先核卡——
+  人物属性 / 辨识特征 / 着装描述 / 表情谱 / 管线绑定，字段模板与四件视觉产物规格见
+  `drama-production-playbook/references/12-character-design-sheet.md`（契约 #24）
 * 面部（face）
 * 身体（body）
 * 发型（hair）
 * 服装（costume）
 * 配饰（accessories）
 * 年龄（age）
-* 标志性视觉特征（defining visual traits）
+* 标志性视觉特征（defining visual traits）——对应卡内「辨识特征」，跨造型不变项
+* **音色（voice anchor）**：`anchor-voice.wav` 已定稿并通过验收、已登记 `voice_manifest`；
+  缺这一项的台词镜依赖不成立，任务 `BLOCKED`
+  （见 `drama-production-playbook/references/11-voice-anchor.md` §6）
 
 ### 场景（Location）
 

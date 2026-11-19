@@ -24,7 +24,8 @@
 
 但「单镜 ≤6s」是**分镜单位**的约束，不是**生成任务**的约束。
 Seedance 2.5 单次生成支持 **4~30 秒**，所以同一场、同一时段的连续镜头应优先合并成
-**连拍组**，一次任务生成多个镜头（组总长 ≤30s、推荐 12–20s、组内 2–4 镜），
+**连拍组**，一次任务生成多个镜头（组总长 ≤30s、推荐 12–20s、组内 2–4 镜；
+**首版按 2 镜起手**——本仓 EP01 实测 12s 排三段只执行了 1 刀，第 2 刀丢失），
 而不是每个 6 秒镜都独立出任务：
 
 - 一次生成里，人物位置、光向、色温、妆造、道具在场由模型自己延续，不需要靠接续句"说回去"；
@@ -91,7 +92,7 @@ Seedance 2.5 单次生成支持 **4~30 秒**，所以同一场、同一时段的
    - **工具链没有「选择性禁乐」开关**：`generate_audio` 只能整条音轨开 / 关（`false` = 完全无声，台词镜禁用），不能单独去掉配乐；`completed` 不代表音轨合规；
      压制靠双通道——① 正向 AUDIO 段**前置**声明禁乐并实填环境音 / 触发音；
      ② `negative_prompt` 点名乐种（词表见 `prompt-optimizer/references/02-prompt-templates.md` §4.5），
-     镜头四行模板见同文件 §3.4。句尾零散的 "no music" 约束力不足，且不得用 "ambience / pad / score" 许可配乐。
+     镜头九行模板见同文件 §3.4。句尾零散的 "no music" 约束力不足，且不得用 "ambience / pad / score" 许可配乐。
    - **成片音轨必检**：无旋律线 / 和弦 / 鼓点 / 乐器垫乐才可 PASS；仍夹带垫乐先按双通道修正重出一次、
      不盲目多次重抽；仍不达标再后期剥离或静音化音轨兜底、画面保持不动。无 ffmpeg 时不得仅凭文件体积小判「无配乐」，未听验记 `AUDIO_PENDING`。
 7. **参数基线**：Seedance 720p / 9:16 / `--frame-mode reference`（显式传，见规则 5）/ 轮询上限按平台队列取宽。
@@ -112,8 +113,18 @@ Seedance 2.5 单次生成支持 **4~30 秒**，所以同一场、同一时段的
    产出的多镜母版**必须按切点裁成逐镜文件**再落 `video_renders/{镜号}_seedance25/`，
    母版存 `video_renders/_takes/`；组级验收（切点数 / 切点两侧 ±0.5s / 后段衰减）在逐镜 QC 之前做。
    细则见 `ai-video-director/references/23-take-group-multi-shot.md`。
+10. **提交前过三查（模板 / 参考 / 编组）**：模板字段与段序逐字遵循（只改值不改标签）、
+    四类素材装配到正确版本（角色三视图本集版 / 场景 primary 或集内状态图 / **道具状态版参考图必须真正进参考列表** / 音色锚点是音频不是图片，
+    且同集同角色、同集同道具只引一个版本）、编组粒度合理（先合后拆，不为凑时长硬塞）。
+    同一场被拆成多个连拍组时，每组都要挂同一张场景 primary，分组 loc 与实际空间一致；场景文字描述不得写参考图里没有的陈设。
+    查法与 60 秒清单见 `production-orchestrator/references/10-generation-preflight.md`；三查不过不提交。
 
 ## 生成执行入口
+
+**目录后缀 = 实际使用的模型代号**（`_seedance20` / `_seedance25` / …），一个镜号的目录必须
+和它的生成任务实际模型一致，不许混标：连拍组只有 2.5 能跑（≤30s），因此必然落
+`_seedance25`；单镜用 2.0 就是 `_seedance20`。审片中心把目录名当版本标识读
+（`shot-reviewer/references/06-filesystem-workflow.md`），标错会把不同模型的结果混成一个版本。
 
 单镜验证：`opendreamina image2video --provider sparkhub-seedance --reference <三视图> --reference <场景图> --frame-mode reference --prompt "<编译后提示词>" --aspect-ratio 9:16 --auto-wait`
 
@@ -131,6 +142,6 @@ opendreamina image2video --provider sparkhub-seedance \
 
 批量生成：读 `tools/episode_specs/EPxx.json` 逐镜执行（refs → --reference，
 prompt + style 常量 → --prompt，**统一带 `--frame-mode reference`**），产物按
-`{镜号}_seedance20/` 落 video_renders；断点恢复 = 跳过已有成片的镜号。
+`{镜号}_{模型代号}/` 落 video_renders（如 `S01_seedance25/`）；断点恢复 = 跳过已有成片的镜号。
 编组过的镜头按 sidecar 连拍组表（`导演设计/EPxx/shot-design.md`）合并成一次调用，
 spec 结构不变；断点恢复粒度改为「整组」——组内已有母版就整组跳过，不做组内混版。

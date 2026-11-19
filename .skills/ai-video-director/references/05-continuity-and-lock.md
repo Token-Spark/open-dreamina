@@ -19,6 +19,8 @@
 * Accessories
 * Makeup
 * Injuries
+* **Voice（音色）**：`anchor-voice.wav` 是角色资产的必备件，与 Face / Body 参考同批次定稿；
+  规格、验收与绑定门禁见 `drama-production-playbook/references/11-voice-anchor.md`
 
 > **单集内的一致性必须单独锁定**：衣物款式、污渍位置、破损、配饰、妆容在同一集内不得漂移；
 > 场景同理（开头卧病在床，中段人物再入画时床、输液架、药碗必须仍在该位置）。
@@ -87,6 +89,7 @@ Age
 Physical Traits
 Expression Range
 Movement Style
+Voice Reference（anchor-voice.wav；台词同期音色的唯一事实源，见 drama-production-playbook/references/11-voice-anchor.md）
 ```
 
 所有后续 Prompt 都必须引用：
@@ -94,6 +97,12 @@ Movement Style
 > Character ID
 
 而不是每次重新描述人物。
+
+> **落地文件 = 设定卡** `素材库/01_characters/{角色}/character-card.md`：
+> Physical Traits 对应卡内「辨识特征」（跨造型不变项），Expression Range 的具象产物
+> 是表情九宫格 `*_PRIMARY_expressions.png`，Face Reference 即特写（基准肖像）。
+> 卡字段模板与四件视觉产物（特写/立绘/三视图/表情九宫格）规格见
+> `drama-production-playbook/references/12-character-design-sheet.md`（契约 #24）。
 
 ### 2.1 Episode State Lock（集内状态锁定）
 
@@ -108,6 +117,7 @@ Stains & Damage（位置写死：左袖口内侧、右膝）
 Accessories
 Hair
 Set Dressing（本集陈设与在场道具）
+Voice Variant（仅变声剧情：第几镜起切到哪一版 anchor-voice.wav；默认全片一版，见 11 §7）
 Change Points（本集第几镜起变化，变化前后各一套）
 Version
 ```

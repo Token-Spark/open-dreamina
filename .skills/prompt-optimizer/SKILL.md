@@ -61,7 +61,7 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 | 文件 | 内容 | 何时加载 |
 |---|---|---|
 | `references/01-optimization-framework.md` | 优化方法论：诊断四问、六工位结构、重写规则、输出格式 | 每次优化任务开始时首先加载 |
-| `references/02-prompt-templates.md` | 图片/视频提示词模板、工位词库、视频运动与镜头语言、负面词库、模板套用规则；含短剧音轨四行模板（§3.4）、**多镜连拍组模板（§3.5）**与音乐负面词表（§4.5） | 重写提示词时 |
+| `references/02-prompt-templates.md` | 图片/视频提示词模板、工位词库、视频运动与镜头语言、负面词库、模板套用规则；含**短剧镜头九行标准模板（§3.4，用户定稿）**、**多镜连拍组模板（§3.5）**与音乐负面词表（§4.5） | 重写提示词时 |
 | `references/03-parameters-and-execution.md` | MCP 工具清单、参数含义与默认值、尺寸换算、模型能力校验、执行序列与返回处理 | 给出参数建议或直接生成时 |
 | `references/04-quality-and-iteration.md` | 优化自检清单与评分、常见出图/出片问题 → 改词策略、迭代收敛规则 | 交付前自检与结果不理想时 |
 | `references/05-examples.md` | 图片 / 视频 / 图生视频 / 模板套用的前后对照示例 | 需要参考具体写法时 |
@@ -80,8 +80,20 @@ STEP 10 结果复盘与二次迭代（按症状改词）                 → ref
 9. 调用生成工具前必须先用 `list_providers` 确认 `provider` 已配置、`get_health` 确认 worker 就绪；不确定就如实告知，不猜测。
 10. 生成后必须用 `wait_task` 取回终态并回报 `result_urls_absolute` 与失败原因，禁止在任务未完成时谎称已出结果。
 11. 优化对象涉及多人同镜或室内多角度时，必须提示补已批准的 `rel_*` / `loc_*` 锚点参考图，只优化文字视为未完成；门禁与多参考组合见 `ai-video-director/references/19-relationship-keyframe.md` §2/§8。
-12. **短剧视频提示词必须按 `references/02-prompt-templates.md` §3.4 音轨四行填写**：音效设计恒为「无背景音乐」，基础环境音、动作触发音必须实填并绑定秒段，特效音无则写「无」；音乐禁用词随 `negative_prompt` 提交（§4.5），正向前置禁乐＋负向点名乐种双通道；禁止生成期 BGM，也禁止整体静音。
+12. **短剧镜头提示词必须按 `references/02-prompt-templates.md` §3.4 九行模板逐行填写**（镜头功能 / 人物 / 场景描述 / 秒级动作拆解 / 台词同步 / 音效设计 / 基础环境音 / 画面风格 / 特效音），行序与标签不动，`//` 之后是工位说明、写进提示词前删掉；**动作触发音并入基础环境音**，画面风格填全局常量逐字（用 `--with-style` 时不重复写）；音乐禁用词随 `negative_prompt` 提交（§4.5），正向前置禁乐＋负向点名乐种双通道；禁止生成期 BGM，也禁止整体静音。
 13. **妆造 / 陈设已由图片锁定时不得再写服饰描述**：人物行与提示词只写身份项 + 本镜动作，用一致性锚句指回参考图；相对修饰（「同样的裙子但更旧」）同样算冲突。发现用户提示词里在描述已锁定的穿搭，先删描述、补锚点，见 `references/drama-prompt-pattern.md`「集内妆造锁定」。
 14. **生成参考与首帧只用 `*_turnaround`**（本集妆造版 `*_ep{xx}_{造型}_turnaround`）；半身照、剧照、成片截帧、拼贴板不得作种子，转了视角必漂移，见 `ai-video-director/references/21-episode-state-lock.md` §6。
 15. **视频默认全能参考（`frame_mode: "reference"`），且必须显式传**：`first` 非必要不用（只在必须精确起幅或平台不支持 `reference` 时用，并写明理由），`first_last` 基本不用。缺省行为按 provider 分叉（直连 seedance 落回首帧、只取第一张参考图），不要依赖默认；判定见 `references/03-parameters-and-execution.md` §2.3。
-16. **多镜头连续内容优先用连拍组，不要拆成一堆 5 秒任务**：同场同时段的连续镜头合并为一次生成（Seedance 2.5 单任务 ≤30s，组内 2–4 镜、单镜 ≥3s、推荐 12–20s），`duration` 显式给各段时间码之和；跨场跨时、多人物理接触、精确咬口型特写、复杂运镜/特效合成点、需精确起幅的镜仍拆独立任务。判据见 `ai-video-director/references/23-take-group-multi-shot.md`，模板见 `references/02-prompt-templates.md` §3.5。
+16. **多镜头连续内容优先用连拍组，不要拆成一堆 5 秒任务**：同场同时段的连续镜头合并为一次生成（Seedance 2.5 单任务 ≤30s，组内 2–4 镜、单镜 ≥3s、推荐 12–20s；**首版按 2 镜起手**，切点数验收通过再加到 3–4），`duration` 显式给各段时间码之和；跨场跨时、多人物理接触、精确咬口型特写、复杂运镜/特效合成点、需精确起幅的镜仍拆独立任务。判据见 `ai-video-director/references/23-take-group-multi-shot.md`，模板见 `references/02-prompt-templates.md` §3.5。
+17. **优化「吃惊 / 惊吓 / 震惊」类视频提示词时，禁止写 `gasp` / `sharp intake of breath` / `sudden inhale` / 倒吸一口气 等「倒吸气」表演**，也不要用「捂嘴 + 瞪眼 + 后仰」三件套暗示同一反应；改按 `ai-video-director/references/24-character-performance.md` 给克制停顿、延迟反应、身体语言或视线 / 环境替代，并在 `negative_prompt` 排除 `gasp, sharp intake of breath, sudden inhale, exaggerated startle`。正向必须同时写清替代反应的具体动作。
+18. **模板是契约不是参考**：短剧镜头九行标准模板（`references/02-prompt-templates.md` §3.4）、连拍组结构（§3.5）、
+    分镜 14 行模板、编译 8 段的**标签名 / 行序 / 段序 / 固定句式逐字不动**，只有"值"可写。
+    禁止改标签名、合并或拆分行、重排段序、自创字段、擅自"顺一下"结构；改模板须用户明确批准并记入 sidecar。
+    「优化」的边界是措辞与信息密度，不是结构。
+19. **参考装配属于优化的一部分**：多参考场景必须确认四类素材各就各位——角色设定图用 `*_turnaround`（本集妆造版）、
+    场景用 primary 或 `scene_*_ep{xx}_{状态}`、道具用 `prop_*_{状态}`、音色 `voice_*` 是音频不是图片；
+    同集同角色只引一个版本。**台词镜的 `voice_*` 必须已有定稿的 `anchor-voice.wav`**（角色资产三件套之一，
+    缺 wav 回素材阶段补，不许"以后再补声"；无台词镜该槽写「—」、不传音频参考）；
+    规格与门禁见 `drama-production-playbook/references/11-voice-anchor.md`。装配表、音色槽位 provider 分叉、
+    错引症状与提交前核对见 `production-orchestrator/references/10-generation-preflight.md` §2。
+    只优化文字、不核对参考，视为未完成。

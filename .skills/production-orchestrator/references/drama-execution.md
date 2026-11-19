@@ -9,7 +9,7 @@
 |---|---|---|
 | 分镜脚本 | `分镜脚本/EPxx/shots.md` | 唯一权威数据源（导演产出，lint 已通过） |
 | 资产清单 | `tools/assets_manifest.json` | 资产 prompt/seed/一致性策略/全局风格 |
-| 音色清单 | `tools/voice_manifest.json` | 角色 → 生成期同期台词的音色参考（画外音 TTS 选角同用，不做台词后期配音） |
+| 音色清单 | `tools/voice_manifest.json` | 角色 → 生成期同期台词的音色参考（画外音 TTS 选角同用，不做台词后期配音）。**角色资产三件套之一**，与三视图同批次定稿；规格 / 验收 / 门禁见 `drama-production-playbook/references/11-voice-anchor.md` |
 | 平台注册表 | `tools/asset_registry.json` | 资产 id → 平台 asset_id |
 | 分集规格 | `tools/episode_specs/EPxx.json` | 每集的生成执行输入（本技能维护） |
 | 项目映射表 | `tools/maps.py` | 中英词库（编译器消费） |
@@ -21,7 +21,10 @@
 opendreamina drama lint EPxx --project .          # errors=0 才继续
 
 # 2. 资产落位：清单缺口 → 素材生产 → 上传注册
-opendreamina drama assets EPxx --project .        # 缺平台 asset_id 的资产即缺口
+opendreamina drama assets EPxx --project .        # 缺平台 asset_id 的资产即缺口；missing_files 里的 voice_* 就是缺音色锚点
+#    voice_* 不走 assets_manifest：按 素材库/01_characters/{group}/*anchor-voice.wav 找文件
+#    缺 wav → 回素材阶段按 drama-production-playbook/references/11-voice-anchor.md 定稿，
+#    相关台词镜 BLOCKED，不带病提交
 opendreamina upload <素材文件>                     # → asset_id，回写 asset_registry
 opendreamina audit <asset_id> --provider sparkhub-seedance   # 需要时提审
 
@@ -33,12 +36,21 @@ opendreamina drama spec EPxx --project . --write --force
 
 # 5. 批量生成（按 spec 逐镜）
 #    refs（图片+音色）→ --reference；prompt + style → --prompt
-#    --frame-mode reference 必须显式传：不传会落回首帧模式，只用第一张图
-opendreamina image2video --provider sparkhub-seedance \
+#    --frame-mode reference 必须显式传：没有可靠默认值
+#    （直连 seedance 落回首帧、只取第一张；sparkhub 落多模态 image_urls[]）
+opendreamina image2video --provider sparkhub-seedance --model doubao_seedance_2_5 \
     --reference <三视图> --reference <场景图> --reference <音色> \
-    --frame-mode reference \
+    --frame-mode reference --duration <该镜或该组总时长> \
     --prompt "<spec prompt + 风格常量>" --aspect-ratio 9:16 --auto-wait \
-    --download-dir "分镜脚本/EPxx/video_renders/S01_seedance20/"
+    --download-dir "分镜脚本/EPxx/video_renders/S01_seedance25/"
+# 目录后缀 = 本次实际模型代号（_seedance25 / _seedance20），一镜一目录、不许混标
+
+> **参考按类型分流，别一律当图片传**：`episode_spec` 里 `assets[].kind` 已区分 `image` / `audio`。
+> `sparkhub-seedance` 由 `_build_sparkhub_seedance_ref_kwargs` 按类型路由（图片 → `image_urls`，
+> **须先过 `seedance_asset_audit`，未审核直接报错**；音频 → `audio_urls`，免审）；
+> 直连 `seedance-2-x` 则把所有参考字节塞进 `reference_image_bytes_list` 当图片编码，
+> **音频必须剥离**，否则解码失败或污染参考集。分叉细节与错引症状见
+> `references/10-generation-preflight.md` §2.2。
 
 > **锚点类资产不在 spec refs 里**：`rel_*` / `loc_*` 被资产 ID 白名单静默过滤，
 > `drama spec` / `drama assets` 看不到它们。编排层须按 `shot-design.md` sidecar
@@ -56,8 +68,15 @@ opendreamina drama qc EPxx --project .
 
 ## 生成参数基线（Seedance）
 
-- provider/model：项目 manifest 的 `provider`/`model`（如 sparkhub-seedance + doubao_seedance_2）
-- 720p / 9:16 / `--frame-mode reference`（默认且必须显式传）；单镜创作建议 ≤6s、lint 硬区间 2–8s（见 `ai-video-director/references/drama-shotlist-spec.md`），4–8s 仅为 Seedance 参数窗口，不是创作约束
+- provider/model：项目 manifest 的 `provider`/`model`，默认 **`sparkhub-seedance` + `doubao_seedance_2_5`**。
+  选型不是偏好问题：连拍组要 12–20s / ≤30s，只有 2.5 的参数窗口（4–30s）装得下；
+  `doubao_seedance_2` / `_fast` / `_mini` 都是 **4–15s**（`backend/app/providers/sparkhub_seedance.py`
+  的 `_MODEL_DURATION_RANGE`），超 15s 会直接抛 `ProviderError`。直连 `seedance` provider 的
+  `doubao-seedance-2-5` 常量已预留但**尚未上线**（`DEFAULT_MODEL` 仍回落 2.0），所以连拍组走 sparkhub。
+  只有 sparkhub 不可用时才降级到 2.0，并把单组压到 2–3 镜 / ≤15s。
+- 720p / 9:16 / `--frame-mode reference`（必须显式传）；单镜创作建议 ≤6s、lint 硬区间 2–8s（见 `ai-video-director/references/drama-shotlist-spec.md`）。
+  2.5 的参数窗口是 4–30s，与 lint 的 2–8s 不是一回事：**lint 管分镜单位，模型窗口管生成任务**，
+  两者只在「单镜时长 ≤ 上限」这一点上相交
 - **任务粒度：先合组，再逐镜**。同场同时段的连续镜头按 sidecar 连拍组表合并为一次生成
   （Seedance 2.5 单任务 ≤30s，组内 2–4 镜，推荐 12–20s）；`--duration` 显式给**组总长**
   （= 各镜时长之和），不传会落默认 5s。判据与提示词结构见
@@ -74,7 +93,8 @@ opendreamina drama qc EPxx --project .
 
 ## 产物落位与版本纪律
 
-- 成片：`分镜脚本/EPxx/video_renders/{镜号}_seedance20/{镜号}_seedance20_reference_*.mp4`
+- 成片：`分镜脚本/EPxx/video_renders/{镜号}_{模型代号}/{镜号}_{模型代号}_reference_*.mp4`
+  （如 `S01_seedance25/S01_seedance25_reference_0.mp4`；后缀必须与实际模型一致）
 - 连拍组母版：`分镜脚本/EPxx/video_renders/_takes/EPxx_TGxx_{总长}s_master.mp4`（`_` 前缀不被审阅扫描），
   按切点裁成逐镜文件后落各镜目录（ffmpeg 命令见 `ai-video-director/references/23-take-group-multi-shot.md` §7）
 - 断点恢复：重跑前跳过已有成片的镜号（`drama qc` 的"存在 N 份成片"提示多版本）；

@@ -107,7 +107,7 @@ STEP 11 最终验收评分（Production Score）        → 11
 | `references/09-pipeline-and-qc.md` | 生产管线、Keyframe First、Keyframe QC、Video QC、镜头评分、成本意识、Production Priority | 进入生产与质检阶段时 |
 | `references/10-workflows-and-output.md` | 工作模式、导演台输出格式、逐镜头生成卡、与 Short Drama Creator 接口 | 准备交付物或切换工作模式时 + `16`/`17` 双产物 |
 | `references/11-principles-and-acceptance.md` | 最重要导演原则、最终验收（Production Score）、最终目标 | 一集完成后、交付前 |
-| `references/drama-shotlist-spec.md` | 竖屏短剧专章：shots.md 15 行模板与 15 列总览表规范、lint 硬规则、生成友好性设计 | 分镜产出要进入 Open Dreamina 短剧管线时必读；**新增规范须经 `17` 映射表投影，禁止直接改 15 行模板** |
+| `references/drama-shotlist-spec.md` | 竖屏短剧专章：shots.md 14 行模板与 15 列总览表规范、lint 硬规则、生成友好性设计 | 分镜产出要进入 Open Dreamina 短剧管线时必读；**新增规范须经 `17` 映射表投影，禁止直接改 14 行模板** |
 
 ### 专业知识层（按需加载，不对应 STEP）
 
@@ -125,6 +125,7 @@ STEP 11 最终验收评分（Production Score）        → 11
 | `references/21-episode-state-lock.md` | 集内状态锚点：单集妆造（款式/污渍/破损/配饰）与陈设锁定、产物与命名、生成顺序、**锁定后只引用不描述的提示词纪律**、三视图种子纪律、门禁与 QC | STEP 5 建资产、同集 ≥3 镜 / 换装染血 / 本集非常设陈设时 |
 | `references/22-shot-continuity-in-generation.md` | 镜头接续：三条主线（人物位置关系 / 环境 / 动作与表情）、入场态与出场态、A·B·C 三级接续、英文接续句模板与正反例、六类接续处方（含表情余势）、接续链表、接续门禁与配对播放 QC、`衔接` 列不进编译的代码事实 | STEP 6 写接续句、STEP 9 接续门禁；**生成任何非首镜之前必读** |
 | `references/23-take-group-multi-shot.md` | 连拍组：同场连续镜头合并为单任务多镜生成（Seedance 2.5 ≤30s）、合组/拆组判据、组规模与时长配额、镜段式提示词结构与切点标注、整组共享参考、母版裁切落库、组级验收与降级路径 | STEP 6 编组、STEP 9 组级验收；**拆镜前先读——能合就别拆** |
+| `references/24-character-performance.md` | 角色表演风格：禁止「倒吸气」表演（gasp / sharp intake of breath / 倒吸一口气 等）、替代表演方案与提示词写法、触发清单 | STEP 4 动作/表情设计、STEP 6 写 Video Prompt、STEP 7 情绪镜；凡「吃惊/惊吓/震惊」类反应镜头必读 |
 
 > `shots.md` 是 `drama lint` / `drama parse` 的**唯一机器入口**；导演设计稿另存
 > `{项目根}/导演设计/EPxx/shot-design.md`（sidecar），不进入 lint。
@@ -136,7 +137,9 @@ STEP 11 最终验收评分（Production Score）        → 11
 2. 每个 Shot 必须通过 "一个镜头只解决一个主要视觉任务" 校验；复杂动作必须拆镜头。
 3. 每个 Scene 必须满足 **Scene Start ≠ Scene End**；每个 Beat 必须产生 Information / Emotion / Action / Decision 至少一种变化。
 4. 一致性资产（Character Lock / Location Lock / Visual Bible）必须先行建立，后续 Prompt 引用 ID，禁止每次重新描述。
-5. Image Prompt 与 Video Prompt 必须分离设计，禁止复制；Video Prompt 必须使用 `references/06-prompt-architecture.md` 中的结构化模板输出。
+5. Image Prompt 与 Video Prompt 必须分离设计，禁止复制；Video Prompt 按
+   `prompt-optimizer/references/02-prompt-templates.md` §3.4 的九行模板输出，
+   `references/06-prompt-architecture.md` §4 的字段清单只用于拆镜自查，不当作成稿模板。
 6. 先 Keyframe，后 Video；关键帧失败必须先修 Keyframe，不要直接生成 Video。
 7. 镜头评分 < 70 重新生成；< 60 重新设计 Shot，不得简单重新抽卡。
 8. 始终遵循 **Don't generate what you cannot control**，优先简单可靠镜头 + 剪辑组合。
@@ -145,7 +148,7 @@ STEP 11 最终验收评分（Production Score）        → 11
 11. 每个 Scene 必须产出**机位图与 180 度轴线标注**；跨轴须给出合理越轴方案（`13`）。
 12. 每集须标注**视点设计与观众信息差**；POV 不得仅为满足 lint 数量而设（`14`）。
 13. 最终交付必须含 **Storyboard 与 Shot List 双产物**，以 `EPxx-SNN` 一一对应；故事板预演通过前不得写 Image/Video Prompt（`16`/`17`）。
-14. **12 字段须齐全**，经 `17` 映射表投影到 drama 15 行 / 15 列；`shots.md` 的模板、枚举、列序、镜头数与时长规则**不得改动**；扩展信息写入 sidecar 或 HTML 注释，禁止绕过 lint。
+14. **12 字段须齐全**，经 `17` 映射表投影到 drama 14 行 / 15 列；`shots.md` 的模板、枚举、列序、镜头数与时长规则**不得改动**；扩展信息写入 sidecar 或 HTML 注释，禁止绕过 lint。
 15. 命中多人 / 共现 / 共享站位正反打时，须先批准 `rel_*` 关系关键帧，同组合复用同一版本，未批准不得生成；触发条件、门禁与相对位置 QC 见 `19` §2/§6/§7。
 16. 室内跨 ≥2 机位/朝向时，须先批准布局总览 + 全景锚点组并按朝向引用，缺失 / 错引不得生成；触发条件、门禁与结构 QC 见 `20` §2/§7/§8。
 17. `rel_*` / `loc_*` 不进 `drama` 资产白名单，登记与生成消费见 `19` §8；`shots.md` 模板保护见 `17` §5。
@@ -166,7 +169,16 @@ STEP 11 最终验收评分（Production Score）        → 11
     上一镜未批准就预生成下一镜时，批准后必须回头复核衔接，不一致的那一镜重生成。
 23. **先问能不能合组，再决定拆镜**：同场、同时段、连续动作流（A 硬接）、正反打对白、跟拍移动、
     同场换机位、空镜序列，一律优先编成「连拍组」，用 Seedance 2.5 单任务一次生成多镜
-    （组总长 ≤30s、推荐 12–20s、组内 2–4 镜、组内单镜 ≥3s），而不是逐镜独立出任务。
+    （组总长 ≤30s、推荐 12–20s、组内 2–4 镜、**首版 2 镜起手**、组内单镜 ≥3s），而不是逐镜独立出任务。
     判据、镜段式提示词结构（`Shot N (起-止s)` + `HARD CUT`）、整组共享一套参考、母版裁切与组级验收见 `23`。
     必须拆的只有：跨场跨时间的 C 级断接、多人物理接触与群像、精确咬口型的台词特写、复杂运镜/特效合成点、需精确起幅的镜。
     合组**不免除** `19`/`20`/`21` 的锚点门禁，且跨妆造状态的镜不得同组。
+24. 人物「吃惊 / 惊吓 / 震惊」类情绪反应**禁止「倒吸气」表演**（gasp / sharp intake of breath / sudden inhale / 倒吸一口气 等，及「捂嘴 + 瞪眼 + 后仰」三件套），
+    改用克制停顿、延迟反应、身体语言或视线 / 环境替代（见 `24` §2）；正向写清替代反应的具体动作、负向排除 gasp（见 `24` §3）；触发清单见 `24` §4。
+25. **交付分镜与提示词时按模板逐字写，不按自己的喜好重排结构**：14 行模板的标签与顺序、15 列列序、提示词九行模板、
+    编译 8 段、连拍组镜段格式都属契约层，只改值不改标签与顺序（改模板须用户批准并记 sidecar）。
+    「资产绑定」行必须四类到位——角色 `*_turnaround`（本集妆造版）/ 场景 primary 或 `scene_*_ep{xx}_{状态}` /
+    道具 `prop_*_{状态}` / 音色 `voice_*`（**台词镜必绑；无台词镜该槽写「—」、不传音频参考**），且**同集同角色只引一个版本**；
+    室内跨机位与多人组合另登 `loc_*` / `rel_*`。音色锚点是角色资产三件套之一，缺 wav 的角色未完成、其台词镜 `BLOCKED`
+    （规格 / 产出 / 验收见 `drama-production-playbook/references/11-voice-anchor.md`）。
+    设计稿交付前对照 `production-orchestrator/references/10-generation-preflight.md` §1/§2 自检一遍。

@@ -1,6 +1,6 @@
 ---
 name: "production-orchestrator"
-description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将导演的分镜方案转化为可执行、可追踪、可质控的生成任务，覆盖资产管理、依赖编排、模型路由、关键帧门禁、多镜连拍组合并（同场连续镜头用 Seedance 2.5 单任务 30 秒内一次生成多镜、母版按切点裁切落库，优先于逐镜独立生成）、Prompt 编译、QC、失败处理、预算与交付。当用户需要把场景/镜头/资产/Prompt/参考/声音/剪辑方案转成生产工作流、选择生成模型、管理依赖/版本/重试/一致性/QC/成本/交付时调用。不用于剧情创作、剧本撰写、创意执导，也不负责项目骨架搭建与 drama CLI 手册（drama-production-playbook）、单条口语描述的提示词改写（prompt-optimizer）。"
+description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将导演的分镜方案转化为可执行、可追踪、可质控的生成任务，覆盖资产管理、依赖编排、模型路由、提交前三查（提示词模板逐字遵循 / 角色场景道具音色四类素材正确装配 / 连拍组编组粒度）、关键帧门禁、多镜连拍组合并（同场连续镜头用 Seedance 2.5 单任务 30 秒内一次生成多镜、母版按切点裁切落库，优先于逐镜独立生成）、Prompt 编译、QC、失败处理、预算与交付。当用户需要把场景/镜头/资产/Prompt/参考/声音/剪辑方案转成生产工作流、选择生成模型、管理依赖/版本/重试/一致性/QC/成本/交付时调用。不用于剧情创作、剧本撰写、创意执导，也不负责项目骨架搭建与 drama CLI 手册（drama-production-playbook）、单条口语描述的提示词改写（prompt-optimizer）。"
 ---
 
 # Production Orchestrator Skill
@@ -38,14 +38,18 @@ description: "专业 AIGC 影视/短剧制片执行与质量管控技能：将�
 6. **先合组，再排任务**：同场同时段的连续镜头合并成一次生成（Seedance 2.5 单任务 ≤30s，组内 2–4 镜），
    不让 N 个镜头各猜一次站位/光向/妆造；任务粒度纪律见 `references/04-generation.md` §2.0，
    判据与验收见 `ai-video-director/references/23-take-group-multi-shot.md`。
-7. 可行时先生成关键帧，再生成视频。
-8. 上游问题在上游修复。
-9. 先诊断失败原因，再重试。
-10. 优先简单可控镜头，而非复杂不可靠的生成。
-11. 绝不覆盖已批准资产或生产产物。
-12. 记录每一次生成与失败。
-13. 持续失败应升级处理，而非无限重试。
-14. 以"可用的已批准成片"为目标，而非原始生成数量。
+7. **提交前必过「三查」**（`references/10-generation-preflight.md`）：模板逐字遵循 → 参考装配正确
+   → 编组粒度合理。三查任一不过即 `BLOCKED`，回上游修；不接受"先抽一张看看"。
+   其中模板（`shots.md` 14 行 / 提示词九行模板 / 连拍组镜段 / 编译 8 段）属**契约层**，
+   只改值不改标签与顺序，改模板须用户明确批准并记入 sidecar。
+8. 可行时先生成关键帧，再生成视频。
+9. 上游问题在上游修复。
+10. 先诊断失败原因，再重试。
+11. 优先简单可控镜头，而非复杂不可靠的生成。
+12. 绝不覆盖已批准资产或生产产物。
+13. 记录每一次生成与失败。
+14. 持续失败应升级处理，而非无限重试。
+15. 以"可用的已批准成片"为目标，而非原始生成数量。
 
 ## 3. 使用流程（概览）
 
@@ -56,7 +60,7 @@ STEP 3  建立依赖图（Dependency Graph）            → references/02-plann
 STEP 4  锁定关键资产 + 资产版本管理               → references/02-planning.md
 STEP 5  编译 Prompt（Prompt Compilation）         → references/03-prompt-and-routing.md
 STEP 6  模型路由（Model Routing）+ 生成策略       → references/03-prompt-and-routing.md
-STEP 7  关键帧门禁（Keyframe Gate）+ 接续门禁（Continuity Gate）→ references/04-generation.md
+STEP 7  生成前置契约三查（模板 / 参考 / 编组）+ 关键帧门禁 + 接续门禁 → references/10-generation-preflight.md、04-generation.md
 STEP 8  视频生成 + 连拍组合并 + 参考传播        → references/04-generation.md
 STEP 9  任务队列 + 失败处理 + 镜头重设计           → references/05-task-and-failure.md
 STEP 10 质量管控（QC）与 QC 决策                  → references/06-quality-control.md
@@ -79,6 +83,7 @@ STEP 13 工作模式切换 + 响应行为 + 成功标准          → references
 | `references/08-manifest.md` | 生产清单（Manifest）说明 | 维护生产清单时 |
 | `references/production-schema.md` | 生产清单详细 Schema（机器可读字段定义） | 编写/校验 Manifest 时 |
 | `references/09-modes-and-success.md` | 工作模式（Plan/Execute/Repair/Review/Deliver）、响应行为、成功标准 | 切换工作模式 / 最终验收时 |
+| `references/10-generation-preflight.md` | **生成前置契约三查**：提示词模板逐字遵循（不可动/可变、七种破坏型"优化"、字段点名）、参考装配（四类素材分工、音色槽位 provider 分叉、按镜型装配表、同集四铁律、错引八症、`drama assets` 核对）、编组粒度三问与三种假合组；附提交前 60 秒清单 | **提交任何生成任务（关键帧/单镜/整集批跑）之前必读** |
 | `references/drama-execution.md` | 短剧管线专章：消费 drama 工具链（lint/assets/spec/qc）与 episode_spec 数据契约、Seedance 参数基线、版本纪律 | 生产对象为 Open Dreamina 短剧管线时必读 |
 
 ## 5. 强制规则
@@ -95,6 +100,13 @@ STEP 13 工作模式切换 + 响应行为 + 成功标准          → references
 10. 持续失败升级处理，禁止隐藏未解决问题。
 11. 粗剪通过前，不执行昂贵的最终后期。
 12. 最终交付必须通过最终 QC（故事/角色/场景/镜头意图/运动/音频/连续性/技术全部通过）。
+13. **提交任何生成任务前必须过「三查」**（`references/10-generation-preflight.md`）：
+    ① 提示词模板逐字遵循（字段名 / 行序 / 段序 / 固定句式不动，只改值）；
+    ② 参考装配正确（角色 `*_turnaround` 本集版 / 场景 primary 或集内状态图 / 道具状态版 / 音色锚点按 provider 分叉，
+    同集同角色只引一个版本，音色 wav 不得混进图片位；**缺 `anchor-voice.wav` 的角色其台词镜 `BLOCKED`**，
+    回素材阶段补定稿，不得"先跑画面后补声"——规格与门禁见
+    `drama-production-playbook/references/11-voice-anchor.md`）；
+    ③ 编组粒度合理（先合后拆，不为凑时长硬塞，假合组要拦）。任一不过即 `BLOCKED`。
 
 ## 6. 成功标准
 

@@ -84,7 +84,7 @@ STEP 12 双轨重写：① 单集评分阈值（<80 重写；<70 重新设计）
 | `references/seven-layer-pipeline.md` | 七层创作 Pipeline、剧作层向分镜层的交接契约、典型失败与回溯层级 | 新开项目 / 向分镜交接 / 定位问题层级时 |
 | `references/creative-principles.md` | 核心创作原则与最终创作哲学（第一原则：持续制造"想知道"） | 创作开始前 |
 | `references/episode-structure.md` | 单集结构标准：HOOK → GOAL → CONFLICT → ESCALATION → PAYOFF → CLIFFHANGER，以及角色选择、Escalation、Payoff 设计 | 设计单集时 |
-| `references/character-design.md` | 人物设计标准：Want / Need / Flaw / Secret / Choice / Change、独立驱动力、价值观冲突 | 设计人物时 |
+| `references/character-design.md` | 人物设计标准：Want / Need / Flaw / Secret / Choice / Change、独立驱动力、价值观冲突、视觉设定卡（进管线时） | 设计人物时 |
 | `references/narrative-craft.md` | 叙事工艺：世界观展示、信息控制、反转、场景设计、对白、可视化、节奏与信息密度 | 写场景/对白时 |
 | `references/quality-control.md` | 质量评分系统、五项硬性门槛、可制作性检查、Agent 自检 Prompt | 每集完成后、输出前 |
 | `references/series-design.md` | 连续剧级别设计：Series Bible、长篇节奏、5 集小 Arc、AI/科幻额外标准 | 超过 5 集或科幻题材时 |
@@ -121,7 +121,7 @@ STEP 12 双轨重写：① 单集评分阈值（<80 重写；<70 重新设计）
 2. **主题命题与主控思想**（Premise / Theme Statement / 价值对 / 正反论证表 / 高潮兑现点）
 3. 核心卖点
 4. 核心问题（悬念层 + 核心层）
-5. 核心人物（含**弧光卡** Lie/Truth、Want/Need 与**人物网对照表**）
+5. 核心人物（含**弧光卡** Lie/Truth、Want/Need 与**人物网对照表**；进管线时另附**视觉设定卡**初稿，见 `references/character-design.md` §4）
 6. 核心冲突
 7. 核心谜团
 8. 整体故事弧（五节点：激励事件 / 进展纠葛 / 危机 / 高潮 / 结局）

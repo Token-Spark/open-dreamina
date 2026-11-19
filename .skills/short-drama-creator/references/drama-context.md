@@ -44,7 +44,9 @@
 ## 交接契约（下游 ai-video-director）
 
 创作产出必须包含：逐集 SCENE 清单（每场含台词定稿、人物出场、场景需求、
-情绪基调）。台词在创作期定稿后**冻结**——分镜与生成阶段逐字引用，
+情绪基调）与**主要角色视觉设定卡初稿**（`character-card.md`：人物属性/辨识特征/
+着装描述/表情谱，字段模板见 `drama-production-playbook/references/12-character-design-sheet.md`）。
+台词在创作期定稿后**冻结**——分镜与生成阶段逐字引用，
 改台词 = 回到本阶段重走确认。
 
 > 制作管线（目录骨架 / 素材体系 / 工具链）见 drama-production-playbook 技能。

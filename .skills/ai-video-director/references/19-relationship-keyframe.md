@@ -131,7 +131,7 @@ rel_{场景}_{人物组合}_{版本}
 
 ### 落地路径（不改 `drama/` 代码）
 
-1. **不改** `shots.md` 的 15 行模板、15 列列序、必填行与 lint 规则；
+1. **不改** `shots.md` 的 14 行模板、15 列列序、必填行与 lint 规则；
    **不要把 `rel_*` / `loc_*` 写进「资产绑定」行**（写了也不会进 refs，只会造成「已登记」的错觉）。
 2. `opendreamina upload <图片>` → 平台 `asset_id` → 写入 `tools/asset_registry.json`：
    ```json
