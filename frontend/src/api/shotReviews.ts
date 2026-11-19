@@ -68,6 +68,10 @@ export interface ShotReviewItem {
   reviewed_at: string | null
   created_at: string
   updated_at: string
+  /** 原生成任务引用的参考素材 id 列表（供审片提示词编辑器展示缩略图）。 */
+  input_asset_ids: string[]
+  /** 与 input_asset_ids 对应的参考素材预览 URL 列表。 */
+  input_asset_urls: string[]
   thumbnail_url: string | null
   file_url: string
 }

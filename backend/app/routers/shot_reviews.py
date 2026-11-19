@@ -36,6 +36,8 @@ from ..schemas_shot_review import (
     ShotReviewBulkDeleteRequest,
     ShotReviewBulkDeleteResponse,
     ShotReviewFolderListResponse,
+    ShotReviewImportRequest,
+    ShotReviewImportResponse,
     ShotReviewItemResponse,
     ShotReviewItemUpdate,
     ShotReviewRegenerationCreate,
@@ -63,11 +65,13 @@ from ..services.shot_review_service import (
     get_item,
     get_regeneration,
     get_session,
+    import_items,
     list_regenerations,
     list_sessions,
     resolve_item_file,
     scan_root,
     sync_regeneration,
+    task_refs_map,
     update_item,
     update_session,
     verdict_for_score,
@@ -93,7 +97,24 @@ def _session_to_response(session: ShotReviewSession) -> ShotReviewSessionRespons
     )
 
 
-def _item_to_response(item: ShotReviewItem) -> ShotReviewItemResponse:
+def _item_to_response(
+    item: ShotReviewItem,
+    fallback_input_asset_ids: list[str] | None = None,
+) -> ShotReviewItemResponse:
+    # 原生成任务引用的参考素材 id：兼容历史卡片（无该列）与解析失败，一律回落空列表
+    try:
+        parsed = json.loads(getattr(item, "input_asset_ids_json", "[]") or "[]")
+    except (TypeError, ValueError):
+        parsed = []
+    input_asset_ids = (
+        [aid for aid in parsed if isinstance(aid, str) and aid]
+        if isinstance(parsed, list)
+        else []
+    )
+    # 历史扫描卡片没有落库的资产清单：列表接口按底稿里的 task id 派生一份，
+    # 让卡片与返工面板立即能看到被引用资产，不必先手动重扫一次
+    if not input_asset_ids and fallback_input_asset_ids:
+        input_asset_ids = [aid for aid in fallback_input_asset_ids if aid]
     return ShotReviewItemResponse(
         id=item.id,
         session_id=item.session_id,
@@ -132,6 +153,9 @@ def _item_to_response(item: ShotReviewItem) -> ShotReviewItemResponse:
         # 缩略图按需生成，扫描时未知是否有，故始终暴露该地址（前端首屏可视区域才会请求）
         thumbnail_url=f"/api/v1/shot-reviews/items/{item.id}/thumbnail",
         file_url=f"/api/v1/shot-reviews/items/{item.id}/file",
+        # 参考素材 id 与预览地址同源派生，供提示词编辑器展示缩略图
+        input_asset_ids=input_asset_ids,
+        input_asset_urls=[f"/api/v1/assets/{aid}/file" for aid in input_asset_ids],
     )
 
 
@@ -182,10 +206,11 @@ def list_shot_review_sessions(db: Session = Depends(get_db)) -> ShotReviewSessio
 @router.post("/sessions", response_model=ShotReviewSessionResponse, status_code=201)
 def create_shot_review_session(
     payload: ShotReviewSessionCreate,
+    scan: bool = Query(True, description="是否立即扫描根目录；导入清单时传 false，避免把参考素材一并收进来"),
     db: Session = Depends(get_db),
 ) -> ShotReviewSessionResponse:
     try:
-        session = create_session(db, payload.title, payload.root_path)
+        session = create_session(db, payload.title, payload.root_path, scan=scan)
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"code": "invalid_folder", "message": str(e)})
     db.refresh(session)
@@ -247,6 +272,28 @@ def rescan_shot_review_session(
 
 # ---------------- 条目 ----------------
 
+@router.post("/sessions/{session_id}/items/import", response_model=ShotReviewImportResponse)
+def import_shot_review_items(
+    session_id: str,
+    payload: ShotReviewImportRequest,
+    db: Session = Depends(get_db),
+) -> ShotReviewImportResponse:
+    """把外部制作流程的分镜与生成结果批量导入为审片任务卡片。
+
+    调用方（如 `opendreamina drama review-import`）负责解析分镜脚本与生产状态，
+    这里只做落库、路径校验与汇总；重复导入按 (集号, 镜号, 文件路径) 幂等刷新元信息，
+    不会覆盖已打的分数与修改意见。
+    """
+    session = get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": f"审片会话 {session_id} 不存在"})
+    try:
+        result = import_items(db, session, [item.model_dump() for item in payload.items])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "import_failed", "message": str(e)})
+    return ShotReviewImportResponse(**result)
+
+
 @router.get("/sessions/{session_id}/items", response_model=list[ShotReviewItemResponse])
 def list_shot_review_items(
     session_id: str,
@@ -262,7 +309,8 @@ def list_shot_review_items(
         items = [i for i in items if (i.episode or "").upper() == episode.upper()]
     if verdict:
         items = [i for i in items if verdict_for_score(i.score) == verdict]
-    return [_item_to_response(i) for i in items]
+    refs_by_item = task_refs_map(db, items)
+    return [_item_to_response(i, refs_by_item.get(i.id)) for i in items]
 
 
 @router.patch("/items/{item_id}", response_model=ShotReviewItemResponse)

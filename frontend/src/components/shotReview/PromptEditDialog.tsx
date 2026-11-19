@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useRef, useState } from 'react'
-import { ClipboardCopy, FileText, Wand2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Wand2 } from 'lucide-react'
 import type { ShotReviewItem } from '@/api/shotReviews'
+import { ShotPromptEditor } from '@/components/shotReview/ShotPromptEditor'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
-import { Textarea } from '@/components/ui/Textarea'
-import { cn } from '@/lib/utils'
+
+// 审片任务卡片一直从这里导入 copyText，保留导出避免改动调用方。
+export { copyText } from '@/components/shotReview/ShotPromptEditor'
 
 export interface PromptEditDialogProps {
   item: ShotReviewItem | null
@@ -29,50 +31,23 @@ export interface PromptEditDialogProps {
   saving?: boolean
 }
 
-/** 一键把文本写入剪贴板，失败时回落到选中文本。 */
-export async function copyText(text: string): Promise<boolean> {
-  if (!text) return false
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    return false
-  }
-}
-
 /**
- * 精修提示词编辑器：上半部分展示扫描时从分镜脚本提取的提示词底稿（只读），
- * 供审片人在其基础上改写；保存后的提示词作为该镜的修改备注，下游重生成直接复制使用。
+ * 精修提示词编辑弹窗。
+ *
+ * 内容区交给 ShotPromptEditor：左侧对照原始提示词与本镜被引用资产，右侧用与创作页
+ * 同源的输入体验改写。保存后的提示词作为该镜的修改备注，下游重生成直接复制使用。
  */
 export function PromptEditDialog({ item, open, onOpenChange, onSave, saving }: PromptEditDialogProps) {
   const [draft, setDraft] = useState('')
-  const [copiedSource, setCopiedSource] = useState(false)
-  const copiedTimer = useRef<number | null>(null)
 
   // 每次打开时以当前已保存的提示词为编辑起点
   useEffect(() => {
     if (open && item) setDraft(item.revised_prompt ?? '')
   }, [open, item])
 
-  useEffect(
-    () => () => {
-      if (copiedTimer.current != null) window.clearTimeout(copiedTimer.current)
-    },
-    [],
-  )
-
   if (!item) return null
 
-  const source = item.source_prompt ?? ''
   const cleared = draft.trim() === '' && item.revised_prompt != null
-
-  async function handleCopySource() {
-    if (await copyText(source)) {
-      setCopiedSource(true)
-      if (copiedTimer.current != null) window.clearTimeout(copiedTimer.current)
-      copiedTimer.current = window.setTimeout(() => setCopiedSource(false), 1500)
-    }
-  }
 
   function handleSave() {
     onSave(draft.trim())
@@ -89,8 +64,8 @@ export function PromptEditDialog({ item, open, onOpenChange, onSave, saving }: P
           {item.shot_id} · 精修提示词
         </span>
       }
-      description="改写后的 AIGC 提示词将作为该镜的修改备注，精修重生成时可直接复制使用。"
-      className="max-w-2xl"
+      description="左侧对照原始提示词与本镜被引用资产，右侧改写精修提示词；保存后作为该镜的修改备注。"
+      className="max-w-4xl"
       footer={
         <>
           <span className="mr-auto text-xs text-fg-muted">
@@ -105,53 +80,14 @@ export function PromptEditDialog({ item, open, onOpenChange, onSave, saving }: P
         </>
       }
     >
-      <div className="space-y-3 py-1">
-        {/* 分镜底稿（扫描时从 shots.md 提取，只读参考） */}
-        {source && (
-          <div className="rounded-btn border border-border bg-bg-tertiary/60">
-            <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-fg-secondary">
-                <FileText className="h-3 w-3 shrink-0 text-fg-muted" />
-                分镜底稿（shots.md 提取）
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5 text-[11px]"
-                  onClick={() => setDraft(source)}
-                >
-                  填入编辑器
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5 text-[11px]"
-                  onClick={handleCopySource}
-                >
-                  <ClipboardCopy className="h-3 w-3" />
-                  {copiedSource ? '已复制' : '复制'}
-                </Button>
-              </div>
-            </div>
-            <div className="max-h-40 overflow-y-auto whitespace-pre-wrap px-2.5 py-2 text-[11px] leading-relaxed text-fg-secondary scrollbar-thin">
-              {source}
-            </div>
-          </div>
-        )}
-
-        <Textarea
+      <div className="py-1">
+        <ShotPromptEditor
+          item={item}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={10}
-          spellCheck={false}
-          placeholder={
-            source
-              ? '在分镜底稿基础上改写，或直接粘贴下一版生成使用的完整提示词…'
-              : '填写下一版生成使用的 AIGC 提示词，作为该镜的精修修改备注…'
-          }
-          className={cn('font-mono text-xs leading-relaxed', 'resize-y')}
-          autoFocus
+          onChange={setDraft}
+          onSave={handleSave}
+          saving={saving}
+          autoFocus={open}
         />
       </div>
     </Dialog>

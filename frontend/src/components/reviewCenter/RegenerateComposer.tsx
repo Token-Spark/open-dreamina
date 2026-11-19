@@ -17,6 +17,7 @@ import { Info, X } from 'lucide-react'
 import { GenerationInputBar } from '@/components/GenerationInputBar'
 import { useProviders } from '@/hooks/useProviders'
 import { useAssetAudit } from '@/hooks/useAssetAudit'
+import { useShotRefAssets } from '@/components/shotReview/useShotRefAssets'
 import { toast } from '@/stores/uiStore'
 import {
   ASPECT_RATIOS_BY_MODE,
@@ -29,11 +30,12 @@ import {
   type ContentMode,
 } from '@/lib/generation'
 import {
-  MAX_AUDIO_TOTAL_DURATION,
   effectiveFrameMode,
   frameModeSpec,
   isSeedanceProvider,
   normalizeFrameMode,
+  refCapsFor,
+  refCapViolation,
   type ReferenceAsset,
 } from '@/lib/promptMention'
 import type { ShotRegenerationPayload, ShotReviewItem } from '@/api/shotReviews'
@@ -43,7 +45,8 @@ import type { ShotRegenerationPayload, ShotReviewItem } from '@/api/shotReviews'
  *
  * 直接复用创作页的 `GenerationInputBar`（提示词、@ 引用、参考素材、模型/画幅/时长
  * 选择、全屏编辑全部同源），因此审阅人不需要回创作页重建一次上下文：
- * 在卡片上改完提示词就能提交同一条生成管线。
+ * 在卡片上改完提示词就能提交同一条生成管线。打开时把该镜原生成任务引用的
+ * 参考素材一并带入，避免返工悄悄退化成纯文本生成、丢失首帧图与角色参考。
  */
 export interface RegenerateComposerProps {
   item: ShotReviewItem
@@ -94,18 +97,57 @@ export function RegenerateComposer({
   const mode: ContentMode = item.content_type === 'image' ? 'image' : 'video'
   // 初始提示词：优先审阅人已改写的精修提示词，其次分镜底稿
   const [prompt, setPrompt] = useState(item.revised_prompt || item.source_prompt || '')
-  // 参考素材（首帧图、参考视频/音频）留空：审阅人可按需追加，空即纯文本生成
-  const [refAssets, setRefAssets] = useState<ReferenceAsset[]>([])
+  // 被引用资产：与该镜卡片 / 精修提示词编辑器同源（id、预览地址、缩略图、类型、
+  // 审核状态、时长），打开面板即预填；审阅人仍可继续增删，提交时按最终列表上送。
+  const { refAssets: inheritedRefAssets, detailsReady } = useShotRefAssets(item)
+  const [refAssets, setRefAssets] = useState<ReferenceAsset[]>(inheritedRefAssets)
   const [providerSlug, setProviderSlug] = useState('')
   const [modelId, setModelId] = useState('')
   const [params, setParams] = useState<Record<string, number | string>>(() => seedParams(item, mode))
+
+  // 素材详情是逐条异步补查的：首帧只有 id 与预览地址，随后按 assetId 回填
+  // 类型 / 审核状态 / 时长。只更新仍在列表中的同 id 项，不覆盖审阅人的增删。
+  useEffect(() => {
+    if (inheritedRefAssets.length === 0) return
+    const inheritedById = new Map(inheritedRefAssets.map((a) => [a.assetId, a]))
+    setRefAssets((current) => {
+      let changed = false
+      const next = current.map((a) => {
+        const source = inheritedById.get(a.assetId)
+        if (!source) return a
+        if (
+          a.previewUrl === source.previewUrl &&
+          a.thumbUrl === source.thumbUrl &&
+          a.kind === source.kind &&
+          a.auditStatus === source.auditStatus &&
+          a.auditError === source.auditError &&
+          a.duration === source.duration
+        ) {
+          return a
+        }
+        changed = true
+        return {
+          ...a,
+          previewUrl: source.previewUrl,
+          thumbUrl: source.thumbUrl,
+          kind: source.kind,
+          auditStatus: source.auditStatus,
+          auditError: source.auditError,
+          duration: source.duration,
+        }
+      })
+      return changed ? next : current
+    })
+  }, [inheritedRefAssets])
 
   const { data: providers } = useProviders()
   const { ensureAudited, augmentRefAssets, checkAuditGate } = useAssetAudit(providerSlug)
   const auditedRefAssets = augmentRefAssets(refAssets)
   useEffect(() => {
+    // 等素材详情返回再提审：已审核通过的资产不必重复送审，也不会短暂显示「审核中」
+    if (!detailsReady) return
     ensureAudited(refAssets)
-  }, [refAssets, ensureAudited])
+  }, [refAssets, ensureAudited, detailsReady])
 
   // 默认服务：优先选原条目所用模型所在的服务，其次任一支持该内容模式的服务
   useEffect(() => {
@@ -145,8 +187,12 @@ export function RegenerateComposer({
       return toast('请上传参考素材', 'error')
     }
     const seedance = isSeedanceProvider(providerSlug)
+    // 与创作页同一套模型能力表：2.5 可带 50 个素材，2.0 系列为 15 个。
+    const refCaps = refCapsFor(mode, providerSlug, modelId)
+    const capViolation = refCapViolation(auditedRefAssets, refCaps)
+    if (capViolation) return toast(capViolation, 'error')
     const frameMode = normalizeFrameMode(params.frame_mode)
-    const spec = frameModeSpec(mode, seedance, frameMode)
+    const spec = frameModeSpec(mode, seedance, frameMode, refCaps)
     if (spec) {
       const imageCount = auditedRefAssets.filter((a) => (a.kind ?? 'image') === 'image').length
       if (imageCount < spec.required) {
@@ -158,8 +204,11 @@ export function RegenerateComposer({
       const audioTotal = auditedRefAssets
         .filter((a) => (a.kind ?? 'image') === 'audio')
         .reduce((sum, a) => sum + (a.duration ?? 0), 0)
-      if (audioTotal > MAX_AUDIO_TOTAL_DURATION) {
-        return toast(`参考音频总时长 ${audioTotal.toFixed(1)} 秒，超过 ${MAX_AUDIO_TOTAL_DURATION} 秒上限`, 'error')
+      if (audioTotal > refCaps.audioTotalDuration) {
+        return toast(
+          `参考音频总时长 ${audioTotal.toFixed(1)} 秒，超过 ${refCaps.audioTotalDuration} 秒上限`,
+          'error',
+        )
       }
     }
 
@@ -181,7 +230,9 @@ export function RegenerateComposer({
       <div className="mb-2 flex items-start justify-between gap-3">
         <p className="flex items-center gap-1.5 text-[11px] text-fg-muted">
           <Info className="h-3 w-3 shrink-0" />
-          复用创作页生成模块：改提示词、加参考图、换模型或画幅后重新生成，结果会作为该镜的新版本回到本卡片
+          {inheritedRefAssets.length > 0
+            ? `已带入本镜被引用资产 ${inheritedRefAssets.length} 个，可增删；改提示词、换模型或画幅后重新生成，结果会作为该镜的新版本回到本卡片`
+            : '复用创作页生成模块：改提示词、加参考图、换模型或画幅后重新生成，结果会作为该镜的新版本回到本卡片'}
         </p>
         <button
           type="button"

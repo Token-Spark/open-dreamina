@@ -23,10 +23,11 @@ import {
   Film,
   Focus,
   Image as ImageIcon,
+  ImageOff,
+  Images,
   Layers,
   Loader2,
   Maximize2,
-  Pencil,
   RefreshCw,
   Trash2,
   TriangleAlert,
@@ -39,23 +40,29 @@ import type {
   ShotReviewRegeneration,
 } from '@/api/shotReviews'
 import { shotReviewItemFileUrl, shotReviewItemThumbnailUrl } from '@/api/shotReviews'
+import { assetThumbnailUrl } from '@/api/assets'
+import { ImageLightbox, type LightboxGallery } from '@/components/ImageLightbox'
 import { RegenerateComposer } from '@/components/reviewCenter/RegenerateComposer'
 import { VERDICT_META, isPortraitItem } from '@/components/shotReview/ShotReviewCard'
+import { copyText } from '@/components/shotReview/ShotPromptEditor'
 import { FeedbackEditor, ScoreEditor } from '@/components/shotReview/ShotReviewEditors'
-import { copyText } from '@/components/shotReview/PromptEditDialog'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { isActiveRegeneration } from '@/hooks/useShotReviews'
 import { useTaskSSE } from '@/hooks/useTaskSSE'
+import { useAssetPreviewUrls } from '@/hooks/useAssetPreviewUrls'
+import { buildReferenceGallery } from '@/lib/referenceAssets'
 import { cn, formatFileSize } from '@/lib/utils'
 
 /**
  * 审阅中心的任务卡片。
  *
  * 以「一次生成任务的结果」为单位组织待审内容：卡片顶部是内容类型 / 剧目 / 剧集 /
- * 镜头等标签，左侧即时预览成片，右侧是可直接改写并复用的提示词，底部是打分与意见。
- * 对不满意的镜头，无需回创作页重建上下文——在卡片内展开返工面板（复用创作页生成模块）
- * 改完提示词即可重新生成，结果回到同一张卡片上，采用后成为该镜的新版本。
+ * 镜头等标签，左侧即时预览成片，右侧是只读的提示词底稿与被引用资产，底部是打分与意见。
+ * 提示词只在返工面板里改写：对不满意的镜头，无需回创作页重建上下文——展开
+ * 「改提示词并重新生成」（复用创作页生成模块）改完即可重新生成，结果回到同一张卡片上，
+ * 采用后成为该镜的新版本。卡片上方的底稿区不再提供第二套编辑入口，避免两处提示词
+ * 各自保存、互不同步。
  */
 export interface ReviewTaskCardProps {
   item: ShotReviewItem
@@ -75,7 +82,6 @@ export interface ReviewTaskCardProps {
   onScoreChange: (score: number) => void
   onClearScore: () => void
   onFeedbackChange: (feedback: string) => void
-  onPromptSave: (revisedPrompt: string) => void
   onSelect: () => void
   onDeselect: () => void
   onDelete: () => void
@@ -97,7 +103,6 @@ export function ReviewTaskCard({
   onScoreChange,
   onClearScore,
   onFeedbackChange,
-  onPromptSave,
   onSelect,
   onDeselect,
   onDelete,
@@ -105,11 +110,19 @@ export function ReviewTaskCard({
   onOpen,
 }: ReviewTaskCardProps) {
   const [composerOpen, setComposerOpen] = useState(false)
-  const [editingPrompt, setEditingPrompt] = useState(false)
-  const [promptDraft, setPromptDraft] = useState('')
   const [showSource, setShowSource] = useState(false)
+  const [refGallery, setRefGallery] = useState<LightboxGallery | null>(null)
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<number | null>(null)
+  // 缩略图需按 asset id 补查类型：音频的 /thumbnail 返回音频字节会破图，改用专用封面。
+  const refIds = item.input_asset_ids ?? []
+  const refUrls = item.input_asset_urls ?? []
+  const refPreviewUrls = useAssetPreviewUrls(refIds)
+
+  async function openRefGallery(index: number) {
+    const gallery = await buildReferenceGallery(refIds, refUrls, index)
+    if (gallery) setRefGallery(gallery)
+  }
 
   const isVideo = item.content_type === 'video'
   const portrait = isPortraitItem(item)
@@ -134,17 +147,6 @@ export function ReviewTaskCard({
     },
     [],
   )
-
-  function startEditPrompt() {
-    setPromptDraft(currentPrompt)
-    setEditingPrompt(true)
-  }
-
-  function savePrompt() {
-    setEditingPrompt(false)
-    const next = promptDraft.trim()
-    if (next !== (item.revised_prompt ?? '')) onPromptSave(next)
-  }
 
   async function handleCopy() {
     if (!currentPrompt) return
@@ -382,7 +384,7 @@ export function ReviewTaskCard({
             </p>
           )}
 
-          {/* 提示词：即时可见、可直接改写；改写后可一键回到生成 */}
+          {/* 提示词底稿：只读参考。改写统一走下方「改提示词并重新生成」面板 */}
           <div className="rounded-btn border border-border/70 bg-bg-primary/40">
             <div className="flex items-center gap-1.5 border-b border-border/60 px-2 py-1">
               <Wand2 className="h-3 w-3 text-fg-muted" />
@@ -413,65 +415,57 @@ export function ReviewTaskCard({
                 >
                   {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
-                {!editingPrompt && (
-                  <button
-                    type="button"
-                    onClick={startEditPrompt}
-                    className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-bg-tertiary hover:text-fg-primary"
-                    aria-label="编辑提示词"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                )}
               </div>
             </div>
 
-            {editingPrompt ? (
-              <div className="space-y-1.5 p-2">
-                <textarea
-                  value={promptDraft}
-                  onChange={(e) => setPromptDraft(e.target.value)}
-                  rows={4}
-                  autoFocus
-                  placeholder="改写提示词：补人物外观、场景锚点、动作与光感，或修正崩坏点…"
-                  className="w-full resize-y rounded-btn border border-border bg-bg-secondary p-2 text-xs leading-relaxed text-fg-primary placeholder:text-fg-muted focus-visible:border-accent/60 focus-visible:outline-none scrollbar-thin"
-                />
-                <div className="flex items-center gap-1.5">
-                  <Button size="sm" variant="primary" className="h-6 px-2 text-[11px]" onClick={savePrompt}>
-                    <Check className="h-3 w-3" />
-                    保存提示词
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-[11px]"
-                    onClick={() => {
-                      setEditingPrompt(false)
-                      setPromptDraft('')
-                    }}
-                  >
-                    取消
-                  </Button>
-                  <span className="ml-auto text-[11px] text-fg-muted">仅保存为修改备注，不触发生成</span>
-                </div>
-              </div>
-            ) : (
-              <div className="px-2 py-1.5">
-                <p
-                  className={cn(
-                    'max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed scrollbar-thin',
-                    currentPrompt ? 'text-fg-secondary' : 'text-fg-muted',
-                  )}
-                >
-                  {currentPrompt || '尚未关联提示词，可直接编辑补写后用于返工生成'}
-                </p>
-                {showSource && hasSource && (
-                  <p className="mt-1.5 max-h-28 overflow-y-auto whitespace-pre-wrap break-words border-t border-dashed border-border pt-1.5 text-[11px] leading-relaxed text-fg-muted scrollbar-thin">
-                    {item.source_prompt}
-                  </p>
+            <div className="px-2 py-1.5">
+              <p
+                className={cn(
+                  'max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed scrollbar-thin',
+                  currentPrompt ? 'text-fg-secondary' : 'text-fg-muted',
                 )}
-              </div>
-            )}
+              >
+                {currentPrompt || '尚未关联提示词，可在下方返工面板中补写后再生成'}
+              </p>
+              {showSource && hasSource && (
+                <p className="mt-1.5 max-h-28 overflow-y-auto whitespace-pre-wrap break-words border-t border-dashed border-border pt-1.5 text-[11px] leading-relaxed text-fg-muted scrollbar-thin">
+                  {item.source_prompt}
+                </p>
+              )}
+              {/* 本镜被引用资产：卡片上直接可见，点击放大；返工面板里可继续增删 */}
+              {refIds.length > 0 && (
+                <div className="mt-1.5 flex items-center gap-1.5 border-t border-border/60 pt-1.5">
+                  <Images className="h-3 w-3 shrink-0 text-fg-muted" />
+                  <span className="shrink-0 text-[10px] text-fg-muted">参考 {refIds.length}</span>
+                  <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto pb-0.5 scrollbar-thin">
+                    {refIds.map((id, i) => (
+                      <button
+                        key={`${id}-${i}`}
+                        type="button"
+                        title={`参考素材 ${i + 1} · 点击放大`}
+                        onClick={() => void openRefGallery(i)}
+                        className="relative h-7 w-7 shrink-0 cursor-zoom-in overflow-hidden rounded border border-border bg-bg-tertiary transition-colors hover:border-fg-muted"
+                      >
+                        {/* 素材可能已被删除，缩略图加载失败时透出中性占位块 */}
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <ImageOff className="h-3.5 w-3.5 text-fg-muted" />
+                        </span>
+                        <img
+                          key={refPreviewUrls[id]}
+                          src={refPreviewUrls[id] ?? assetThumbnailUrl(id)}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                          }}
+                          className="relative h-full w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -551,6 +545,12 @@ export function ReviewTaskCard({
         <ScoreEditor score={item.score} onScoreChange={onScoreChange} onClearScore={onClearScore} />
         <FeedbackEditor feedback={item.feedback} onFeedbackChange={onFeedbackChange} />
       </footer>
+
+      <ImageLightbox
+        gallery={refGallery}
+        open={refGallery != null}
+        onClose={() => setRefGallery(null)}
+      />
     </article>
   )
 }

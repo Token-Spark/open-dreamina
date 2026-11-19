@@ -73,6 +73,9 @@ class ShotReviewItemResponse(BaseModel):
     reviewed_at: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    # 原生成任务引用的参考素材 id 与预览地址，供审片提示词编辑器展示缩略图
+    input_asset_ids: list[str] = Field(default_factory=list)
+    input_asset_urls: list[str] = Field(default_factory=list)
     thumbnail_url: Optional[str] = None
     file_url: Optional[str] = None
 
@@ -160,6 +163,52 @@ class ShotReviewScanResponse(BaseModel):
     added: int = 0
     removed: int = 0
     total: int = 0
+
+
+# ---------------- 导入（外部制作流程的成片镜头） ----------------
+
+
+class ShotReviewImportItem(BaseModel):
+    """一条待导入的审片条目。
+
+    file_path 是相对会话根目录的 posix 路径（如
+    ``08_成片制作/EP01/video_renders/S01_seedance25/EP01-S01.mp4``）。
+    其余字段是调用方已经掌握的事实：分镜「应有」（秒数/景别/运镜/画面/台词）与
+    生成任务「实际」（提示词/模型/状态/实测时长）；没有的一律不传，不臆造。
+    """
+
+    episode: Optional[str] = None
+    shot_id: str = Field(..., min_length=1, max_length=64)
+    drama_title: Optional[str] = Field(None, max_length=200)
+    file_path: str = Field(..., min_length=1)
+    duration: Optional[float] = Field(None, ge=0)
+    shot_function: Optional[str] = None
+    script_duration: Optional[float] = Field(None, ge=0)
+    shot_size: Optional[str] = Field(None, max_length=200)
+    movement: Optional[str] = Field(None, max_length=200)
+    dialogue: Optional[str] = None
+    source_prompt: Optional[str] = None
+    render_status: Optional[str] = Field(None, max_length=64)
+    model: Optional[str] = Field(None, max_length=200)
+    # 原生成任务引用的参考素材 asset_id 列表（来自 GET /tasks/{id} 的 params.input_asset_ids）
+    input_asset_ids: Optional[list[str]] = None
+
+
+class ShotReviewImportRequest(BaseModel):
+    """批量导入：一次性提交该集的全部镜头卡片（调用方可分批）。"""
+
+    items: list[ShotReviewImportItem] = Field(..., min_length=1)
+
+
+class ShotReviewImportResponse(BaseModel):
+    """导入结果：新增/刷新/跳过计数，以及文件缺失的明细（不静默丢弃）。"""
+
+    added: int = 0
+    updated: int = 0
+    skipped: int = 0
+    total: int = 0
+    missing: list[dict[str, Any]] = Field(default_factory=list)
+    missing_count: int = 0
 
 
 # ---------------- 返工生成（任务卡片内改提示词重生成） ----------------

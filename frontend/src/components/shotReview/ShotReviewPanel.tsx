@@ -657,7 +657,6 @@ export function ShotReviewPanel({
                             onScoreChange={(score) => handleScoreChange(item.id, score)}
                             onClearScore={() => handleClearScore(item.id)}
                             onFeedbackChange={(feedback) => handleFeedbackChange(item.id, feedback)}
-                            onPromptSave={(prompt) => handlePromptSave(item.id, prompt)}
                             onSelect={() => handleSelect(item.id)}
                             onDeselect={() => handleDeselect(item.id)}
                             onDelete={() => setConfirmTakeDelete(item)}

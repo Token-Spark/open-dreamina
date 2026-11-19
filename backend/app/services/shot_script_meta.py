@@ -31,6 +31,9 @@ EPISODE_DIR_RE = re.compile(r"^EP\d+$", re.I)
 FULL_SHOT_RE = re.compile(r"EP(\d+)[-_]S(\d+)", re.I)
 # 裸镜号（S01）——前置不能是字母，避免误匹配 uuid / seedance 等
 BARE_SHOT_RE = re.compile(r"(?<![A-Za-z])S(\d+)")
+# 跨镜素材判定用：素材文件名常写成 ep01_s08_s12_backdrop 这类小写形式，
+# 因此这里单独用忽略大小写的版本，只用于「是否出现多个镜号」的判断。
+BARE_SHOT_CI_RE = re.compile(BARE_SHOT_RE.pattern, BARE_SHOT_RE.flags | re.I)
 # shots.md 小节标题与总览表首列
 SHOT_HEADING_RE = re.compile(r"^##\s+(EP\d+-S\d+)\s*$", re.I)
 OVERVIEW_ID_RE = re.compile(r"^EP\d+-S\d+$", re.I)
@@ -67,6 +70,24 @@ def parse_shot_key(*texts: str | None) -> tuple[str | None, str | None]:
         if m:
             return None, f"S{int(m.group(1)):02d}"
     return None, None
+
+
+def shot_numbers_in(*texts: str | None) -> set[str]:
+    """列出文本中出现的全部镜号，用于识别跨镜共用的参考素材。
+
+    一个文件若同时写着 S08 和 S12（如 ``ep01_s08_s12_backdrop.png``），
+    说明它是多镜共用的背景板/对照图，不是某一镜的成片；收进审片列表会与
+    正式镜头拼成假的「同镜多版本」，因此扫描阶段直接排除。
+    """
+    numbers: set[str] = set()
+    for text in texts:
+        if not text:
+            continue
+        for match in FULL_SHOT_RE.finditer(text):
+            numbers.add(f"S{int(match.group(2)):02d}")
+        for match in BARE_SHOT_CI_RE.finditer(text):
+            numbers.add(f"S{int(match.group(1)):02d}")
+    return numbers
 
 
 def find_episode_dir(rel_parts: list[str]) -> str | None:
