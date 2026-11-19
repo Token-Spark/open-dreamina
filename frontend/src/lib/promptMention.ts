@@ -21,6 +21,7 @@
 import type * as React from 'react'
 import { Image as ImageIcon, Images, Wand2 } from 'lucide-react'
 import { assetFileUrl } from '@/api/assets'
+import { AUDIO_LOGO_URL } from '@/lib/assetPreview'
 import type { CreationAsset, CreationAssetCategory } from '@/api/creationAssets'
 import type { ContentMode } from '@/lib/generation'
 import type { ReferenceKind } from '@/components/ReferenceSlot'
@@ -75,23 +76,94 @@ export interface MentionItem {
 }
 
 /**
- * 视频模式多模态参考限制（火山方舟 Seedance 2.0 系列：参考图 0-9 + 参考视频 0-3 + 参考音频 0-3）。
- * 参考: 创建视频生成任务 API（.trae/docs/火山方舟 - 视频生成 API）。
+ * 参考素材能力按模型系列区分（火山方舟 Seedance API），不是全局固定值：
+ * - Seedance 2.0 系列：单次最多 15 个（参考图 9 + 参考视频 3 + 参考音频 3），
+ *   单个音/视频 [2, 15] 秒，参考音频累计 ≤ 15 秒。
+ * - Seedance 2.5：单次最多 50 个（参考图 30 + 参考视频 10 + 参考音频 10），
+ *   单个音/视频 [2, 30] 秒，参考音频累计 ≤ 30 秒。
+ * 各类型上限之和恰好等于总数上限，逐类型校验即可满足「单次最多 N 个素材」。
+ * 参考：.trae/docs/seedance 2-5 API.md「50 个多模态参考素材输入」与输入素材要求，
+ *      以及 https://www.volcengine.com/docs/82379/2607689。
  */
-export const MAX_REF_IMAGES = 9
-export const MAX_REF_VIDEOS = 3
-export const MAX_REF_AUDIOS = 3
+export interface ReferenceCaps {
+  image: number
+  video: number
+  audio: number
+  /** 单次任务的参考素材总数上限。 */
+  total: number
+  /** 参考音频累计时长上限（秒）。 */
+  audioTotalDuration: number
+  /** 单个参考视频/音频允许的时长区间（秒）。 */
+  mediaDuration: { min: number; max: number }
+}
+
+/** Seedance 2.0 系列、未知视频模型与图片模式的参考素材能力。 */
+export const LEGACY_REF_CAPS: ReferenceCaps = {
+  image: 9,
+  video: 3,
+  audio: 3,
+  total: 15,
+  audioTotalDuration: 15,
+  mediaDuration: { min: 2, max: 15 },
+}
+
+/** Seedance 2.5 的参考素材能力。 */
+export const SEEDANCE_25_REF_CAPS: ReferenceCaps = {
+  image: 30,
+  video: 10,
+  audio: 10,
+  total: 50,
+  audioTotalDuration: 30,
+  mediaDuration: { min: 2, max: 30 },
+}
+
+/** 模型 ID 是否为 Seedance 2.5（兼容 2_5 / 2-5 / 2.5 三种写法）。 */
+export function isSeedance25Model(modelId: string): boolean {
+  const id = modelId.toLowerCase()
+  return id.includes('2_5') || id.includes('2-5') || id.includes('2.5')
+}
+
+/**
+ * 当前场景的参考素材能力：仅视频模式下的 Seedance 2.5 放宽到 50 个，
+ * 2.0 系列、其他视频 Provider 与图片模式沿用 2.0 的 15 个上限。
+ * providerSlug 先判一次，是因为「Seedance 2.5 专用服务」即使 modelId 未选中也应放宽。
+ */
+export function refCapsFor(
+  mode: ContentMode,
+  providerSlug: string,
+  modelId: string,
+): ReferenceCaps {
+  if (mode !== 'video' || !isSeedanceProvider(providerSlug)) return LEGACY_REF_CAPS
+  const slug = providerSlug.toLowerCase()
+  const providerIs25 = slug.includes('2_5') || slug.includes('2-5') || slug.includes('2.5')
+  return providerIs25 || isSeedance25Model(modelId)
+    ? SEEDANCE_25_REF_CAPS
+    : LEGACY_REF_CAPS
+}
+
+/**
+ * 提交前校验：参考素材是否超出当前模型能力。返回错误文案，合规时返回 null。
+ * 用于拦截「在 2.5 下加了 20 张图、随后切回 2.0」这类模型切换后的超限状态。
+ */
+export function refCapViolation(
+  assets: Pick<ReferenceAsset, 'kind'>[],
+  caps: ReferenceCaps,
+): string | null {
+  const countOf = (kind: ReferenceKind) =>
+    assets.filter((a) => (a.kind ?? 'image') === kind).length
+  if (countOf('image') > caps.image) return `参考图最多 ${caps.image} 张，请移除多余的参考图`
+  if (countOf('video') > caps.video) return `参考视频最多 ${caps.video} 个，请移除多余的参考视频`
+  if (countOf('audio') > caps.audio) return `参考音频最多 ${caps.audio} 段，请移除多余的参考音频`
+  if (assets.length > caps.total) return `参考素材总数最多 ${caps.total} 个，请精简后再生成`
+  return null
+}
+
 export const MAX_IMAGE_BYTES = 30 * 1024 * 1024 // 单张图片 < 30 MB
 export const MAX_VIDEO_BYTES = 200 * 1024 * 1024 // 单个视频 ≤ 200 MB
 export const MAX_AUDIO_BYTES = 15 * 1024 * 1024 // 单个音频 ≤ 15 MB
-/** API 仅接受 mp4/mov 参考视频、wav/mp3 参考音频（按扩展名兑底，部分浏览器 MIME 缺失）。 */
+/** API 仅接受 mp4/mov 参考视频、wav/mp3 参考音频（按扩展名兜底，部分浏览器 MIME 缺失）。 */
 export const VIDEO_EXTS = ['.mp4', '.mov']
 export const AUDIO_EXTS = ['.wav', '.mp3']
-export const KIND_CAPS: Record<ReferenceKind, number> = {
-  image: MAX_REF_IMAGES,
-  video: MAX_REF_VIDEOS,
-  audio: MAX_REF_AUDIOS,
-}
 export const KIND_SIZE_CAPS: Record<ReferenceKind, number> = {
   image: MAX_IMAGE_BYTES,
   video: MAX_VIDEO_BYTES,
@@ -155,18 +227,6 @@ export function groupRefAssets(assets: ReferenceAsset[]): RefAssetGroup[] {
   })
 }
 
-/**
- * Seedance 2.0 视频生成：引用音频素材总时长上限（秒）。
- * 多段参考音频时长累加不得超过此值，否则提交时拦截并提示用户。
- */
-export const MAX_AUDIO_TOTAL_DURATION = 15
-
-/**
- * Seedance 参考视频时长范围（秒），与 SparkHub API 文档一致：
- * 视频素材格式为 MP4/MOV，时长 2～30 秒，分辨率 480p/720p/1080p。
- * 上传时校验，超出范围的参考视频直接拒绝并提示。
- */
-export const VIDEO_REF_DURATION_RANGE = { min: 2, max: 30 } as const
 /** 视频模式下文件选择器接受：图片 + mp4/mov 视频 + wav/mp3 音频。 */
 export const ACCEPT_VIDEO_MODE =
   'image/*,video/mp4,video/quicktime,audio/wav,audio/mpeg,audio/mp3,audio/x-wav,.mp4,.mov,.wav,.mp3'
@@ -195,7 +255,8 @@ export function normalizeFrameMode(v: unknown): FrameMode {
 /**
  * 各帧模式对参考图片数量的要求（required 为提交任务所需张数）。
  * slots 为固定图片格子的角色标注（首帧/尾帧），用于在输入区渲染指定数量的上传格子；
- * auto（合并模式，含参考图状态）走多模态参考，不设固定格子，上限沿用 MAX_REF_IMAGES。
+ * auto（全能参考）走多模态参考，不设固定格子；其 maxImages 由 frameModeSpec
+ * 按模型能力覆盖（2.5 为 30 张、2.0 为 9 张）。
  * allowMultimodal 表示是否允许图片之外的视频/音频参考。
  */
 export const FRAME_MODES: {
@@ -212,7 +273,8 @@ export const FRAME_MODES: {
     mode: 'auto',
     label: '全能参考',
     hint: '无需图片可直接生成，上传图片自动转为参考图',
-    maxImages: MAX_REF_IMAGES,
+    // 占位值；全能参考模式的实际图片上限见 frameModeSpec。
+    maxImages: LEGACY_REF_CAPS.image,
     required: 0,
     allowMultimodal: true,
     icon: Wand2,
@@ -235,9 +297,13 @@ export function frameModeSpec(
   mode: ContentMode,
   isSeedance: boolean,
   frameMode: FrameMode,
+  caps: ReferenceCaps = LEGACY_REF_CAPS,
 ): (typeof FRAME_MODES)[number] | null {
   if (mode !== 'video' || !isSeedance) return null
-  return FRAME_MODES.find((m) => m.mode === frameMode) ?? null
+  const spec = FRAME_MODES.find((m) => m.mode === frameMode) ?? null
+  if (!spec || !spec.allowMultimodal) return spec
+  // 全能参考模式的图片上限随模型变化：2.5 可到 30 张，2.0 仍是 9 张。
+  return { ...spec, maxImages: caps.image }
 }
 
 /** 判断当前 provider 是否为 Seedance 系列（slug 含 seedance，或已知遗留别名 dreamina-cli）。 */
@@ -282,8 +348,9 @@ export function pendingAssetsOf(
       previewUrl: assetFileUrl(ca.audio_asset_id),
       kind: 'audio',
       category: ca.category,
-      // 音色条目沿用角色形象缩略图，陈列时能看到「谁的音色」
-      thumbUrl: ca.image_thumbnail_url ?? undefined,
+      // 音色条目统一用音频专用封面：音频文件没有缩略图，沿用角色形象图会让
+      // 「谁的音色」被误读成一张参考图，也会掩盖它其实是音频资产。
+      thumbUrl: AUDIO_LOGO_URL,
     })
   }
   return list

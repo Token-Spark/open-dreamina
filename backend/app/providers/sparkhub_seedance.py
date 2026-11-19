@@ -73,12 +73,28 @@ _MODEL_DURATION_RANGE: dict[str, tuple[int, int]] = {
     "doubao_seedance_2_5": (4, 30),
 }
 
-# 多模态参考素材的类型与最大数量（Seedance 2.5；总数上限 50，图 30/视频 10/音频 10）。
-_REF_URL_KEYS: dict[str, int] = {
+# 多模态参考素材按型号限量（火山方舟 Seedance API），与前端 lib/promptMention.ts 能力表对齐：
+# - Seedance 2.5：总数 50（图 30 / 视频 10 / 音频 10）
+# - Seedance 2.0 系列：总数 15（图 9 / 视频 3 / 音频 3）
+# 早期版本对所有型号一律按 2.5 截断，会让 2.0 型号收到超出其能力的素材。
+_REF_URL_KEYS_25: dict[str, int] = {
     "image_urls": 30,
     "video_urls": 10,
     "audio_urls": 10,
 }
+_REF_URL_KEYS_20: dict[str, int] = {
+    "image_urls": 9,
+    "video_urls": 3,
+    "audio_urls": 3,
+}
+
+
+def _ref_url_keys(api_name: str) -> dict[str, int]:
+    """按模型 ID 选择参考素材限量；2.5 的各种写法（2_5 / 2-5 / 2.5）都识别。"""
+    name = api_name.lower()
+    if "2_5" in name or "2-5" in name or "2.5" in name:
+        return _REF_URL_KEYS_25
+    return _REF_URL_KEYS_20
 
 
 def _aspect_ratio_from_size(width: int, height: int) -> str:
@@ -145,8 +161,8 @@ class SparkHubSeedanceProvider(SparkHubBaseProvider):
             "aspect_ratio": ratio,
             "duration": duration,
         }
-        # 多模态参考素材（公网 URL 或审核后 asset:// 地址）：图/视频/音频，按类型限量
-        for key, cap in _REF_URL_KEYS.items():
+        # 多模态参考素材（公网 URL 或审核后 asset:// 地址）：图/视频/音频，按型号与类型限量
+        for key, cap in _ref_url_keys(api_name).items():
             urls = kwargs.get(key)
             if isinstance(urls, list):
                 cleaned = [u for u in urls if isinstance(u, str) and u][:cap]

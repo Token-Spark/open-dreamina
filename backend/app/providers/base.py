@@ -72,16 +72,41 @@ class BaseProvider(ABC):
     # 子类可覆盖：该 Provider 支持的生成类型
     SUPPORTED_TYPES: list[str] = []
 
-    # 上游瞬时故障（5xx / 超时 / 连接错误）自动重试配置；4xx 不重试。
+    # 上游瞬时故障（5xx / 超时 / 连接错误）自动重试配置。
     _MAX_RETRIES = 2  # 首次 + 重试 2 次 = 最多 3 次请求
     _RETRY_BASE_DELAY = 1.5  # 指数退避基数（秒）：1.5s, 3s
+    # 限流类状态（429 / 用户队列已满）需要更长的固定退避：队列腾出位置不是毫秒级的事，
+    # 按 1.5s 重试基本必然再撞一次，只会把队列里的待处理任务快速空转成失败。
+    _RETRY_THROTTLE_DELAY = 5.0  # 5s, 10s
 
     @staticmethod
     def _is_transient(resp: httpx.Response | None, exc: BaseException | None) -> bool:
-        """是否为可重试的瞬时故障：网络异常或上游 5xx。4xx 视为客户端错误不重试。"""
+        """是否为可重试的瞬时故障。
+
+        - 网络异常（超时、连接错误）、5xx：瞬时，重试。
+        - 429 Too Many Requests：上游限流，退避后可恢复，重试。
+        - 405 且响应体含 "queue is full"：Spark Hub 用它表达「该账号待处理任务数已满」，
+          属于容量瞬时占满而非客户端错误，重试。其余 405 仍按永久错误处理。
+        - 其它 4xx：客户端错误，重试无意义。
+        """
         if exc is not None:
             return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
-        return resp is not None and resp.status_code >= 500
+        if resp is None:
+            return False
+        if resp.status_code >= 500 or resp.status_code == 429:
+            return True
+        if resp.status_code != 405:
+            return False
+        try:
+            return "queue is full" in resp.text.lower()
+        except Exception:
+            return False
+
+    def _retry_delay(self, resp: httpx.Response | None, attempt: int) -> float:
+        """重试前的等待秒数：限流类用更长的线性退避，其余用指数退避。"""
+        if resp is not None and resp.status_code in (429, 405):
+            return self._RETRY_THROTTLE_DELAY * (attempt + 1)
+        return self._RETRY_BASE_DELAY * (2 ** attempt)
 
     async def _request_with_retry(
         self,
@@ -95,9 +120,10 @@ class BaseProvider(ABC):
         """执行 HTTP 请求并对瞬时故障做有限次指数退避重试；返回的一定是 200 响应，否则抛 ProviderError。
 
         - 200：直接返回。
-        - 4xx：客户端错误，重试无意义，立即抛出。
+        - 4xx：客户端错误，重试无意义，立即抛出（429 与「队列已满」的 405 除外，见 _is_transient）。
         - 5xx / 网络异常（超时、连接错误）：记录后按指数退避重试；重试耗尽抛出最后一次错误
           （错误信息中包含上游响应体，火山等服务会在其中带 Request ID，便于提工单查服务端日志）。
+        - 429 / 队列已满：用更长的线性退避（5s、10s）重试，避免并发高时把待处理任务空转成失败。
         """
         last_resp: httpx.Response | None = None
         last_exc: BaseException | None = None
@@ -121,7 +147,7 @@ class BaseProvider(ABC):
             # 最后一次不再等待
             if attempt == self._MAX_RETRIES:
                 break
-            await asyncio.sleep(self._RETRY_BASE_DELAY * (2 ** attempt))
+            await asyncio.sleep(self._retry_delay(last_resp, attempt))
 
         # 重试耗尽：用最后一次的错误信息抛出
         if last_resp is not None:

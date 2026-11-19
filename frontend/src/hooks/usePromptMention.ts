@@ -26,7 +26,6 @@ import { CREATION_ASSETS_KEY } from '@/hooks/useCreationAssets'
 import { toast } from '@/stores/uiStore'
 import type { ContentMode } from '@/lib/generation'
 import {
-  KIND_CAPS,
   KIND_LABELS,
   detectMention,
   expandToMentionBounds,
@@ -34,10 +33,12 @@ import {
   frameModeSpec,
   isSeedanceProvider,
   pendingAssetsOf,
+  refCapsFor,
   type FrameMode,
   type MentionItem,
   type ReferenceAsset,
 } from '@/lib/promptMention'
+import { AUDIO_LOGO_URL, isAudioKind, refAssetThumbUrl } from '@/lib/assetPreview'
 import type { ReferenceKind } from '@/components/ReferenceSlot'
 
 export interface PromptMentionState {
@@ -57,6 +58,8 @@ export interface UsePromptMentionOptions {
   onRefAssetsChange: (assets: ReferenceAsset[]) => void
   mode: ContentMode
   providerSlug: string
+  /** 当前选中的模型 ID；参考素材数量上限按模型能力取值（Seedance 2.5 为 50 个）。 */
+  modelId?: string
   params: Record<string, number | string>
   /** 是否启用 @ 引用（纯文本场景如画布备注节点可关闭）。默认启用。 */
   enabled?: boolean
@@ -69,6 +72,7 @@ export function usePromptMention({
   onRefAssetsChange,
   mode,
   providerSlug,
+  modelId = '',
   params,
   enabled = true,
 }: UsePromptMentionOptions) {
@@ -88,6 +92,8 @@ export function usePromptMention({
   }, [refAssets])
 
   const isSeedance = isSeedanceProvider(providerSlug)
+  // 与内联输入条共用同一份能力表，@ 引用素材库时不会把 2.5 误按 2.0 的 9 张上限拦截。
+  const refCaps = refCapsFor(mode, providerSlug, modelId)
   const frameMode = (params.frame_mode === 'first' || params.frame_mode === 'first_last'
     ? params.frame_mode
     : 'auto') as FrameMode
@@ -125,17 +131,18 @@ export function usePromptMention({
           kind,
           tokens: [`@{${name}}`],
           label: name,
-          thumbUrl: a.previewUrl,
+          // 音频的 previewUrl 指向音频文件本身，直接当图片会破图；统一解析成封面。
+          thumbUrl: refAssetThumbUrl(a),
           category: a.category,
         }
       })
 
     // —— library：素材库中尚未加入的素材（人物/场景/道具） ——
     // 首帧/首尾帧模式仅图片，不允许音频；auto 合并模式与图片模式允许图片与音频。
-    const spec = frameModeSpec(mode, isSeedance, frameMode)
+    const spec = frameModeSpec(mode, isSeedance, frameMode, refCaps)
     const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
     // 人物素材的图片与音频拆分为独立候选项，用户可按需引用形象或音色。
-    // 音频候选项展示角色形象缩略图+Music角标，标签追加「· 音色」后缀。
+    // 音色候选项用专用音频封面（不再借用角色形象图），标签追加「· 音色」后缀。
     const libItems: MentionItem[] = (libData?.items ?? [])
       .flatMap((ca) => {
         const pending = pendingAssetsOf(ca, mode, allowAudio).filter(
@@ -151,7 +158,7 @@ export function usePromptMention({
             kind,
             tokens: [`@{${label}}`],
             label,
-            thumbUrl: ca.image_thumbnail_url ?? '',
+            thumbUrl: isAudioKind(pa.kind) ? AUDIO_LOGO_URL : (ca.image_thumbnail_url ?? ''),
             category: ca.category,
           }
         })
@@ -165,7 +172,7 @@ export function usePromptMention({
         it.tokens.some((t) => t.toLowerCase().includes(q)) ||
         it.label.toLowerCase().includes(q),
     )
-  }, [mention.open, mention.query, refAssets, mode, libData, isSeedance, frameMode])
+  }, [mention.open, mention.query, refAssets, mode, libData, isSeedance, frameMode, refCaps])
 
   // 点击浮层外部关闭引用选择器
   useEffect(() => {
@@ -300,7 +307,7 @@ export function usePromptMention({
 
     // 素材库项：追加到参考列表，并按素材名称生成 token
     if (item.source === 'library') {
-      const spec = frameModeSpec(mode, isSeedance, frameMode)
+      const spec = frameModeSpec(mode, isSeedance, frameMode, refCaps)
       const allowAudio = mode === 'video' && (!spec || spec.allowMultimodal)
       // 校验并收集可加入的资产（已过滤掉已存在的）
       const toAdd: ReferenceAsset[] = []
@@ -312,13 +319,18 @@ export function usePromptMention({
           setMention({ open: false, start: -1, query: '', activeIndex: 0 })
           return
         }
-        // 上限校验：与上传流程保持一致
-        const cap = KIND_CAPS[kind]
+        // 上限校验：与上传流程保持一致，数量按当前模型能力取值（2.5 为 50 个）。
+        const cap = refCaps[kind]
         const currentCount = refAssetsRef.current.filter(
           (a) => (a.kind ?? 'image') === kind,
         ).length
         if (currentCount + toAdd.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
           toast(`${KIND_LABELS[kind]}最多 ${cap} 个`, 'error')
+          setMention({ open: false, start: -1, query: '', activeIndex: 0 })
+          return
+        }
+        if (refAssetsRef.current.length + toAdd.length >= refCaps.total) {
+          toast(`参考素材总数最多 ${refCaps.total} 个`, 'error')
           setMention({ open: false, start: -1, query: '', activeIndex: 0 })
           return
         }
