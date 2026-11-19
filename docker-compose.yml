@@ -78,9 +78,16 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    # 并发数由 .env 的 CELERY_CONCURRENCY 控制（默认 8），改完需重建本服务：
+    # 并发数由 .env 的 CELERY_CONCURRENCY 控制，改完需重建本服务：
     #   docker compose up -d celery-worker
     command: sh -c "mkdir -p /app/data/dreamina-home && exec celery -A app.worker worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-8}"
+    # 停机窗口（仅拉长 SIGTERM 与 SIGKILL 的间隔）。实测 Celery 收到 SIGTERM 后
+    # 会立即退出，warm shutdown 并不等待在飞任务，所以重建/重启 worker 仍会中断
+    # 正在执行的任务（上游已提交的那部分只能重跑）。要无损切换，先排空再重建：
+    #   celery -A app.worker control cancel_consumer celery
+    #   celery -A app.worker inspect active      # 等到没有 run_generation_task
+    #   docker compose up -d celery-worker
+    stop_grace_period: 1260s
 
   celery-beat:
     build: ./backend

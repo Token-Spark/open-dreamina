@@ -176,7 +176,10 @@ def get_or_create_conversation(db, title: str, is_protected: bool = True):
     return conv
 
 
-def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
+def recover_stale_tasks(
+    max_running_seconds: int = 1500,
+    max_pending_seconds: int = 21600,
+) -> int:
     """将长时间卡在 running / pending 状态的任务标记为 failed（孤儿任务恢复）。
 
     背景：Celery worker 在任务执行中途被杀/崩溃时，run_generation_task 的
@@ -187,11 +190,18 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
     pending 任务也可能卡死：worker 崩溃或入队后 worker 未启动时，任务会一直
     停留在"排队中"。用 created_at 判断等待时长，超过阈值即标记失败。
 
+    但 pending 与 running 的超时必须分开：pending 只是排队，批量提交几十上百个
+    任务时，排在队尾的等待时间可以远超单个任务的执行时长（8 并发、单任务约 3
+    分钟时，100 个任务最末一个要等 30 分钟以上）。用同一个短阈值判定会把正常
+    排队的任务误杀——历史失败记录里绝大多数是这类误判。因此 pending 阈值放宽
+    到数小时量级，只用于兜底"消息丢失 / worker 未启动"这类真正的孤儿。
+
     幂等：仅处理 running/pending 状态且超时的任务，可安全地由定时任务 / worker
     启动时重复调用。
 
     Args:
-        max_running_seconds: 允许的最长运行/等待秒数，超过即判定为卡死。
+        max_running_seconds: running 任务允许的最长执行秒数，超过即判定为卡死。
+        max_pending_seconds: pending 任务允许的最长排队秒数，仅用于兜底孤儿。
 
     Returns:
         本次恢复（标记为 failed）的任务数量。
@@ -199,7 +209,8 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
     from ..database import db_session
     from ..models import Task
 
-    cutoff = datetime.now() - timedelta(seconds=max_running_seconds)
+    cutoff_running = datetime.now() - timedelta(seconds=max_running_seconds)
+    cutoff_pending = datetime.now() - timedelta(seconds=max_pending_seconds)
     recovered = 0
     # SQLite 在 Docker Desktop 挂载卷上偶发瞬时 disk I/O error（WAL 同步延迟），
     # 重试几次避免恢复机制因瞬时故障失效、任务永久卡在 running/pending。
@@ -210,7 +221,11 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
                     Task.status.in_(("running", "pending"))
                 ).all()
                 for t in tasks:
-                    ts_str = t.started_at if t.status == "running" else t.created_at
+                    was_running = t.status == "running"
+                    if was_running:
+                        ts_str, cutoff, limit_s = t.started_at, cutoff_running, max_running_seconds
+                    else:
+                        ts_str, cutoff, limit_s = t.created_at, cutoff_pending, max_pending_seconds
                     if not ts_str:
                         continue
                     try:
@@ -224,12 +239,10 @@ def recover_stale_tasks(max_running_seconds: int = 1500) -> int:
                             continue
                     if dt >= cutoff:
                         continue
-                    # 先记下原始状态再改写，否则下面的文案永远只会写「排队」
-                    was_running = t.status == "running"
                     t.status = "failed"
                     t.error_msg = (
                         f"任务执行超时（{'运行' if was_running else '排队'}"
-                        f"超过 {max_running_seconds // 60} 分钟仍未完成），"
+                        f"超过 {limit_s // 60} 分钟仍未完成），"
                         "可能因 worker 中断导致，已自动标记为失败，请重试"
                     )
                     t.completed_at = now_iso()

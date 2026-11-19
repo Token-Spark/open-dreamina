@@ -49,3 +49,12 @@ Thumbs.db
 
 # 本地智能体会话数据与工作日志，不入库
 .workbuddy/
+
+# 会话内工具残留的 4 字节 blat 测试文件与技能打包产物，不入库
+25ym1icr
+88rqu5n9
+dx5bpnct
+olsg7lp9
+backend/syymbgcc
+backend/vpxyd8_5
+.skills/*.zip

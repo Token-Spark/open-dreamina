@@ -1,9 +1,13 @@
 FROM python:3.11-slim
 
-# 系统依赖：ffmpeg 用于视频缩略图抽帧；curl 用于即梦 CLI 一键安装
-# 切换到清华镜像加速 apt（默认 deb.debian.org 在国内极慢）；--mount=type=cache 缓存下载的 deb 包，加速后续构建
+# 系统依赖：ffmpeg 用于视频缩略图抽帧；curl 用于即梦 CLI 一键安装。
+# 国内镜像加速：默认阿里云。清华源对 Debian 13 (trixie) 的 debian / debian-security
+# 路径返回 403（InRelease 未签名），不能再写死为默认源。
+# 换源：docker compose build --build-arg APT_MIRROR=deb.debian.org backend
+#       （也可填 mirrors.tencent.com；--mount=type=cache 缓存 deb 包加速后续构建）
+ARG APT_MIRROR=mirrors.aliyun.com
 RUN --mount=type=cache,target=/var/cache/apt \
-    sed -i 's@deb.debian.org@mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list.d/debian.sources \
+    sed -i -E "s@https?://deb.debian.org@https://$APT_MIRROR@g" /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -11,7 +15,10 @@ RUN --mount=type=cache,target=/var/cache/apt \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
+# pip 源同理：清华 PyPI 在部分网络下 403；默认阿里云，可传
+# --build-arg PIP_INDEX_URL=https://pypi.org/simple 切回官方源。
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+RUN pip install --no-cache-dir -r requirements.txt --index-url "$PIP_INDEX_URL"
 
 COPY . .
 

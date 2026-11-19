@@ -1,0 +1,39 @@
+# 构建上下文精简：只把运行所需的代码与依赖声明打进镜像。
+#
+# 背景：backend/data/assets 有约 980 MB 生成资产，而 docker-compose 用
+#       ./data:/app/data 挂载覆盖 /app/data，镜像内这份数据运行时永远用不到。
+#       不排除时 COPY . . 会形成约 1 GB 的层；改一行代码就产生一个新层，
+#       旧层全部堆进构建缓存。
+
+# 运行时数据（由 compose 挂载提供，镜像内不需要）
+data/
+backups/
+external_sources/
+shot_sources/
+
+# Python 本地产物（高频变动，是 COPY 层缓存失效的主要来源）
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 本地数据库与环境文件
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+.env.*
+
+# 编辑器与系统文件
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# 保留：app/、requirements.txt、tests/、Dockerfile、本地探针脚本
