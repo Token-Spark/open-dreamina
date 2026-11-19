@@ -85,6 +85,7 @@ Windows 若 `python` 不在 PATH，可把 `command` 换成解释器绝对路径�
 | --- | --- | --- |
 | `OPEN_DREAMINA_API_BASE` | `http://localhost:10130/api/v1` | 后端 API 基地址 |
 | `OPEN_DREAMINA_API_TIMEOUT` | `60` | 单次 HTTP 请求超时秒数（上传自动放宽到 ≥120） |
+| `OPEN_DREAMINA_PRICING_FILE` | `mcp/pricing.json` | 任务报告 `cost` 所用的人民币价目表路径 |
 
 ---
 
@@ -95,7 +96,7 @@ Windows 若 `python` 不在 PATH，可把 `command` 换成解释器绝对路径�
 | 工具 | 必填 | 常用可选 |
 | --- | --- | --- |
 | `generate_image` | `provider`、`prompt` | `model_id`、`count`、`steps`、`guidance_scale`、`seed`、`strength`、`aspect_ratio`、`resolution`、`negative_prompt`、`reference_asset_ids`、`reference_paths`、`conversation_id` |
-| `generate_video` | `provider`、`prompt` | `model_id`、`duration`、`frame_mode`、`generate_audio`、`aspect_ratio`、`resolution`、`seed`、`negative_prompt`、`reference_asset_ids`、`reference_paths`、`conversation_id` |
+| `generate_video` | `provider`、`prompt` | `model_id`、`duration`、`frame_mode`、`generate_audio`、`aspect_ratio`、`resolution`、`seed`、`negative_prompt`、`reference_asset_ids`、`reference_paths`、`conversation_id`；Seedance 2.5 样片：`draft`、`draft_task_id`、`omni_reference_task_type`、`output_format`；Kling 4.0：`audio`、`element_ids`、`voice_ids`、`base_video_urls`、`watermark` |
 | `create_task` | `type`、`provider` | `model_id`、`prompt`、`params`、与上两者相同的参数（通用兜底入口） |
 | `upload_asset` | `file_path` | — |
 
@@ -202,6 +203,7 @@ retry_task {task_id}      → 重新入队，再 wait_task
 - 状态机：`pending` → `queued` → `running` → `completed` / `failed` / `cancelled`
 - 终态：`completed`、`failed`、`cancelled`（`wait_task` 在此返回）
 - 关键返回字段：`task_id`、`status`、`progress`、`conversation_id`、`result_urls_absolute`（可直接下载的绝对地址）、`error_msg`
+- 附带 `usage`（`unit` / `quantity` / `source` / `tokens_used`）与 `cost`（人民币 `estimated_cny`、单价来源 `source`、`pricing_as_of`）。`cost` 是估算不是账单；查不到单价时 `estimated_cny` 为 `null` 并在 `reason` 说明原因。价目表见 `mcp/pricing.json`，可用 `OPEN_DREAMINA_PRICING_FILE` 覆盖。
 - 生成类工具**只返回 `task_id`**，不会阻塞等待；请显式调用 `wait_task`
 
 ---

@@ -27,7 +27,7 @@ from .base import BaseProvider, ProviderError
 from .dashscope_provider import DashScopeProvider
 from .dreamina_cli_provider import DreaminaSeedanceProvider, DreaminaSeedreamProvider
 from .gemini_image_provider import GeminiImageProvider
-from .kling_provider import KlingProvider
+from .kling_provider import KLING_DEFAULT_BASE_URL, KlingProvider
 from .mock_provider import MockProvider
 from .openai_provider import MODEL_GPT_IMAGE_2_5_FLARE, OpenAIProvider
 from .seedance_provider import MODEL_SEEDANCE_2_0, MODEL_SEEDANCE_2_5, SeedanceProvider
@@ -119,10 +119,11 @@ _REGISTRY: dict[str, RegistryEntry] = {
         modes=_modes_from_types(DashScopeProvider.SUPPORTED_TYPES),
     ),
     "kling": RegistryEntry(
-        factory=lambda b, k, c: KlingProvider(b or "https://api.klingai.com", k, c),
-        default_base_url="https://api.klingai.com",
+        # 4.0 / 4.0 Flash 共用新版协议，版本号在 URL path（由 model_id 决定）
+        factory=lambda b, k, c: KlingProvider(b or KLING_DEFAULT_BASE_URL, k, c),
+        default_base_url=KLING_DEFAULT_BASE_URL,
         builtin=False,
-        display_name="快手可灵",
+        display_name="快手可灵 4.0",
         modes=_modes_from_types(KlingProvider.SUPPORTED_TYPES),
     ),
     "seedream": RegistryEntry(

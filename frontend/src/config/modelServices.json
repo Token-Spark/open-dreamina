@@ -86,6 +86,35 @@
       ]
     },
     {
+      "slug": "kling",
+      "name": "可灵 Kling 4.0",
+      "vendor": "Kuaishou",
+      "description": "快手可灵 4.0 视频生成，支持文生视频、图生视频（首/中/尾多关键帧）与全能参考（图片/视频/主体/音色）。4.0 Flash 更快更省。",
+      "docsUrl": "https://klingai.com/document-api/api/video/4-0/text-to-video",
+      "modes": ["video"],
+      "fields": [
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "kind": "secret",
+          "required": true,
+          "placeholder": "输入可灵 API Key"
+        },
+        {
+          "key": "base_url",
+          "label": "API 地址",
+          "kind": "url",
+          "required": false,
+          "placeholder": "留空使用默认地址",
+          "default": "https://api-beijing.klingai.com"
+        }
+      ],
+      "models": [
+        { "id": "kling-4.0", "label": "可灵 4.0（3~30s / 720p·1080p / 全能参考）", "types": ["text2video", "img2video"] },
+        { "id": "kling-4.0-flash", "label": "可灵 4.0 Flash（3~20s / 720p）", "types": ["text2video", "img2video"] }
+      ]
+    },
+    {
       "slug": "seedream",
       "name": "Seedream 5.0",
       "vendor": "Volcengine",
@@ -167,7 +196,7 @@
         }
       ],
       "models": [
-        { "id": "doubao-seedance-2-5", "label": "Seedance 2.5", "types": ["text2video", "img2video"] }
+        { "id": "doubao-seedance-2-5-260628", "label": "Seedance 2.5", "types": ["text2video", "img2video"] }
       ]
     },
     {

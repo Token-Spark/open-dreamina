@@ -22,7 +22,6 @@ import {
   MonitorPlay,
   Clock,
   Film,
-  Music,
   Video,
   Clapperboard,
   Maximize2,
@@ -44,6 +43,7 @@ import {
   submitAssetAudit,
 } from '@/api/assets'
 import { watchAssetAudit } from '@/lib/auditPoller'
+import { AUDIO_LOGO_ALT, AUDIO_LOGO_URL } from '@/lib/assetPreview'
 import {
   CONTENT_MODES,
   sizeFromRatioResolution,
@@ -59,17 +59,18 @@ import {
 import {
   ACCEPT_VIDEO_MODE,
   FRAME_MODES,
-  KIND_CAPS,
   KIND_LABELS,
   KIND_SIZE_CAPS,
   VIDEO_EXTS,
   AUDIO_EXTS,
-  VIDEO_REF_DURATION_RANGE,
   frameModeSpec,
+  isSeedance25Model,
   isSeedanceProvider,
   isSparkHubSeedance,
   normalizeFrameMode,
   refAssetGroupLabel,
+  refCapsFor,
+  refCapViolation,
   type FrameMode,
   type ReferenceAsset,
 } from '@/lib/promptMention'
@@ -86,11 +87,13 @@ export {
   frameModeSpec,
   isSeedanceProvider,
   isSparkHubSeedance,
-  MAX_AUDIO_TOTAL_DURATION,
   normalizeFrameMode,
+  refCapsFor,
+  refCapViolation,
   type EffectiveFrameMode,
   type FrameMode,
   type ReferenceAsset,
+  type ReferenceCaps,
 } from '@/lib/promptMention'
 
 export interface GenerationInputBarProps {
@@ -157,6 +160,9 @@ export function GenerationInputBar({
   // 帧模式 / Seedance 判定（@ 引用与上传流程共用）
   const frameMode = normalizeFrameMode(params.frame_mode)
   const isSeedance = isSeedanceProvider(providerSlug)
+  // 参考素材数量与时长上限按模型能力取值：Seedance 2.5 为 50 个（图 30 / 视频 10 / 音频 10），
+  // 2.0 系列与其他模式为 15 个（图 9 / 视频 3 / 音频 3）。上传、@ 引用、文案共用这一份。
+  const refCaps = refCapsFor(mode, providerSlug, modelId)
 
   // @ 引用：在提示词中键入 @ 触发悬浮选择器，引用已上传参考素材作为生成提示词。
   // 内联输入条与全屏沉浸式编辑器共用同一份状态逻辑，保证交互一致。
@@ -177,6 +183,7 @@ export function GenerationInputBar({
     onRefAssetsChange,
     mode,
     providerSlug,
+    modelId,
     params,
   })
 
@@ -184,6 +191,13 @@ export function GenerationInputBar({
   const resolution = (params.resolution as Resolution) ?? '2K'
   const duration = (params.duration as number) ?? 5
   const count = (params.count as number) ?? 1
+
+  // 样片模式（Seedance 2.5 直连渠道）：仅 480p；draft_task_id 是"基于样片出正式片"的第二步。
+  // 用 slug + modelId 双重判定，避免 Spark Hub / 即梦 CLI 的 2.5 别名误入（它们的 draft 语义不同）。
+  const directSeedance25 =
+    mode === 'video' && (providerSlug === 'seedance-2-5') && isSeedance25Model(modelId || 'doubao-seedance-2-5')
+  const draftOn = params.draft === 1 || params.draft === '1'
+  const draftTaskId = String(params.draft_task_id ?? '')
 
   // 切回图片模式时移除视频/音频参考（图片模式不支持多模态参考）。
   useEffect(() => {
@@ -206,16 +220,18 @@ export function GenerationInputBar({
   }, [mode, frameMode, isSeedance, refAssets])
 
   // 首帧/首尾帧模式限制图片数量（首帧 1 张、首尾帧 2 张），超出部分按上传顺序裁剪并提醒。
+  // 全能参考（auto）不在这里裁剪：它的图片上限由 refCaps 按模型决定（2.5 为 30 张），
+  // 上传与 @ 引用时逐类型校验，避免把 2.5 误按 2.0 的 9 张上限截断、还连带清空视频/音频参考。
   useEffect(() => {
-    const spec = frameModeSpec(mode, isSeedance, frameMode)
-    if (!spec) return
+    const spec = frameModeSpec(mode, isSeedance, frameMode, refCaps)
+    if (!spec || spec.allowMultimodal) return
     const images = refAssets.filter((a) => (a.kind ?? 'image') === 'image')
     if (images.length > spec.maxImages) {
       onRefAssetsChange(images.slice(0, spec.maxImages))
       toast(`${spec.label}模式最多保留 ${spec.maxImages} 张参考图`, 'error')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, frameMode, isSeedance, refAssets])
+  }, [mode, frameMode, isSeedance, refCaps, refAssets])
 
   // 视频模式智能默认：未上传图片时自动回落到合并模式（文生视频）；
   // 上传图片后合并模式由 effectiveFrameMode 自动解析为参考图，无需改写 frame_mode。
@@ -339,7 +355,7 @@ export function GenerationInputBar({
         continue
       }
       // Seedance 首帧/首尾帧模式仅接受图片参考，并按帧模式限制图片数量
-      const spec = frameModeSpec(mode, isSeedance, frameMode)
+      const spec = frameModeSpec(mode, isSeedance, frameMode, refCaps)
       if (spec && !spec.allowMultimodal) {
         if (kind !== 'image') {
           toast(`${spec.label}模式仅支持上传图片参考`, 'error')
@@ -351,9 +367,14 @@ export function GenerationInputBar({
           continue
         }
       }
-      const cap = KIND_CAPS[kind]
+      // 数量上限按当前模型能力取值（2.5：图 30 / 视频 10 / 音频 10；2.0：9 / 3 / 3）。
+      const cap = refCaps[kind]
       if (next.filter((a) => (a.kind ?? 'image') === kind).length >= cap) {
         toast(`${KIND_LABELS[kind]}最多 ${cap} 个`, 'error')
+        continue
+      }
+      if (next.length >= refCaps.total) {
+        toast(`参考素材总数最多 ${refCaps.total} 个`, 'error')
         continue
       }
       if (file.size > KIND_SIZE_CAPS[kind]) {
@@ -365,11 +386,12 @@ export function GenerationInputBar({
       }
       try {
         const asset = await uploadAsset(file)
-        // 参考视频时长校验：SparkHub API 要求 2~30 秒，超出范围直接拒绝。
+        // 参考视频时长校验：2.0 要求 2~15 秒，2.5 放宽到 2~30 秒，按当前模型能力取值。
         if (kind === 'video' && asset.duration != null) {
-          if (asset.duration < VIDEO_REF_DURATION_RANGE.min || asset.duration > VIDEO_REF_DURATION_RANGE.max) {
+          const { min, max } = refCaps.mediaDuration
+          if (asset.duration < min || asset.duration > max) {
             toast(
-              `参考视频时长需在 ${VIDEO_REF_DURATION_RANGE.min}~${VIDEO_REF_DURATION_RANGE.max} 秒之间（当前 ${asset.duration.toFixed(1)} 秒）：${file.name}`,
+              `参考视频时长需在 ${min}~${max} 秒之间（当前 ${asset.duration.toFixed(1)} 秒）：${file.name}`,
               'error',
             )
             continue
@@ -403,6 +425,16 @@ export function GenerationInputBar({
 
   /** 导演台采集回调：上传截图并作为参考图添加。 */
   async function handleDirectorImage(file: File) {
+    // 与手动上传共用同一套上限，避免导演台绕过数量校验。
+    const spec = frameModeSpec(mode, isSeedance, frameMode, refCaps)
+    if (spec && !spec.allowMultimodal) {
+      const imageCount = refAssets.filter((a) => (a.kind ?? 'image') === 'image').length
+      if (imageCount >= spec.maxImages) {
+        return toast(`${spec.label}模式最多保留 ${spec.maxImages} 张参考图`, 'error')
+      }
+    }
+    const violation = refCapViolation([...refAssets, { kind: 'image' as const }], refCaps)
+    if (violation) return toast(violation, 'error')
     try {
       const asset = await uploadAsset(file)
       const needsAudit = isSparkHubSeedance(providerSlug)
@@ -466,15 +498,48 @@ export function GenerationInputBar({
     onParamsChange({ ...params, frame_mode: next })
   }
 
+  function updateDraft(next: boolean) {
+    const nextParams = { ...params }
+    if (next) {
+      nextParams.draft = 1
+      delete nextParams.draft_task_id
+      // 样片模式仅支持 480p：同步分辨率与像素，避免被上游拒绝
+      const { width, height } = sizeFromRatioResolution(aspectRatio, '480p', mode)
+      nextParams.resolution = '480p'
+      nextParams.width = width
+      nextParams.height = height
+    } else {
+      delete nextParams.draft
+    }
+    onParamsChange(nextParams)
+  }
+
+  function updateDraftTaskId(next: string) {
+    const nextParams = { ...params }
+    if (next.trim()) {
+      nextParams.draft_task_id = next.trim()
+      delete nextParams.draft
+    } else {
+      delete nextParams.draft_task_id
+    }
+    onParamsChange(nextParams)
+  }
+
   /** 当前模式下的参考素材提示文案。 */
   function refHint(): string {
     if (mode !== 'video' || !isSeedance) return ''
     return FRAME_MODES.find((m) => m.mode === frameMode)?.hint ?? ''
   }
 
+  /** 参考素材能力文案：数量与时长按当前模型能力生成，不再写死 9 张 / 3 个 / 2-15 秒。 */
+  function refCapsHint(): string {
+    const c = refCaps
+    return `最多 ${c.image} 张参考图、${c.video} 个参考视频、${c.audio} 段参考音频（合计 ${c.total} 个；参考视频单个 ${c.mediaDuration.min}~${c.mediaDuration.max} 秒，音频累计 ≤${c.audioTotalDuration} 秒）`
+  }
+
   // 首帧/首尾帧模式：用带角色标注的固定格子渲染（首帧 1 格、首尾帧 2 格），
   // 已上传图片按上传顺序填充到格子中，让用户直观看到“还差哪一帧”。
-  const activeFrameSpec = frameModeSpec(mode, isSeedance, frameMode)
+  const activeFrameSpec = frameModeSpec(mode, isSeedance, frameMode, refCaps)
   const frameSlots = activeFrameSpec?.slots ?? null
   const frameImages = frameSlots ? refAssets.filter((a) => (a.kind ?? 'image') === 'image') : []
   // 固定格子模式下图片已在下方按「首帧/尾帧」角色展示，陈列区只收视频/音频，避免重复。
@@ -608,26 +673,18 @@ export function GenerationInputBar({
                                   src={item.thumbUrl}
                                   alt=""
                                   className="h-full w-full object-cover"
+                                  onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
                                 />
                               ) : item.kind === 'video' ? (
                                 <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
                                   <Video className="h-3.5 w-3.5" />
                                 </span>
-                              ) : item.thumbUrl ? (
-                                <>
-                                  <img
-                                    src={item.thumbUrl}
-                                    alt=""
-                                    className="h-full w-full object-cover"
-                                  />
-                                  <span className="absolute bottom-0 right-0 flex h-3 w-3 items-center justify-center rounded-tl bg-accent text-bg-primary">
-                                    <Music className="h-2 w-2" />
-                                  </span>
-                                </>
                               ) : (
-                                <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
-                                  <Music className="h-3.5 w-3.5" />
-                                </span>
+                                <img
+                                  src={AUDIO_LOGO_URL}
+                                  alt={AUDIO_LOGO_ALT}
+                                  className="h-full w-full object-cover"
+                                />
                               )}
                             </span>
                             <span className="truncate">{item.label}</span>
@@ -679,8 +736,8 @@ export function GenerationInputBar({
                   placeholder={
                     mode === 'video'
                       ? isSeedance
-                        ? `${refHint()}。支持上传图片、视频、音频作为参考素材（参考视频/音频单个时长 2-15 秒，各最多 3 个）。输入文字或 @ 引用素材，描述你想生成的视频。`
-                        : '上传参考图/视频/音频、输入文字或 @ 引用素材，描述你想生成的视频。支持最多 9 张参考图、3 个参考视频、3 段参考音频。'
+                        ? `${refHint()}。支持上传图片、视频、音频作为参考素材，${refCapsHint()}。输入文字或 @ 引用素材，描述你想生成的视频。`
+                        : `上传参考图/视频/音频、输入文字或 @ 引用素材，描述你想生成的视频。${refCapsHint()}。`
                       : '上传参考图、输入文字或 @ 引用素材，描述你想生成的图片。支持上传多张参考图融合生成。'
                   }
                   rows={compact ? 3 : 4}
@@ -748,6 +805,34 @@ export function GenerationInputBar({
             {mode === 'video' && isSeedance && (
               <FrameModePicker frameMode={frameMode} onChange={updateFrameMode} disabled={submitting} />
             )}
+            {directSeedance25 && (
+              <>
+                <button
+                  type="button"
+                  disabled={submitting || !!draftTaskId}
+                  onClick={() => updateDraft(!draftOn)}
+                  title="样片模式：仅生成 480p 预览，用于确认镜头调度与主体动作"
+                  className={cn(
+                    'flex h-9 items-center gap-1.5 rounded-btn border px-3 text-sm font-medium transition-all disabled:opacity-50',
+                    draftOn
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border bg-bg-tertiary/70 text-fg-secondary hover:text-fg-primary',
+                  )}
+                >
+                  <Clapperboard className="h-4 w-4" />
+                  样片
+                </button>
+                <input
+                  type="text"
+                  value={draftTaskId}
+                  disabled={submitting}
+                  onChange={(e) => updateDraftTaskId(e.target.value)}
+                  placeholder="样片任务 ID → 出正式片"
+                  title="填入样片任务的 ID，基于该样片生成正式视频（其余参数由模型复用）"
+                  className="h-9 min-w-[190px] flex-1 rounded-btn border border-border bg-bg-tertiary/70 px-3 text-sm text-fg-primary placeholder:text-fg-muted focus-visible:outline-none disabled:opacity-50"
+                />
+              </>
+            )}
 
             <Button
               size="md"
@@ -785,6 +870,7 @@ export function GenerationInputBar({
         onRefAssetsChange={onRefAssetsChange}
         mode={mode}
         providerSlug={providerSlug}
+        modelId={modelId}
         params={params}
         onGenerate={onGenerate}
         submitting={submitting}

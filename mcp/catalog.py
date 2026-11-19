@@ -48,6 +48,20 @@ PARAM_WHITELIST = (
     "resolution",
     "count",
     "generate_audio",
+    # Seedance 2.5：样片模式 / 基于样片出正式片 / 全模态参考 / 输出格式
+    "draft",
+    "draft_task_id",
+    "omni_reference_task_type",
+    "output_format",
+    # Kling 4.0：全能参考（主体/音色/待编辑视频）、比例、声音处理、水印、回调
+    "aspect_ratio",
+    "audio",
+    "element_ids",
+    "voice_ids",
+    "base_video_urls",
+    "watermark",
+    "callback_url",
+    "external_task_id",
 )
 
 # 图生视频参考图模式（worker.py 支持）。

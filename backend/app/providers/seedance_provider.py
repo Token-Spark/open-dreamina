@@ -17,8 +17,14 @@
 支持 Seedance 2.0 / 2.5 预设模型的文生视频与图生视频。
 API 为异步任务模式：创建任务 → 轮询状态 → 下载视频。
 
+Seedance 2.5 额外支持：
+- 样片模式（``draft=true``，仅 480p）与基于样片任务 ID 出正式片（``content[].draft_task``）；
+- 全模态参考：图片（base64）、视频（公网 URL / asset://）、音频（base64 / 公网 URL），
+  通过 ``omni_reference_task_type`` 选择 reference / edit / extend；
+- 原生同步音轨（``generate_audio``）、输出格式（``output_format``）。
+
 参考:
-- 创建任务: https://www.volcengine.com/docs/82379/1520757
+- 创建任务: https://console.volcengine.com/ark/region:cn-beijing/docs/create-video-generation-task-api.md
 - 查询任务: https://www.volcengine.com/docs/82379/1521309
 """
 from __future__ import annotations
@@ -41,11 +47,20 @@ _ARK_OFFICIAL_HOST = "ark.cn-beijing.volces.com"
 
 # 预设模型 ID（数据驱动，便于后续扩展）
 MODEL_SEEDANCE_2_0 = "doubao-seedance-2-0-260128"
-MODEL_SEEDANCE_2_5 = "doubao-seedance-2-5"
-DEFAULT_MODEL = MODEL_SEEDANCE_2_0  # 2.5 API 即将上线，默认回退到 2.0
+MODEL_SEEDANCE_2_5 = "doubao-seedance-2-5-260628"
+DEFAULT_MODEL = MODEL_SEEDANCE_2_0
+
+# 前端 2160p 档位在方舟 API 中写作 4k。
+_RESOLUTION_ALIAS = {"2160p": "4k", "4k": "4k"}
+
+# 2.5 全模态参考素材上限（图 / 视频 / 音频）；2.0 系列为 9/3/3。
+_REF_CAPS_25 = {"image": 30, "video": 10, "audio": 10}
+_REF_CAPS_20 = {"image": 9, "video": 3, "audio": 3}
 
 # (width, height) -> (resolution, ratio) 反查表，与前端 VIDEO_SIZE_TABLE 对齐。
 # 来源: https://www.volcengine.com/docs/82379/1520757
+# 说明：这些像素组合只用于反查 resolution/ratio 字符串，请求体里并不发送像素值；
+# 故保留 2.0 历史组合，另补 4K 组合（前后端同表）即可，2.5 亦接受同样的档位。
 _VIDEO_SIZE_REVERSE: dict[tuple[int, int], tuple[str, str]] = {
     (864, 480): ("480p", "16:9"),
     (736, 544): ("480p", "4:3"),
@@ -65,10 +80,26 @@ _VIDEO_SIZE_REVERSE: dict[tuple[int, int], tuple[str, str]] = {
     (1248, 1664): ("1080p", "3:4"),
     (1088, 1920): ("1080p", "9:16"),
     (2176, 928): ("1080p", "21:9"),
+    (3840, 2176): ("4k", "16:9"),
+    (3328, 2496): ("4k", "4:3"),
+    (2880, 2880): ("4k", "1:1"),
+    (2496, 3328): ("4k", "3:4"),
+    (2176, 3840): ("4k", "9:16"),
+    (4352, 1856): ("4k", "21:9"),
 }
 
 # 任务终态：到达后停止轮询
 _TERMINAL_STATUS = {"succeeded", "failed", "cancelled", "expired"}
+
+
+def _is_seedance25(model_id: str) -> bool:
+    """2.5 的各种写法（2_5 / 2-5 / 2.5）都识别。"""
+    mid = (model_id or "").lower()
+    return "2_5" in mid or "2-5" in mid or "2.5" in mid
+
+
+def _ref_caps(model_id: str) -> dict[str, int]:
+    return _REF_CAPS_25 if _is_seedance25(model_id) else _REF_CAPS_20
 
 
 def _detect_mime(image_bytes: bytes) -> str:
@@ -82,28 +113,46 @@ def _detect_mime(image_bytes: bytes) -> str:
     return "image/png"
 
 
-def _to_data_url(image_bytes: bytes) -> str:
-    """将图片字节编码为 data URL（Seedance image_url 字段要求）。"""
-    mime = _detect_mime(image_bytes)
-    b64 = base64.b64encode(image_bytes).decode("ascii")
+def _detect_audio_mime(audio_bytes: bytes) -> str:
+    """按魔数识别 wav / mp3；未知按 wav 处理（方舟两者都支持）。"""
+    if audio_bytes[:4] == b"RIFF" and audio_bytes[8:12] == b"WAVE":
+        return "audio/wav"
+    if audio_bytes[:3] == b"ID3" or audio_bytes[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
+        return "audio/mpeg"
+    return "audio/wav"
+
+
+def _to_data_url(data: bytes, mime: str) -> str:
+    """将素材字节编码为方舟 content.*_url.url 接受的 data URL。"""
+    b64 = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{b64}"
 
 
-def _build_image_content(
-    url: str,
-    role: str | None = None,
-) -> dict[str, Any]:
-    """构造 Seedance content 中的 image_url 对象，role 按需附加。
+def _to_image_data_url(image_bytes: bytes) -> str:
+    return _to_data_url(image_bytes, _detect_mime(image_bytes))
+
+
+def _to_audio_data_url(audio_bytes: bytes) -> str:
+    return _to_data_url(audio_bytes, _detect_audio_mime(audio_bytes))
+
+
+def _build_content(kind: str, url: str, role: str | None = None) -> dict[str, Any]:
+    """构造 Seedance content 元素。kind ∈ text|image_url|video_url|audio_url|draft_task。
 
     role 合法取值（详见官方文档 content.role）：
-    - first_frame：首帧（可省略）
-    - last_frame：尾帧
-    - reference_image：多模态参考图
+    - image_url：first_frame / last_frame / reference_image
+    - video_url：reference_video
+    - audio_url：reference_audio
     """
-    item: dict[str, Any] = {"type": "image_url", "image_url": {"url": url}}
+    item: dict[str, Any] = {"type": kind, kind: {"url": url}} if kind != "text" else {"type": "text", "text": url}
     if role:
         item["role"] = role
     return item
+
+
+def _build_draft_task_content(task_id: str) -> dict[str, Any]:
+    """构造基于样片任务 ID 出正式片的 content 元素。"""
+    return {"type": "draft_task", "draft_task": {"id": str(task_id)}}
 
 
 class SeedanceProvider(BaseProvider):
@@ -137,23 +186,72 @@ class SeedanceProvider(BaseProvider):
         """由前端透传的 (width, height) 反查 (resolution, ratio)；未命中返回 (None, None)。"""
         return _VIDEO_SIZE_REVERSE.get((int(width), int(height)), (None, None))
 
-    def _build_params(self, kwargs: dict[str, Any]) -> dict[str, Any]:
-        """从 kwargs 提取 Seedance API 接受的参数，未提供则省略由 API 取默认值。"""
+    def _build_params(self, kwargs: dict[str, Any], model_id: str) -> dict[str, Any]:
+        """从 kwargs 提取 Seedance API 接受的参数，未提供则省略由 API 取默认值。
+
+        强校验模式下，模型不支持的参数会直接报错，因此这里按模型能力筛选：
+        - seed：仅 Seedance 1.0 pro/fast 支持，2.0/2.5 一律不传；
+        - draft / omni_reference_task_type / output_format：仅 2.5 支持；
+        - generate_audio：2.5 / 2.0 支持。
+        """
         params: dict[str, Any] = {}
+        is_25 = _is_seedance25(model_id)
+
+        resolution: str | None = None
+        ratio: str | None = None
         width = kwargs.get("width")
         height = kwargs.get("height")
         if width is not None and height is not None:
-            resolution, ratio = self._resolve_size(width, height)
-            if resolution:
-                params["resolution"] = resolution
-            if ratio:
-                params["ratio"] = ratio
+            r, ra = self._resolve_size(width, height)
+            resolution = r
+            ratio = ra
+        # 显式 resolution（CLI --resolution）优先；2160p -> 4k
+        explicit_res = kwargs.get("resolution")
+        if isinstance(explicit_res, str) and explicit_res:
+            resolution = _RESOLUTION_ALIAS.get(explicit_res.lower(), explicit_res)
+        if resolution:
+            params["resolution"] = resolution
+        if ratio:
+            params["ratio"] = ratio
+
         duration = kwargs.get("duration")
         if duration is not None:
             params["duration"] = int(duration)
+
+        # seed 仅 1.0 pro/fast；本项目预设为 2.0/2.5，默认不下发
+        supports_seed = ("1-0-pro" in model_id.lower()) or ("1-0-fast" in model_id.lower())
         seed = kwargs.get("seed")
-        if seed is not None:
+        if supports_seed and seed is not None:
             params["seed"] = int(seed)
+
+        generate_audio = kwargs.get("generate_audio")
+        if generate_audio is not None:
+            params["generate_audio"] = bool(generate_audio)
+
+        if is_25:
+            omni = kwargs.get("omni_reference_task_type")
+            if omni in ("auto", "reference", "edit", "extend"):
+                params["omni_reference_task_type"] = omni
+            output_format = kwargs.get("output_format")
+            if output_format in ("mp4", "mov"):
+                params["output_format"] = output_format
+
+            # 样片模式：仅支持 480p，其他分辨率会被上游拒绝
+            draft = kwargs.get("draft")
+            if draft is not None:
+                draft_on = draft in (True, 1, "1", "true", "True")
+                params["draft"] = draft_on
+                if draft_on:
+                    params["resolution"] = "480p"
+
+            # 视频编辑/延长与首尾帧任务：ratio 仅支持 adaptive；edit 时长固定 -1
+            if params.get("omni_reference_task_type") in ("edit", "extend"):
+                params["ratio"] = "adaptive"
+                if params["omni_reference_task_type"] == "edit":
+                    params["duration"] = -1
+            if kwargs.get("_frame_mode") == "first_last":
+                params["ratio"] = "adaptive"
+
         # 默认不加水印，避免污染生成产物；可由 config 覆盖
         params["watermark"] = bool(self.config.get("watermark", False))
         return params
@@ -239,13 +337,68 @@ class SeedanceProvider(BaseProvider):
         )
         return resp.content
 
+    def _build_multimodal_content(
+        self,
+        primary_bytes: bytes,
+        kwargs: dict[str, Any],
+        model_id: str,
+    ) -> list[dict[str, Any]]:
+        """按 2.5 全模态参考规则构造 content（图/视频/音频各为独立元素）。
+
+        - 图片：本地字节 → base64 data URL，role=reference_image；
+        - 视频：公网 URL / asset://（方舟不支持视频 base64），role=reference_video；
+        - 音频：本地字节 → base64 data URL 或公网 URL，role=reference_audio。
+        """
+        content: list[dict[str, Any]] = []
+        caps = _ref_caps(model_id)
+
+        images: list[bytes] = []
+        if isinstance(primary_bytes, bytes) and primary_bytes:
+            images.append(primary_bytes)
+        for img in kwargs.get("reference_image_bytes_list") or []:
+            if isinstance(img, bytes) and img:
+                images.append(img)
+        for img in images[: caps["image"]]:
+            content.append(_build_content("image_url", _to_image_data_url(img), "reference_image"))
+
+        video_urls = [
+            u for u in (kwargs.get("reference_video_urls") or [])
+            if isinstance(u, str) and u
+        ][: caps["video"]]
+        for url in video_urls:
+            content.append(_build_content("video_url", url, "reference_video"))
+
+        audio_items = kwargs.get("reference_audio_bytes_list") or []
+        audio_urls = [u for u in (kwargs.get("reference_audio_urls") or []) if isinstance(u, str) and u]
+        audio_sources: list[str] = audio_urls + [
+            _to_audio_data_url(b) for b in audio_items if isinstance(b, bytes) and b
+        ]
+        for url in audio_sources[: caps["audio"]]:
+            content.append(_build_content("audio_url", url, "reference_audio"))
+
+        # 有参考素材时显式声明 reference，避免 auto 在参数不兼容时异步报错
+        if content and "omni_reference_task_type" not in kwargs:
+            kwargs["omni_reference_task_type"] = "reference"
+        return content
+
     async def _generate(
         self,
         content: list[dict[str, Any]],
         kwargs: dict[str, Any],
     ) -> GenerationResult:
         model_id = kwargs.get("model_id") or self.config.get("model_id", DEFAULT_MODEL)
-        params = self._build_params(kwargs)
+
+        # 基于样片任务 ID 出正式片：content 只保留 draft_task（+可选文本），
+        # 其余参数由模型自动复用，禁止重复传入，故 params 置空。
+        draft_task_id = kwargs.get("draft_task_id")
+        if draft_task_id:
+            text = next((c.get("text") for c in content if c.get("type") == "text"), None)
+            content = ([{"type": "text", "text": text}] if text else []) + [
+                _build_draft_task_content(str(draft_task_id))
+            ]
+            params: dict[str, Any] = {}
+        else:
+            params = self._build_params(kwargs, model_id)
 
         client = get_async_client()
         # 断点续查：上一轮轮询超时 / 下载失败后，上游任务仍然存在，
@@ -281,6 +434,8 @@ class SeedanceProvider(BaseProvider):
                 "model": model_id,
                 "task_id": task_id,
             }
+            if draft_task_id:
+                metadata["draft_task_id"] = str(draft_task_id)
             for k in ("seed", "resolution", "ratio", "duration"):
                 if k in result:
                     metadata[k] = result[k]
@@ -309,7 +464,15 @@ class SeedanceProvider(BaseProvider):
         # worker 以 **kwargs 展开调用时 duration 会绑定到具名形参而非进入 kwargs，
         # 需回填，否则 _build_params 读取不到并省略该参数（上游退化为默认时长）。
         kwargs["duration"] = duration
-        content = [{"type": "text", "text": prompt}]
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}] if prompt else []
+        # 仅文本 + 视频/音频参考（无图片）也属全模态参考
+        if any(
+            kwargs.get(k)
+            for k in ("reference_video_urls", "reference_audio_urls", "reference_audio_bytes_list")
+        ):
+            content.extend(self._build_multimodal_content(
+                b"", kwargs, kwargs.get("model_id") or self.config.get("model_id", DEFAULT_MODEL)
+            ))
         return await self._generate(content, kwargs)
 
     async def image_to_video(
@@ -319,49 +482,64 @@ class SeedanceProvider(BaseProvider):
         duration: int = 5,
         **kwargs: Any,
     ) -> GenerationResult:
-        """图生视频。
+        """图生视频 / 全模态参考生视频。
 
-        支持三种模式，通过 ``kwargs["frame_mode"]`` 指定：
+        ``kwargs["frame_mode"]`` 指定图片用法：
 
         - ``first``（默认）：单首帧，对应 ``role=first_frame``（可省略）。
         - ``first_last``：首尾帧，需同时提供 ``kwargs["last_image_bytes"]``，
-          两张图片分别携带 ``role=first_frame`` / ``role=last_frame``。
-        - ``reference``：多模态参考图（Seedance 2.0 系列），每张图
-          ``role=reference_image``，可通过 ``kwargs["reference_image_bytes_list"]``
-          传入多图。
-        """
-        if not image_bytes:
-            raise ProviderError("Seedance 图生视频缺少输入图片")
+          两张图片分别携带 ``role=first_frame`` / ``role=last_frame``（2.5 ratio 强制 adaptive）。
+        - ``reference``：全模态参考，图片 ``role=reference_image``，并支持
+          ``reference_video_urls``（公网 URL / asset://）、``reference_audio_urls``、
+          ``reference_audio_bytes_list``。三者互斥于首帧/首尾帧场景。
 
-        # 同 text_to_video：回填被具名形参吞掉的 duration。
+        样片两步流程：传 ``kwargs["draft_task_id"]`` 时基于样片出正式片；
+        传 ``kwargs["draft"]=True`` 时先出样片（仅 480p）。
+        """
         kwargs["duration"] = duration
         frame_mode = kwargs.pop("frame_mode", "first")
+        kwargs["_frame_mode"] = frame_mode
+
+        model_id = kwargs.get("model_id") or self.config.get("model_id", DEFAULT_MODEL)
         content: list[dict[str, Any]] = []
         if prompt:
             content.append({"type": "text", "text": prompt})
 
-        if frame_mode == "first_last":
+        has_multimodal = any(
+            kwargs.get(k)
+            for k in (
+                "reference_video_urls",
+                "reference_audio_urls",
+                "reference_audio_bytes_list",
+                "reference_image_bytes_list",
+            )
+        )
+        # 全模态参考：图片也按 reference_image 传入，与视频/音频同批
+        if frame_mode == "reference" and has_multimodal:
+            content.extend(self._build_multimodal_content(image_bytes, kwargs, model_id))
+        elif frame_mode == "first_last":
             last_image_bytes = kwargs.pop("last_image_bytes", None)
             if not last_image_bytes:
                 raise ProviderError(
                     "Seedance 首尾帧模式需要 last_image_bytes（尾帧图片），"
                     "当前未提供"
                 )
-            content.append(_build_image_content(_to_data_url(image_bytes), "first_frame"))
-            content.append(_build_image_content(_to_data_url(last_image_bytes), "last_frame"))
+            content.append(_build_content("image_url", _to_image_data_url(image_bytes), "first_frame"))
+            content.append(_build_content("image_url", _to_image_data_url(last_image_bytes), "last_frame"))
         elif frame_mode == "reference":
-            reference_list = kwargs.pop("reference_image_bytes_list", None)
-            if not reference_list:
-                # 单图退化为 reference_image，便于与多图模式统一入口
-                content.append(
-                    _build_image_content(_to_data_url(image_bytes), "reference_image")
-                )
-            else:
-                for img in reference_list:
-                    content.append(_build_image_content(_to_data_url(img), "reference_image"))
+            # 单图退化为 reference_image，便于与多图模式统一入口
+            ref_list = kwargs.pop("reference_image_bytes_list", None)
+            images = ref_list or ([image_bytes] if image_bytes else [])
+            for img in images[: _ref_caps(model_id)["image"]]:
+                if isinstance(img, bytes) and img:
+                    content.append(_build_content("image_url", _to_image_data_url(img), "reference_image"))
+            if content:
+                kwargs.setdefault("omni_reference_task_type", "reference")
         else:
             # 默认首帧模式，官方文档说明 role 可省略
-            content.append(_build_image_content(_to_data_url(image_bytes)))
+            if not image_bytes:
+                raise ProviderError("Seedance 图生视频缺少输入图片")
+            content.append(_build_content("image_url", _to_image_data_url(image_bytes)))
 
         return await self._generate(content, kwargs)
 

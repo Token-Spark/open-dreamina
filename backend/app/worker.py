@@ -96,6 +96,9 @@ def _update_task(
     thumbnail_path: str | None = None,
     tokens_used: int | None = None,
     api_cost: float | None = None,
+    billing_unit: str | None = None,
+    billing_quantity: float | None = None,
+    billing_source: str | None = None,
     started: bool = False,
     completed: bool = False,
     guard_cancelled: bool = False,
@@ -127,6 +130,12 @@ def _update_task(
             task.tokens_used = tokens_used
         if api_cost is not None:
             task.api_cost = api_cost
+        if billing_unit is not None:
+            task.billing_unit = billing_unit
+        if billing_quantity is not None:
+            task.billing_quantity = billing_quantity
+        if billing_source is not None:
+            task.billing_source = billing_source
         if started:
             task.started_at = _now()
         if completed:
@@ -185,6 +194,49 @@ def _extract_tokens(metadata: dict[str, Any]) -> int | None:
             if isinstance(v, (int, float)) and v >= 0:
                 return int(v)
     return None
+
+
+# 与 mcp/pricing.py 的 BILLING_UNITS 保持一致：单位决定了该用量该乘哪个单价。
+BILLING_UNITS = ("token", "credit", "image", "video_second", "video")
+
+
+def _extract_billing(
+    metadata: dict[str, Any], task_type: str, params: dict[str, Any]
+) -> tuple[str | None, float | None, str]:
+    """把 Provider 回报归一化为 (计费单位, 用量, 来源)。
+
+    优先级：
+    1. metadata["billing"] —— Provider 显式声明的口径（如即梦积分 credits，它不是 token）。
+    2. metadata 里的 token 字段 —— 兼容 OpenAI / Gemini / DashScope / Seedance 的 usage。
+    3. 按请求参数派生 —— 上游不回报用量时给出量级，标 derived，绝不冒充实扣量。
+    """
+    billing = metadata.get("billing") if isinstance(metadata, dict) else None
+    if isinstance(billing, dict):
+        unit = billing.get("unit")
+        quantity = billing.get("quantity")
+        if unit in BILLING_UNITS and isinstance(quantity, (int, float)) and quantity >= 0:
+            return unit, float(quantity), str(billing.get("source") or "provider_reported")
+
+    tokens = _extract_tokens(metadata)
+    if tokens is not None:
+        return "token", float(tokens), "provider_reported"
+
+    params = params if isinstance(params, dict) else {}
+    if task_type in ("text2video", "img2video"):
+        duration = (metadata.get("duration") if isinstance(metadata, dict) else None) or params.get("duration")
+        try:
+            duration = float(duration)
+        except (TypeError, ValueError):
+            duration = 0.0
+        if duration > 0:
+            return "video_second", duration, "derived"
+
+    if task_type in ("text2img", "img2img"):
+        raw_count = params.get("count")
+        count = raw_count if isinstance(raw_count, (int, float)) and raw_count > 0 else 1
+        return "image", float(count), "derived"
+
+    return None, None, "unavailable"
 
 
 def _read_input_asset_bytes(input_asset_id: str) -> bytes | None:
@@ -270,6 +322,101 @@ async def _build_sparkhub_seedance_ref_kwargs(
             kwargs_out["image_urls"] = image_urls
 
     return kwargs_out
+
+
+async def _build_direct_seedance_ref_kwargs(
+    db, raw_ids: list[str], frame_mode: str | None
+) -> dict[str, Any]:
+    """为直连火山方舟的 SeedanceProvider 构造全模态参考素材 kwargs。
+
+    与 Spark Hub 渠道（素材需审核为 asset:// 地址）不同，方舟直接支持：
+    - 图片：本地字节 → Provider 内转 base64 data URL（image_url）；
+    - 音频：本地字节 → Provider 内转 base64 data URL（audio_url），
+      或公网 URL（asset_public_url）；
+    - 视频：方舟不接受视频 base64，必须公网 URL 或 asset:// 素材 ID，
+      这里统一走 asset_public_url（七牛云 / public_base_url）。
+
+    按素材类型分流，并按 frame_mode 决定图片角色：
+    - first_last：前两张图片 → last_image_bytes + 首帧 image_bytes；
+    - reference / auto：图片 → reference_image_bytes_list，视频/音频各自成组；
+    - first：仅保留首帧图片，视频/音频不参与（首尾帧/首帧与全模态参考互斥）。
+
+    音频无需审核（AssetType 仅支持 Image/Video），图片/视频直连渠道也不要求审核。
+    """
+    assets = [db.get(Asset, aid) for aid in raw_ids]
+    assets = [a for a in assets if a is not None]
+    if not assets:
+        return {}
+
+    images: list[Asset] = []
+    videos: list[Asset] = []
+    audios: list[Asset] = []
+    for a in assets:
+        if a.type == "video":
+            videos.append(a)
+        elif a.type == "audio":
+            audios.append(a)
+        else:
+            images.append(a)
+
+    def _bytes(a: Asset) -> bytes | None:
+        p = resolve_relative(a.file_path)
+        return p.read_bytes() if p.exists() else None
+
+    image_bytes = [b for a in images if (b := _bytes(a)) is not None]
+    audio_bytes = [b for a in audios if (b := _bytes(a)) is not None]
+    video_urls = [u for a in videos if (u := await asset_public_url(a))]
+
+    kwargs_out: dict[str, Any] = {}
+    if frame_mode == "first_last":
+        if len(image_bytes) < 2:
+            raise ProviderError("首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前不足")
+        kwargs_out["_primary_image_bytes"] = image_bytes[0]
+        kwargs_out["last_image_bytes"] = image_bytes[1]
+        return kwargs_out
+
+    if frame_mode in ("reference", "auto"):
+        # 全模态：图片全部作为 reference_image（含首图），避免与 primary 重复
+        if image_bytes:
+            kwargs_out["reference_image_bytes_list"] = image_bytes
+        if video_urls:
+            kwargs_out["reference_video_urls"] = video_urls
+        if audio_bytes:
+            kwargs_out["reference_audio_bytes_list"] = audio_bytes
+        kwargs_out["_primary_image_bytes"] = b""
+        return kwargs_out
+
+    # first / 未知模式：仅首帧图片，视频/音频互斥不混入
+    kwargs_out["_primary_image_bytes"] = image_bytes[0] if image_bytes else b""
+    return kwargs_out
+
+
+async def _build_kling_ref_kwargs(db, raw_ids: list[str]) -> dict[str, Any]:
+    """为 Kling 4.0 全能参考构造素材 kwargs。
+
+    - 图片：交给通用 image_bytes_list（Provider 内转 base64 data URL）；
+    - 视频：Kling 只收 URL，走 asset_public_url（七云 / public_base_url）；
+    - 音频：Kling 的全能参考只认 ``voice_id``（音色管理 API 产物），
+      不收裸音频文件，这里跳过并在返回里标注，由调用方用 voice_ids 参数显式指定。
+    """
+    assets = [db.get(Asset, aid) for aid in raw_ids]
+    assets = [a for a in assets if a is not None]
+    video_urls = [
+        u for a in assets if a.type == "video" and (u := await asset_public_url(a))
+    ]
+    # 只读取图片字节（Provider 内转 base64）；视频可达数百 MB，不读入内存
+    image_bytes: list[bytes] = []
+    for a in assets:
+        if a.type in ("video", "audio"):
+            continue
+        p = resolve_relative(a.file_path)
+        if p.exists():
+            image_bytes.append(p.read_bytes())
+    return {
+        "_primary_image_bytes": image_bytes[0] if image_bytes else b"",
+        "reference_image_bytes_list": image_bytes,
+        "reference_video_urls": video_urls,
+    }
 
 
 async def _build_sparkhub_seedream_ref_kwargs(db, raw_ids: list[str]) -> dict[str, Any]:
@@ -361,6 +508,11 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
         for k in (
             "negative_prompt", "width", "height", "steps", "guidance_scale",
             "seed", "duration", "strength", "resolution", "count", "generate_audio",
+            # Seedance 2.5：样片模式 / 基于样片出正式片 / 全模态参考 / 输出格式
+            "draft", "draft_task_id", "omni_reference_task_type", "output_format",
+            # Kling 4.0：全能参考（主体/音色/待编辑视频）、比例、声音处理、水印、回调
+            "aspect_ratio", "audio", "element_ids", "voice_ids", "base_video_urls",
+            "watermark", "callback_url", "external_task_id",
         ):
             if k in params:
                 kwargs[k] = params[k]
@@ -380,7 +532,12 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             raw_ids = [input_asset_id]
 
         image_bytes_list: list[bytes] = []
-        if task_type in ("img2img", "img2video") and raw_ids:
+        # 直连 Seedance / Spark Hub Seedance 各自按素材类型构造参考地址（URL / base64），
+        # 不读通用字节列表；尤其视频素材可达 200MB，无谓读入内存浪费显著。
+        _url_based_seedance = slug in (
+            "seedance-2-5", "seedance-2-0", "sparkhub-seedance", "kling",
+        )
+        if task_type in ("img2img", "img2video") and raw_ids and not _url_based_seedance:
             image_bytes_list = _read_input_asset_bytes_list(raw_ids)
 
         loop = _get_worker_loop()
@@ -414,6 +571,44 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
                     result = loop.run_until_complete(
                         provider.image_to_video(
                             image_bytes=b"",
+                            prompt=prompt,
+                            **_filter_kwargs(provider.image_to_video, kwargs),
+                        )
+                    )
+                elif slug in ("seedance-2-5", "seedance-2-0"):
+                    # 直连火山方舟 Seedance：全模态参考按素材类型分流
+                    # （图片/音频本地字节 → base64；视频 → 公网 URL），无需审核。
+                    with db_session() as db:
+                        ref_kwargs = loop.run_until_complete(
+                            _build_direct_seedance_ref_kwargs(
+                                db, raw_ids, kwargs.get("frame_mode")
+                            )
+                        )
+                    kwargs.update(ref_kwargs)
+                    primary_bytes = kwargs.pop("_primary_image_bytes", b"")
+                    if not primary_bytes and not kwargs.get("reference_video_urls") and not kwargs.get("reference_audio_bytes_list"):
+                        raise ProviderError("图生视频缺少输入图片")
+                    result = loop.run_until_complete(
+                        provider.image_to_video(
+                            image_bytes=primary_bytes,
+                            prompt=prompt,
+                            **_filter_kwargs(provider.image_to_video, kwargs),
+                        )
+                    )
+                elif slug == "kling":
+                    # Kling 4.0：图片字节 base64、视频公网 URL、主体/音色用已创建 ID
+                    with db_session() as db:
+                        ref_kwargs = loop.run_until_complete(
+                            _build_kling_ref_kwargs(db, raw_ids)
+                        )
+                    kwargs.update(ref_kwargs)
+                    primary_bytes = kwargs.pop("_primary_image_bytes", b"")
+                    if (not primary_bytes and not kwargs.get("reference_video_urls")
+                            and not kwargs.get("element_ids") and not kwargs.get("voice_ids")):
+                        raise ProviderError("图生视频缺少输入图片")
+                    result = loop.run_until_complete(
+                        provider.image_to_video(
+                            image_bytes=primary_bytes,
                             prompt=prompt,
                             **_filter_kwargs(provider.image_to_video, kwargs),
                         )
@@ -487,9 +682,14 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
                 task_params.pop("submit_id", None)
                 task.params_json = json.dumps(task_params, ensure_ascii=False)
 
-        # 从 Provider 元数据提取 token 用量与费用，回填任务记录（需求：任务中心展示 token 信息）
-        tokens_used = _extract_tokens(result.metadata)
-        api_cost = result.metadata.get("api_cost") if isinstance(result.metadata, dict) else None
+        # 从 Provider 元数据提取统一计费口径的用量，回填任务记录。
+        # billing_unit/quantity 是「用量 → 金额」的唯一换算依据；tokens_used 仍供任务中心展示。
+        metadata = result.metadata if isinstance(result.metadata, dict) else {}
+        tokens_used = _extract_tokens(metadata)
+        billing_unit, billing_quantity, billing_source = _extract_billing(metadata, task_type, params)
+        billing = metadata.get("billing") if isinstance(metadata.get("billing"), dict) else {}
+        # 上游若直接给出人民币金额（amount_cny / api_cost），优先于本地价目表估算。
+        api_cost = billing.get("amount_cny", metadata.get("api_cost"))
         if isinstance(api_cost, (int, float)) and api_cost >= 0:
             api_cost = float(api_cost)
         else:
@@ -506,6 +706,9 @@ def run_generation_task(self, task_id: str) -> dict[str, Any]:  # noqa: ANN001
             thumbnail_path=first_thumb_rel,
             tokens_used=tokens_used,
             api_cost=api_cost,
+            billing_unit=billing_unit,
+            billing_quantity=billing_quantity,
+            billing_source=billing_source,
             completed=True,
             guard_cancelled=True,
         ):

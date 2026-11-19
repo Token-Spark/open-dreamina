@@ -107,6 +107,51 @@ _VIDEO_PARAM_PROPS: dict[str, Any] = {
         "false 生成完全无声视频，台词镜不要关；它只控制整条音轨有无，不能单独禁背景音乐——"
         "禁乐仍需在 AUDIO 段前置声明 + negative_prompt 点名乐种做双通道压制。",
     },
+    "draft": {
+        "type": "boolean",
+        "description": "Seedance 2.5 样片模式：true 仅生成 480p 预览视频，用于确认镜头调度与主体动作；"
+        "与 draft_task_id 互斥。",
+    },
+    "draft_task_id": {
+        "type": "string",
+        "description": "Seedance 2.5 基于样片出正式片：填第一步样片任务的 ID，其余参数由模型复用，与 draft 互斥。",
+    },
+    "omni_reference_task_type": {
+        "type": "string",
+        "enum": ["auto", "reference", "edit", "extend"],
+        "description": "Seedance 2.5 全模态参考任务类型：reference=参考图/视频/音频生成；edit=视频编辑；extend=视频延长。"
+        "edit 需 reference_video 且 ratio=adaptive、duration=-1。省略时按素材自动声明 reference。",
+    },
+    "output_format": {
+        "type": "string",
+        "enum": ["mp4", "mov"],
+        "description": "Seedance 2.5 输出格式：mp4（默认，通用）或 mov（高色彩精度，适合编辑/延长后期）。",
+    },
+    # Kling 4.0（aspect_ratio 用 _SIZE_PROPS 已有的同名参数，会在 MCP 侧换算成 width/height）
+    "audio": {
+        "type": "string",
+        "enum": ["native", "original"],
+        "description": "Kling 4.0 全能参考声音处理：native=音画同出；original=保留输入视频原声（需带视频参考，且不可引用音色）。",
+    },
+    "element_ids": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Kling 4.0 全能参考引用的主体 ID（通过主体管理 API 创建），最多 7 个。",
+    },
+    "voice_ids": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Kling 4.0 全能参考引用的音色 ID（通过音色管理 API 创建，仅 4.0 支持）。",
+    },
+    "base_video_urls": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Kling 4.0 待编辑视频 URL（base_video），最多 1 段，配合 prompt 做视频编辑。",
+    },
+    "watermark": {
+        "type": "boolean",
+        "description": "是否生成含水印结果（Kling 4.0：options.watermark_info.enabled）。",
+    },
 }
 
 _TASK_ID = {"type": "string", "description": "任务 id（generate_* / create_task 返回的 task_id）。"}

@@ -30,7 +30,7 @@ from sqlalchemy.exc import OperationalError
 
 from .config import settings
 from .database import init_db
-from .routers import assets, canvas, conversations, creation_assets, providers, reviews, shot_reviews, system, tasks, templates
+from .routers import assets, canvas, conversations, creation_assets, kling, providers, reviews, shot_reviews, system, tasks, templates
 from .utils.http_client import dispose_async_client
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(templates.router, prefix=api_v1_prefix)
     app.include_router(reviews.router, prefix=api_v1_prefix)
     app.include_router(shot_reviews.router, prefix=api_v1_prefix)
+    app.include_router(kling.router, prefix=api_v1_prefix)
     app.include_router(system.router, prefix=api_v1_prefix)
 
     @app.on_event("startup")

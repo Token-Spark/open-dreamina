@@ -35,8 +35,9 @@ import {
   effectiveFrameMode,
   frameModeSpec,
   isSeedanceProvider,
-  MAX_AUDIO_TOTAL_DURATION,
   normalizeFrameMode,
+  refCapsFor,
+  refCapViolation,
   type ReferenceAsset,
 } from '@/components/GenerationInputBar'
 import { ImageLightbox, type LightboxGallery } from '@/components/ImageLightbox'
@@ -247,16 +248,27 @@ export function CreatePage() {
     requestModelId: string,
   ) {
     if (!providerSlug) return toast('请先在设置中启用一个服务提供商', 'error')
-    if (!requestPrompt.trim()) return toast('请输入提示词', 'error')
+    // 基于样片出正式片（draft_task_id）第二步复用样片提示词，允许留空
+    if (!requestPrompt.trim() && !requestParams.draft_task_id) return toast('请输入提示词', 'error')
     const hasRef = requestRefAssets.length > 0
     const requestType = deriveTaskType(requestMode, hasRef)
     if (!hasRef && (requestType === 'img2img' || requestType === 'img2video')) {
       return toast('请上传参考图', 'error')
     }
+    // 参考素材能力按当前模型取值：Seedance 2.5 可带 50 个素材，2.0 系列为 15 个。
+    const refCaps = refCapsFor(requestMode, providerSlug, requestModelId)
+    // 提交前兜底校验：模型切换（如从 2.5 切回 2.0）后，已加入的素材可能超出新模型上限。
+    const capViolation = refCapViolation(requestRefAssets, refCaps)
+    if (capViolation) return toast(capViolation, 'error')
     // Seedance 首帧需 1 张、首尾帧需 2 张参考图；不足时阻止提交并提醒。
     // 合并模式（auto）required=0：无图即文生视频，有图即参考图，无需额外校验。
     const frameMode = normalizeFrameMode(requestParams.frame_mode)
-    const frameSpec = frameModeSpec(requestMode, isSeedanceProvider(providerSlug), frameMode)
+    const frameSpec = frameModeSpec(
+      requestMode,
+      isSeedanceProvider(providerSlug),
+      frameMode,
+      refCaps,
+    )
     if (frameSpec) {
       const imageCount = requestRefAssets.filter((a) => (a.kind ?? 'image') === 'image').length
       if (imageCount < frameSpec.required) {
@@ -267,14 +279,14 @@ export function CreatePage() {
     // 音频参考无需审核，不参与校验。审核状态由 useAssetAudit 统一管理，
     // 覆盖直接上传（GenerationInputBar 内联）与 @ 引用素材库（hook 自动提审）两条路径。
     if (!checkAuditGate(requestRefAssets)) return
-    // Seedance 2.0 视频生成：引用音频素材总时长不得超过 15 秒。
+    // Seedance 视频生成：引用音频素材累计时长按模型取值（2.0 为 15 秒、2.5 为 30 秒）。
     // 多段参考音频时长累加，超出时阻止提交并提示用户移除或替换过长的音频。
     if (isSeedanceProvider(providerSlug) && requestMode === 'video') {
       const audioAssets = requestRefAssets.filter((a) => (a.kind ?? 'image') === 'audio')
       const totalAudioDuration = audioAssets.reduce((sum, a) => sum + (a.duration ?? 0), 0)
-      if (totalAudioDuration > MAX_AUDIO_TOTAL_DURATION) {
+      if (totalAudioDuration > refCaps.audioTotalDuration) {
         return toast(
-          `参考音频总时长 ${totalAudioDuration.toFixed(1)} 秒，超过 ${MAX_AUDIO_TOTAL_DURATION} 秒上限，请移除或替换较短的音频`,
+          `参考音频总时长 ${totalAudioDuration.toFixed(1)} 秒，超过 ${refCaps.audioTotalDuration} 秒上限，请移除或替换较短的音频`,
           'error',
         )
       }

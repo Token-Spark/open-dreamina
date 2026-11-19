@@ -83,6 +83,45 @@ python -m cli.opendreamina --help
 }
 ```
 
+### 2.1 完成报告里的用量与费用（`usage` / `cost`）
+
+所有返回任务的命令（`generate --auto-wait` / `--poll`、`progress`、`query_result`、`tasks` 等）在终态 JSON 里额外附带两块补充信息，只新增字段、不改变既有输出契约：
+
+```json
+{
+  "usage": {
+    "unit": "token",
+    "quantity": 15000,
+    "source": "provider_reported",
+    "tokens_used": 15000,
+    "provider_reported_cny": null,
+    "note": null
+  },
+  "cost": {
+    "currency": "CNY",
+    "estimated_cny": 1.05,
+    "estimate": true,
+    "unit_price_cny": 0.00007,
+    "pricing_as_of": "2026-11-13",
+    "source": "火山方舟模型价格 https://www.volcengine.com/docs/82379/1544106",
+    "accuracy": "official_list_price",
+    "quantity_basis": "provider_reported"
+  }
+}
+```
+
+- `usage.unit`：`token` / `credit` / `image` / `video_second` / `video`。后端已把即梦积分从 `tokens_used` 中拆出来，不再混装成一个裸整数。
+- `usage.source`：`provider_reported`（上游实报）、`derived`（按请求参数推算，**不是**实扣量）、`legacy`（老任务只有 `tokens_used`）、`unavailable`。
+- `cost.estimated_cny` 是**估算，不是账单**。单价来自 `mcp/pricing.json`，带 `as_of` 与 `source`；美元价按表内 `fx.USD_CNY` 换算。Provider 若直接回报金额，则 `accuracy` 为 `provider_reported_amount` 并优先采用。
+- 查不到单价时 `estimated_cny` 为 `null`，`reason` 写明原因（第三方渠道价未配置、即梦积分折人民币取决于套餐等），不会编造数字。价目表缺失时同样降级为 `null`，不阻断任务报告。
+
+查看或替换价目表：
+
+```bash
+opendreamina pricing          # 打印生效的 as_of / 汇率 / 可计价规则 / 未定价清单（不需后端在线）
+OPEN_DREAMINA_PRICING_FILE=/path/to/my-pricing.json opendreamina generate ... --auto-wait
+```
+
 ---
 
 ## 3. 环境变量
@@ -92,6 +131,7 @@ python -m cli.opendreamina --help
 | `OPEN_DREAMINA_API_BASE` | `http://localhost:10130/api/v1` | 后端 API 基地址 |
 | `OPEN_DREAMINA_API_TIMEOUT` | `60` | 单次 HTTP 请求超时秒数（上传自动放宽到 ≥120） |
 | `OPEN_DREAMINA_SKILLS_DIR` | 无 | 额外技能目录，多目录用 `os.pathsep` 分隔（Windows 为 `;`），追加到内置 `.skills/` |
+| `OPEN_DREAMINA_PRICING_FILE` | `mcp/pricing.json` | 自定义人民币价目表路径，用于覆盖官方公开价 / 填入渠道实际单价 |
 | `OPEN_DREAMINA_NO_SKILLS_HINT` | 无 | 设为 `1` 关闭生成类命令 stderr 的技能提示（stdout JSON 不受影响） |
 
 连接远程后端时：
@@ -124,6 +164,7 @@ OPEN_DREAMINA_API_BASE=http://192.168.1.10:10130/api/v1 python cli/opendreamina.
 | `providers` | 列出已配置 Provider 与可接入 slug | — |
 | `templates` | 列出提示词模板 | — |
 | `health` | 检查后端 / DB / Redis / worker | — |
+| `pricing` | 查看任务报告所依据的人民币价目表（不需后端在线） | — |
 | `skills` | 列出 / 选择 / 加载 AIGC 智能体技能（不需后端在线） | — |
 | `conversations` | 对话的增删改查 | `action` |
 
@@ -332,10 +373,22 @@ opendreamina audit <asset_id> --provider sparkhub-seedance --query-only
 ```bash
 opendreamina models                    # 列出全部模型（图片 + 视频）
 opendreamina models --mode video       # 只看视频模型
-opendreamina models --mode video --model-id doubao-seedance-2-5-250928   # 查该模型精确的分辨率 / 时长能力
+opendreamina models --mode video --model-id doubao-seedance-2-5-260628   # 查该模型精确的分辨率 / 时长能力
 ```
 
 返回每个服务的 `slug`、`models`（id / label / types）、是否已配置（`configured`），以及该 mode 下可用的比例 / 分辨率 / 时长（`capability` / `size_options`）。不确定用哪个模型或参数时先调用本命令。
+
+**可灵 Kling 4.0**（provider slug `kling`，Bearer API Key，域名 `https://api-beijing.klingai.com`）：
+
+```bash
+opendreamina text2video "夜晚的城市街道，镜头缓缓推进" --auto-provider --provider kling \
+  --model-id kling-4.0 --resolution 1080p --duration 10 --aspect-ratio 16:9
+# 全能参考：主体 / 音色 ID 由主体管理 API（/api/v1/kling/elements、/voices）创建
+opendreamina image2video "参考 @image_1 的风格" --provider kling --model-id kling-4.0 \
+  --element-id <主体ID> --voice-id <音色ID> --audio native
+```
+
+版本号写在 `--model-id`（`kling-4.0` / `kling-4.0-flash`），由 Provider 转成 URL path。Flash 仅 720p、时长 3~20s；4.0 支持 720p/1080p、3~30s 与多关键帧。
 
 ### 5.8 `providers` —— 已配置 Provider
 
@@ -362,6 +415,15 @@ opendreamina health
 ```
 
 任务长期停留在 `pending` 时先调用本命令：`worker != ok` 会附 warning。
+
+### 5.10a `pricing` —— 人民币价目表
+
+```bash
+opendreamina pricing
+# 输出 path / as_of / fx / rules / unpriced，纯本地，不需后端在线
+```
+
+用于核对 `cost` 的来源与日期，以及查看哪些 Provider 还没配单价。按实际合同价补 `rules`（`provider` 支持前缀通配、`unit` 支持 `*`），或用 `OPEN_DREAMINA_PRICING_FILE` 指向自己的文件；`rules` 优先于 `unpriced`。
 
 ### 5.11 `conversations` —— 对话管理
 

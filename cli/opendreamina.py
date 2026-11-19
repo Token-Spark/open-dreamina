@@ -47,10 +47,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from mcp import catalog, sizes, tools as tools_module  # noqa: E402
+from mcp import pricing as pricing_module  # noqa: E402
 from mcp.client import ApiClient, ApiError  # noqa: E402
 from cli import skills_catalog  # noqa: E402 - 纯本地技能目录，不需后端在线
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 # ---------------- 输出整形 ----------------
 
@@ -399,6 +400,21 @@ def cmd_generate(ns: argparse.Namespace) -> int:
         args["frame_mode"] = ns.frame_mode
         # None 时不写进 params，沿用模型默认；True / False 都要保留（False = 明确生成无声视频）
         args["generate_audio"] = ns.generate_audio
+        # Seedance 2.5 直连新参数：None 不写入 params，沿用默认
+        for cli_key, param_key in (
+            ("draft", "draft"),
+            ("draft_task_id", "draft_task_id"),
+            ("omni_task_type", "omni_reference_task_type"),
+            ("output_format", "output_format"),
+        ):
+            value = getattr(ns, cli_key, None)
+            if value is not None:
+                args[param_key] = value
+        # Kling 4.0 参数
+        for cli_key in ("audio", "element_ids", "voice_ids", "base_video_urls", "watermark"):
+            value = getattr(ns, cli_key, None)
+            if value is not None:
+                args[cli_key] = value
         tool_name = "generate_video"
     else:
         args["count"] = ns.count
@@ -796,6 +812,19 @@ def _add_generate_args(p: argparse.ArgumentParser) -> None:
                    help="是否让视频模型生成同步音轨（台词人声 / 环境音 / 动作音），仅视频模式且仅支持原生音频的模型生效。"
                         "省略则沿用模型默认；--no-generate-audio 生成完全无声视频。"
                         "它只控制整条音轨有无，不能单独禁背景音乐（禁乐靠 AUDIO 段前置 + --negative-prompt 音乐词）。")
+    # Seedance 2.5 直连（火山方舟）：样片模式 / 基于样片出正式片 / 全模态参考 / 输出格式
+    p.add_argument("--draft", action=argparse.BooleanOptionalAction, default=None,
+                   help="Seedance 2.5 样片模式：仅生成 480p 预览，用于确认镜头与动作。")
+    p.add_argument("--draft-task-id", help="基于样片任务 ID 出正式视频（其余参数由模型复用）。与 --draft 互斥。")
+    p.add_argument("--omni-task-type", choices=["auto", "reference", "edit", "extend"],
+                   help="Seedance 2.5 全模态参考任务类型：reference=参考生成；edit=视频编辑；extend=视频延长。")
+    p.add_argument("--output-format", choices=["mp4", "mov"], help="Seedance 2.5 输出格式（默认 mp4）。")
+    # Kling 4.0 全能参考
+    p.add_argument("--audio", choices=["native", "original"], help="Kling 4.0 声音处理：native=音画同出；original=保留输入视频原声。")
+    p.add_argument("--element-id", action="append", dest="element_ids", help="Kling 4.0 引用的主体 ID（可多次传，最多 7 个）。")
+    p.add_argument("--voice-id", action="append", dest="voice_ids", help="Kling 4.0 引用的音色 ID（可多次传，仅 4.0 支持）。")
+    p.add_argument("--base-video-url", action="append", dest="base_video_urls", help="Kling 4.0 待编辑视频 URL（可多次传）。")
+    p.add_argument("--watermark", action=argparse.BooleanOptionalAction, default=None, help="是否生成含水印结果。")
     p.add_argument("--auto-wait", action="store_true", help="生成后自动轮询到终态并打印结果地址。")
     p.add_argument("--poll", type=int, help="生成后等待终态最多 N 秒（对应即梦 CLI 的 --poll）；与 --auto-wait 等价，二者任选其一。")
     p.add_argument("--wait-timeout", type=int, default=600, help="--auto-wait 的等待上限秒数（默认 600，上限 1800）。")
@@ -835,6 +864,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  OPEN_DREAMINA_API_TIMEOUT  单次 HTTP 请求超时秒数（默认 60）\n"
             "  DRAMA_PROJECT_ROOT         短剧项目根目录（drama 子命令的默认 --project）\n"
             "  OPEN_DREAMINA_SKILLS_DIR   额外技能目录（os.pathsep 分隔，追加到内置 .skills）\n"
+            "  OPEN_DREAMINA_PRICING_FILE 自定义人民币价目表（默认 mcp/pricing.json）\n"
             "  OPEN_DREAMINA_NO_SKILLS_HINT=1  关闭生成命令 stderr 的技能提示\n\n"
             "智能体接入（第一步自动加载技能清单）：\n"
             "  0) opendreamina skills --brief  载入清单，按意图选择后用 `skills <name>` 加载 SKILL.md\n"
@@ -917,6 +947,14 @@ def build_parser() -> argparse.ArgumentParser:
     tp = sub.add_parser("templates", help="列出提示词模板", description="列出提示词模板（含 prompt_text / negative_prompt / params）。")
     tp.add_argument("--category", choices=["image", "video"], help="按模板分类筛选。")
     hl = sub.add_parser("health", help="检查后端健康状态", description="检查后端 / 数据库 / Redis / Celery worker 健康状态。")
+    pc = sub.add_parser(
+        "pricing",
+        help="查看任务报告所依据的人民币价目表（不需后端在线）",
+        description=(
+            "打印 usage/cost 换算所依据的价目表：as_of、汇率、可计价规则与未定价清单。"
+            "用 OPEN_DREAMINA_PRICING_FILE 指向自定义文件可覆盖默认表。"
+        ),
+    )
 
     # skills（AIGC 智能体技能目录；纯本地只读扫描，不需后端在线）
     sk = sub.add_parser(
@@ -955,6 +993,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def cmd_pricing(ns: argparse.Namespace) -> int:
+    """pricing：打印当前生效的人民币价目表（纯本地，不需后端在线）。"""
+    _print_json(pricing_module.describe_pricing())
+    return 0
+
+
 _DISPATCH = {
     "generate": cmd_generate,
     "progress": cmd_progress,
@@ -968,6 +1012,7 @@ _DISPATCH = {
     "providers": cmd_providers,
     "templates": cmd_templates,
     "health": cmd_health,
+    "pricing": cmd_pricing,
     "skills": cmd_skills,
     "conversations": cmd_conversations,
     "create-task": cmd_create_task,

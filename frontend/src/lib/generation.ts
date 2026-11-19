@@ -306,7 +306,7 @@ export const RESOLUTIONS_BY_MODE: Record<ContentMode, ResolutionDef[]> = {
  * | Seedance 2.0 标准   | 480p/720p/1080p/2160p       | 4~15 秒   |
  * | Seedance 2.0 Fast  | 480p/720p                   | 4~15 秒   |
  * | Seedance 2.0 Mini  | 480p/720p                   | 4~15 秒   |
- * | Seedance 2.5       | 480p/720p/1080p             | 4~30 秒   |
+ * | Seedance 2.5       | 480p/720p/1080p/2160p(4K)   | 4~30 秒   |
  */
 interface VideoModelSpec {
   /** 模型 ID 匹配函数（已转小写）；按数组顺序，首个匹配生效。 */
@@ -317,12 +317,14 @@ interface VideoModelSpec {
 
 const VIDEO_MODEL_SPECS: VideoModelSpec[] = [
   {
-    // Seedance 2.5：支持 480p/720p/1080p（不支持 4K），时长 4~30 秒
+    // Seedance 2.5：支持 480p/720p/1080p/4k，时长 4~30 秒
+    // 4k 即官方 API 的 "4k" 档位，前端沿用 2160p 作为展示值。
     match: (id) => id.includes('2_5') || id.includes('2-5') || id.includes('2.5'),
     resolutions: [
       { value: '480p', label: '标清 480p' },
       { value: '720p', label: '高清 720p' },
       { value: '1080p', label: '超清 1080p' },
+      { value: '2160p', label: '4K 2160p' },
     ],
     duration: { min: 4, max: 30, default: 5 },
   },
@@ -368,7 +370,7 @@ function videoModelSpec(modelId: string): VideoModelSpec {
  * 视频模型支持的分辨率（按模型系列不同）。
  * - Seedance 2.0 标准版：480p / 720p / 1080p / 2160p(4K)
  * - Seedance 2.0 Fast / Mini：480p / 720p
- * - Seedance 2.5：480p / 720p / 1080p（不支持 4K）
+ * - Seedance 2.5：480p / 720p / 1080p / 2160p(4K)
  */
 export function videoResolutionsForModel(modelId: string): ResolutionDef[] {
   return videoModelSpec(modelId).resolutions
