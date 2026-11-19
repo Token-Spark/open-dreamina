@@ -7,7 +7,8 @@
   · 摄影语言 / 表情词应在映射表内（未命中会被编译器丢弃，污染一致性）
 
 errors 违反硬性规则（valid=False）；warnings 是不影响解析但会降低
-生成质量或需要人工确认的问题。
+生成质量或需要人工确认的问题（含「台词镜缺音色锚点」软检查）。
+音色锚点的规格与门禁见 .skills/drama-production-playbook/references/11-voice-anchor.md。
 """
 
 from __future__ import annotations
@@ -28,8 +29,11 @@ REQUIRED_BLOCK_LINES = (
     ("**台词同步：", "台词同步"),
     ("**音效设计", "音效设计"),
     ("**基础环境音", "基础环境音"),
-    ("**动作触发音", "动作触发音"),
     ("**特效音", "特效音"),
+)
+# 已并入「基础环境音」的声音行：不再必填，老分镜保留也照常解析，只出 warning 提示迁移
+LEGACY_BLOCK_LINES = (
+    ("**动作触发音", "动作触发音"),
 )
 DASH_SET = {"—", "无", "–", "-", "―", ""}
 HEADING_RE = re.compile(r"^##\s+(EP\d+-S\d+)\s*$")
@@ -90,6 +94,11 @@ def lint_episode(project_root: Path, episode: str, *, target_duration: int = 90,
             for prefix, label in REQUIRED_BLOCK_LINES:
                 if line.startswith(prefix):
                     seen_lines[block_ids[-1]].add(label)
+            for prefix, label in LEGACY_BLOCK_LINES:
+                if line.startswith(prefix):
+                    warnings.append(
+                        f"{block_ids[-1]}：`{label}` 行已并入「基础环境音」，不再必填；"
+                        "新分镜请把 foley 写进基础环境音并绑秒段")
 
     for shot_id in block_ids:
         if shot_id not in overview:
@@ -180,6 +189,23 @@ def lint_episode(project_root: Path, episode: str, *, target_duration: int = 90,
                         + ("…" if len(unhit_tone) > 8 else ""))
     if pov_shots == 0:
         warnings.append("全集未检出 POV / 主观镜头（规范要求每集至少 1 个）")
+
+    # ── 台词镜音色锚点绑定（软检查，不改 valid）──
+    # 音色锚点是角色资产的必备件：台词镜不绑 voice_* 时，每镜各自采样声线。
+    # 这里只管「有没有绑」；wav 是否存在 / 是否定稿由 drama assets 与人工验收负责。
+    # 契约 #23 owner：.skills/drama-production-playbook/references/11-voice-anchor.md §6
+    missing_voice: list[str] = []
+    for shot_id, shot in shots.items():
+        voice_ids = shot.get("assets", {}).get("音色", [])
+        if shot.get("dialogue") and not any(v.startswith("voice_") for v in voice_ids):
+            missing_voice.append(shot_id)
+    if missing_voice:
+        warnings.append(
+            "台词镜「资产绑定」缺音色锚点 voice_*（缺锚点会让每镜各自采样声线，"
+            "第 N 集才发现全片声音不统一；无台词镜该槽写「—」，"
+            "锚点产出与门禁见 drama-production-playbook/references/11-voice-anchor.md）："
+            + "；".join(sorted(missing_voice)[:8])
+            + ("…" if len(missing_voice) > 8 else ""))
 
     # ── 台词同步 ──
     dialogue_report = check_episode_dialogue(root, episode, parsed=parsed)

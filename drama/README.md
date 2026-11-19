@@ -17,6 +17,7 @@
 | `drama assets <EP...>` | 资产引用审计 | 引用的资产是否登记、文件是否存在、有无平台 asset_id |
 | `drama manifest` | 项目 manifest 校验 | assets_manifest / voice_manifest 完整性 |
 | `drama qc <EP>` | 成片技术验收 | 逐镜画幅 / 时长 / 音轨（需 ffprobe，缺失时如实降级） |
+| `drama review-import` | 把分镜与生成结果导入审片中心 | 逐镜审片任务卡片（分镜「应有」+ 生成任务「实际」） |
 
 通用参数：
 
@@ -81,8 +82,28 @@ opendreamina drama qc EP01 --project ./我的短剧
 
 **与审阅中心零配置对接**：把项目根放到 `data/review_sources/` 下即可——
 素材审阅扫描 `素材库/`，镜头审片扫描 `分镜脚本/EPxx/video_renders/`
-（自动按 `EPxx-Sxx` 解析集镜号、`shots.md` 自动关联为审片底稿提示词、
-`_` 前缀目录自动跳过、同镜号多版本自动合并对比）。
+（`shots.md` 自动关联为审片底稿提示词、同镜号多版本自动合并对比）。
+
+**镜头审片只收已标识镜头**：媒体必须能从路径与文件名唯一定位到 `EPxx-Sxx`。
+`downloads/` 连拍母版、无镜号的整段样片、只有镜号没有集号的分段剪片一律不进列表；
+`_` 前缀目录（`_takes` / `_superseded_*` 等历史版本）同样跳过；文件名同时标注
+多个镜号的跨镜共用素材（如 `ep01_s08_s12_backdrop.png` 背景板）也不收，避免与正式
+镜头拼成假的「同镜多版本」。重新扫描会顺带移出库里残留的这类空壳卡片，
+已打分与已写意见不受影响。
+
+**项目不在审阅根目录下时的导入路径**：`drama review-import` 读分镜表与生产状态，
+把已成片的镜头连同「应有 vs 实际」直接建成审片任务卡片，不依赖目录被扫描：
+
+```bash
+opendreamina drama review-import --project ./我的短剧 --title "我的短剧 · 全季审片" \
+    --episodes EP01,EP02          # 缺省导入全部有成片的集
+```
+
+- 卡片内容：分镜的秒数 / 景别 / 运镜 / 画面动作 / 台词，加上该镜所属生成任务的
+  提示词、模型与实测时长；时长偏差、景别不符在卡片上直接对照。
+- 幂等：按（集号, 镜号, 文件路径）去重，重复导入只刷新事实，不覆盖已打的分数与意见。
+- 镜头缺文件、分镜有而没生成（如某集末尾几镜）都会如实列出，便于定位缺口。
+- `--dry-run` 只解析不写入；`--no-prompt` 跳过生成任务提示词拉取。
 
 ## 映射表（tools/maps.py）
 
@@ -113,6 +134,7 @@ drama/
 ├── manifest/         assets_manifest / voice_manifest / episode_spec
 ├── qc/               成片技术验收 / 资产引用审计 / 台词同步校验
 ├── lint/             分镜格式规范校验
+├── review_import.py  分镜表 + 生产状态 → 审片中心导入清单（只读解析）
 └── scaffold/         init 脚手架与模板
 ```
 

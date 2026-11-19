@@ -15,6 +15,7 @@ ensure_ascii=False），进度与告警走 stderr，便于智能体解析。
     opendreamina drama assets <EP...|--all> [--project ROOT]
     opendreamina drama manifest [--project ROOT]
     opendreamina drama qc <EP> [--project ROOT] [--min-duration 4] [--aspect 9:16]
+    opendreamina drama review-import [--project ROOT] [--title .. --episodes EP01,EP02 --dry-run]
 
 项目根解析优先级：--project > 环境变量 DRAMA_PROJECT_ROOT > 当前目录。
 映射表解析优先级：--maps > 环境变量 DRAMA_MAPS > {项目根}/tools/maps.py（存在才加载）。
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -39,6 +41,12 @@ def _print_json(data: Any) -> None:
 
 def _note(message: str) -> None:
     sys.stderr.write(f"[opendreamina drama] {message}\n")
+
+
+def _die(message: str, code: int = 2) -> None:
+    """错误退出：提示走 stderr，stdout 不输出半成品 JSON。"""
+    sys.stderr.write(f"[opendreamina drama] {message}\n")
+    raise SystemExit(code)
 
 
 # ---------------- 映射表加载 ----------------
@@ -320,6 +328,147 @@ def cmd_drama_qc(ns: argparse.Namespace) -> int:
     return 0 if report["summary"]["failed"] == 0 else 1
 
 
+def cmd_drama_review_import(ns: argparse.Namespace) -> int:
+    """把分镜与生成结果导入审片中心，逐镜建立审片任务卡片。"""
+    from drama.review_import import build_import_rows
+
+    root = _project_root(ns)
+    title = ns.title or f"{root.name} 分镜生成审片"
+    episodes = [e for e in re.split(r"[,\s]+", ns.episodes or "") if e]
+    include_prompt = not ns.no_prompt
+
+    api = None
+    task_lookup = None
+    if include_prompt:
+        # 只读查询生成任务，dry-run 也照常执行，保证预演与实际导入的内容一致；
+        # 后端不可达时逐条失败即返回 None（review_import 内已吞掉异常），不影响建档。
+        api = _api_client()
+        task_lookup = lambda task_id: api.request("GET", f"/tasks/{task_id}")  # noqa: E731
+
+    try:
+        planned = build_import_rows(
+            root,
+            drama_title=ns.drama_title,
+            episodes=episodes or None,
+            task_lookup=task_lookup,
+            include_prompt=include_prompt,
+        )
+    except ValueError as exc:
+        _die(f"参数错误：{exc}")
+    rows = planned["rows"]
+
+    summary = {
+        "project": str(root),
+        "title": title,
+        "counts": planned["counts"],
+        "episodes": planned["episodes"],
+        "missing_shots": planned["missing_shots"],
+        "skipped_episodes": planned["skipped_episodes"],
+    }
+
+    if ns.dry_run:
+        summary["dry_run"] = True
+        summary["sample"] = rows[:3]
+        _note(f"预演：{len(rows)} 个镜头可供导入（未写入后端）")
+        _print_json(summary)
+        return 0
+
+    # 根目录以后端视角给出：容器里看到的是挂载点，不是宿主机的本地路径
+    root_path = _review_root_path(ns, root)
+    api = api or _api_client()
+    from mcp.client import ApiError
+
+    try:
+        session, created = _ensure_review_session(api, title, root_path, ns.scan_existing)
+    except ApiError as exc:
+        _die(f"创建审片会话失败：{exc}")
+    summary["session"] = {
+        "id": session["id"],
+        "title": session["title"],
+        "root_path": session["root_path"],
+        "created": created,
+    }
+
+    added = updated = skipped = 0
+    missing: list[dict] = []
+    chunk_size = max(1, ns.chunk_size)
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start:start + chunk_size]
+        try:
+            result = api.request(
+                "POST",
+                f"/shot-reviews/sessions/{session['id']}/items/import",
+                json_body={"items": chunk},
+                timeout=300,
+            )
+        except ApiError as exc:
+            _die(f"导入第 {start + 1}–{start + len(chunk)} 镜失败（前 {added} 镜已入库）：{exc}")
+        added += result.get("added", 0)
+        updated += result.get("updated", 0)
+        skipped += result.get("skipped", 0)
+        missing.extend(result.get("missing") or [])
+        _note(f"已导入 {min(start + chunk_size, len(rows))}/{len(rows)} 个镜头卡片")
+
+    summary["import"] = {
+        "added": added,
+        "updated": updated,
+        "skipped": skipped,
+        "missing": missing[:50],
+        "missing_count": len(missing) + len(planned["missing_shots"]),
+    }
+    final = api.request("GET", f"/shot-reviews/sessions/{session['id']}")
+    summary["session"]["item_count"] = final.get("item_count")
+    summary["session"]["summary"] = final.get("summary")
+    _print_json(summary)
+    return 0 if not missing else 1
+
+
+def _api_client():
+    """后端 API 客户端：与主 CLI / MCP 共用 mcp.client（纯标准库）。"""
+    from mcp.client import ApiClient
+
+    return ApiClient()
+
+
+def _review_root_path(ns: argparse.Namespace, project_root: Path) -> str:
+    """项目根在后端容器里的路径。
+
+    显式 --root-path 优先；否则按本仓库的部署约定自动映射：项目位于仓库
+    ``data/`` 之下时对应容器内的 ``/app/data``（compose 把 ./data 挂到 /app/data）。
+    映射不出来就报错，让用户显式给出，绝不猜一个后端可能无权访问的路径。
+    """
+    if ns.root_path:
+        return ns.root_path
+    data_dir = Path(__file__).resolve().parent.parent / "data"
+    try:
+        relative = project_root.resolve().relative_to(data_dir.resolve())
+    except ValueError:
+        raise SystemExit(
+            f"无法推断项目在容器内的路径：{project_root} 不在本仓库 data/ 目录下。\n"
+            "请用 --root-path 显式指定（后端视角的绝对路径，如 /app/shot_sources/我的短剧），"
+            "并确认该目录已挂载且包含在 SHOT_REVIEW_SOURCE_ROOTS 中。"
+        )
+    return str(Path("/app/data") / relative)
+
+
+def _ensure_review_session(api, title: str, root_path: str, scan_existing: bool):
+    """复用同名未完成会话，没有则新建（默认不扫描，避免把参考素材收进审片列表）。"""
+    sessions = api.request("GET", "/shot-reviews/sessions").get("items") or []
+    for session in sessions:
+        if session.get("title") == title and session.get("root_path") == root_path:
+            _note(f"复用已有审片会话：{session['id']}")
+            return session, False
+    session = api.request(
+        "POST",
+        "/shot-reviews/sessions",
+        json_body={"title": title, "root_path": root_path},
+        query={"scan": "true" if scan_existing else "false"},
+        timeout=300,
+    )
+    _note(f"已创建审片会话：{session['id']}")
+    return session, True
+
+
 # ---------------- 注册与分发 ----------------
 
 
@@ -410,6 +559,25 @@ def register_drama_command(sub) -> None:
     p_qc.add_argument("--min-duration", type=int, default=4, help="模型最短时长秒数（默认 4）。")
     p_qc.add_argument("--aspect", default="9:16", help="目标画幅（默认 9:16）。")
 
+    p_import = drama_sub.add_parser(
+        "review-import", parents=[common],
+        help="把分镜与生成结果导入审片中心（逐镜建审片任务卡片）",
+        description=(
+            "解析 分镜脚本 的逐镜表与 生产状态，把已成片的镜头连同「应有 vs 实际」"
+            "（秒数/景别/运镜/台词/生成任务提示词）导入镜头审片，一次导入即可在审片页逐镜打分与提意见。"
+            "重复导入按（集号, 镜号, 文件路径）幂等刷新，不会覆盖已打的分与已写的意见。"
+        ),
+    )
+    p_import.add_argument("--title", help="审片会话标题（默认「{项目名} 分镜生成审片」；同名会话会被复用）。")
+    p_import.add_argument("--drama-title", help="卡片上的剧目标签（默认不填，前端回落为会话标题）。")
+    p_import.add_argument("--episodes", help="只导入指定集，逗号分隔（如 EP01,EP02）；缺省导入全部有成片的集。")
+    p_import.add_argument("--root-path", help="项目根在后端容器内的绝对路径（默认按 ./data → /app/data 自动映射）。")
+    p_import.add_argument("--no-prompt", action="store_true", help="不拉取生成任务提示词（离线或加速用）。")
+    p_import.add_argument("--scan-existing", action="store_true",
+                          help="新建会话时先扫描目录（默认不扫描，只导入清单内的镜头，避免收进参考素材）。")
+    p_import.add_argument("--chunk-size", type=int, default=100, help="每批提交的镜头数（默认 100）。")
+    p_import.add_argument("--dry-run", action="store_true", help="只解析并输出清单摘要，不写入后端。")
+
     handlers = {
         "init": cmd_drama_init,
         "list": cmd_drama_list,
@@ -420,6 +588,7 @@ def register_drama_command(sub) -> None:
         "assets": cmd_drama_assets,
         "manifest": cmd_drama_manifest,
         "qc": cmd_drama_qc,
+        "review-import": cmd_drama_review_import,
     }
     for action, handler in handlers.items():
         drama_sub.choices[action].set_defaults(drama_func=handler)

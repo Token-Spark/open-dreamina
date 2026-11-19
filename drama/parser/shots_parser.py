@@ -264,6 +264,7 @@ def parse_shots_file(path: Path, episode: str) -> dict:
         record["dialogue"] = parse_dialogue(buffer)
         record["beats_zh"] = [l.lstrip("- ").strip() for l in buffer
                               if l.startswith("- ") and "运镜" in l]
+        # 声音行：新版三行（音效设计不进这里），动作触发音为老分镜兼容保留
         record["sound_zh"] = [l.split("：", 1)[1].strip() for l in buffer
                               if re.match(r"^\*\*(基础环境音|动作触发音|特效音)[：:]\*\*", l)]
 
