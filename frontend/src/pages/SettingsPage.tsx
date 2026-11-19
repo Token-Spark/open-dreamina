@@ -120,7 +120,7 @@ function GeneralTab() {
             <Input
               type="number"
               min={1}
-              max={8}
+              max={16}
               value={form.max_concurrent_tasks ?? 2}
               onChange={(e) => setForm({ ...form, max_concurrent_tasks: Number(e.target.value) })}
             />

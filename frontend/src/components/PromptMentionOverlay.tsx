@@ -32,9 +32,9 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Music } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MENTION_TOKEN_RE, type ReferenceAsset } from '@/lib/promptMention'
+import { AUDIO_LOGO_ALT, AUDIO_LOGO_URL } from '@/lib/assetPreview'
 
 const KIND_LABEL: Record<NonNullable<ReferenceAsset['kind']>, string> = {
   image: '参考图',
@@ -65,7 +65,7 @@ interface Segment {
   value: string
   /** 引用素材名（token 内 @{ 与 } 之间的名称）；仅 mention 片段有值。 */
   name?: string
-  /** 缩略图地址；仅图片类引用有值，其余类型回落到纯底色占位。 */
+  /** 标签底图：图片用原图，音频用专用封面，视频回落到纯底色占位。 */
   thumbUrl?: string
 }
 
@@ -106,10 +106,7 @@ function MentionHoverPreview({
         {kind === 'video' ? (
           <video src={asset.previewUrl} muted playsInline className="h-full w-full object-cover" />
         ) : kind === 'audio' ? (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-bg-tertiary">
-            <Music className="h-8 w-8 text-fg-muted" />
-            <span className="text-[10px] text-fg-muted">音频素材</span>
-          </div>
+          <img src={AUDIO_LOGO_URL} alt={AUDIO_LOGO_ALT} className="h-full w-full object-cover" />
         ) : (
           <img src={asset.previewUrl} alt={name} className="h-full w-full object-cover" />
         )}
@@ -151,11 +148,15 @@ export function PromptMentionOverlay({
       const token = m[0]
       const name = m[1]
       const asset = refAssets ? resolveTokenAsset(token, refAssets) : null
+      const kind = asset?.kind ?? 'image'
       parts.push({
         type: 'mention',
         value: token,
         name,
-        thumbUrl: asset && (asset.kind ?? 'image') === 'image' ? asset.previewUrl : undefined,
+        // 音频文件 URL 不能当图片用；音频引用改用专用封面作为标签底图。
+        thumbUrl: kind === 'audio'
+          ? AUDIO_LOGO_URL
+          : kind === 'image' ? asset?.previewUrl : undefined,
       })
       last = idx + token.length
     }

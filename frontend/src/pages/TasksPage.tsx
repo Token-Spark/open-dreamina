@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Trash2, XCircle } from 'lucide-react'
+import { RefreshCw, Trash2, XCircle, ImageOff } from 'lucide-react'
 import {
   cancelTask,
   deleteTask,
@@ -24,7 +24,11 @@ import {
   type Task,
   type TaskStatus,
 } from '@/api/tasks'
+import { assetFileUrl, assetThumbnailUrl } from '@/api/assets'
+import { ImageLightbox, type LightboxGallery } from '@/components/ImageLightbox'
+import { buildReferenceGallery } from '@/lib/referenceAssets'
 import { useTaskStore } from '@/stores/taskStore'
+import { useAssetPreviewUrls } from '@/hooks/useAssetPreviewUrls'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Progress } from '@/components/ui/Progress'
@@ -70,9 +74,25 @@ function formatTokens(tokens: number | null | undefined): string {
   return tokens.toLocaleString('zh-CN')
 }
 
+/** 输入参考资产 id 与原图 URL：优先后端下发字段，兼容旧响应回退到 params/单图并派生 URL。 */
+function referenceAssets(task: Task): { ids: string[]; urls: string[] } {
+  const params = (task.params ?? {}) as Record<string, unknown>
+  const ids = Array.isArray(task.input_asset_ids) && task.input_asset_ids.length
+    ? task.input_asset_ids
+    : Array.isArray(params.input_asset_ids)
+      ? (params.input_asset_ids as unknown[]).filter((x): x is string => typeof x === 'string')
+      : task.input_asset_id
+        ? [task.input_asset_id]
+        : []
+  const urls = Array.isArray(task.input_asset_urls) ? task.input_asset_urls : []
+  return { ids, urls: ids.map((id, i) => urls[i] ?? assetFileUrl(id)) }
+}
+
 export function TasksPage() {
   const [tab, setTab] = useState<Tab>('all')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  // 参考素材大图预览：整批打开，可左右切换并定位到点击的那张。
+  const [refGallery, setRefGallery] = useState<LightboxGallery | null>(null)
   const qc = useQueryClient()
   const navigate = useNavigate()
   const activeMap = useTaskStore((s) => s.active)
@@ -84,6 +104,13 @@ export function TasksPage() {
   })
 
   const tasks = data?.items ?? []
+  // 列表只展示前 3 张参考缩略图，批量补查这几个 id 的类型：
+  // 音频的 /thumbnail 返回音频字节会破图，改用专用封面。
+  const visibleRefIds = useMemo(
+    () => tasks.flatMap((t) => referenceAssets(t).ids.slice(0, 3)),
+    [tasks],
+  )
+  const refPreviewUrls = useAssetPreviewUrls(visibleRefIds)
 
   async function handleCancel(task: Task) {
     try {
@@ -114,6 +141,13 @@ export function TasksPage() {
     } finally {
       setConfirmDelete(null)
     }
+  }
+
+  async function openRefGallery(task: Task, index: number) {
+    const { ids, urls } = referenceAssets(task)
+    // 点击时才按 asset_id 查素材类型，图片/视频/音频在灯箱里走各自的渲染分支
+    const gallery = await buildReferenceGallery(ids, urls, index)
+    if (gallery) setRefGallery(gallery)
   }
 
   return (
@@ -171,6 +205,7 @@ export function TasksPage() {
                 const live = activeMap[task.id]
                 const status: TaskStatus = live?.status ?? task.status
                 const progress = live?.progress ?? task.progress
+                const refIds = referenceAssets(task).ids
                 return (
                   <tr
                     key={task.id}
@@ -186,6 +221,42 @@ export function TasksPage() {
                   >
                     <td className="px-4 py-3 font-medium text-fg-primary">
                       {TASK_TYPE_LABEL[task.type]}
+                      {refIds.length > 0 && (
+                        <div className="mt-1.5 flex items-center gap-1">
+                          {refIds.slice(0, 3).map((id, i) => (
+                            <button
+                              key={`${id}-${i}`}
+                              type="button"
+                              title={`参考素材 ${i + 1}`}
+                              onClick={(e) => { e.stopPropagation(); void openRefGallery(task, i) }}
+                              className="relative h-7 w-7 shrink-0 overflow-hidden rounded-btn border border-border bg-bg-tertiary transition-opacity hover:opacity-80"
+                            >
+                              {/* 素材可能被删除，缩略图加载失败时透出中性占位块 */}
+                              <span className="absolute inset-0 flex items-center justify-center">
+                                <ImageOff className="h-3.5 w-3.5 text-fg-muted" />
+                              </span>
+                              <img
+                                key={refPreviewUrls[id]}
+                                src={refPreviewUrls[id] ?? assetThumbnailUrl(id)}
+                                alt={`参考素材 ${i + 1}`}
+                                loading="lazy"
+                                className="relative h-full w-full object-cover"
+                                onError={(e) => { e.currentTarget.style.display = 'none' }}
+                              />
+                            </button>
+                          ))}
+                          {refIds.length > 3 && (
+                            <button
+                              type="button"
+                              title="查看更多参考素材"
+                              onClick={(e) => { e.stopPropagation(); void openRefGallery(task, 3) }}
+                              className="flex h-7 min-w-7 items-center justify-center rounded-btn border border-border bg-bg-tertiary px-1 text-[11px] tabular-nums text-fg-muted transition-colors hover:text-fg-primary"
+                            >
+                              +{refIds.length - 3}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-0.5">
@@ -294,6 +365,12 @@ export function TasksPage() {
       >
         <p className="py-2 text-sm text-fg-secondary">此操作无法撤销。</p>
       </Dialog>
+
+      <ImageLightbox
+        gallery={refGallery}
+        open={refGallery != null}
+        onClose={() => setRefGallery(null)}
+      />
     </div>
   )
 }

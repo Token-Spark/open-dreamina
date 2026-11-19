@@ -15,7 +15,8 @@
 import type * as React from 'react'
 import { Download, Play, Star, Trash2 } from 'lucide-react'
 import type { Asset } from '@/api/assets'
-import { assetFileUrl, assetThumbnailUrl } from '@/api/assets'
+import { assetFileUrl } from '@/api/assets'
+import { assetPreviewUrl } from '@/lib/assetPreview'
 import { Card } from '@/components/ui/Card'
 import { cn, formatFileSize, formatRelativeTime } from '@/lib/utils'
 
@@ -68,7 +69,7 @@ export function AssetGrid({
           >
             <div className="relative aspect-square cursor-pointer bg-bg-tertiary">
               <img
-                src={assetThumbnailUrl(asset.id)}
+                src={assetPreviewUrl(asset)}
                 alt=""
                 loading="lazy"
                 className={cn(
@@ -78,6 +79,7 @@ export function AssetGrid({
                 onClick={() =>
                   selectable ? onToggleSelect?.(asset.id) : onOpen?.(asset)
                 }
+                onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
               />
               {asset.type === 'video' && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

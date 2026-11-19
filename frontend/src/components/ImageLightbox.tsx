@@ -14,8 +14,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Download, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ImageOff, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/Button'
+import { AUDIO_LOGO_ALT, AUDIO_LOGO_URL } from '@/lib/assetPreview'
 import { cn } from '@/lib/utils'
 
 export interface LightboxItem {
@@ -44,6 +45,8 @@ export function ImageLightbox({ item, gallery, open, onClose }: ImageLightboxPro
   const galleryItems = gallery && gallery.items.length > 0 ? gallery.items : null
   const [cursor, setCursor] = useState(gallery?.index ?? 0)
   const [zoom, setZoom] = useState(1)
+  // 资产可能已被删除：媒体加载失败时给中性占位，不显示浏览器默认破图
+  const [mediaFailed, setMediaFailed] = useState(false)
 
   // 每次打开都定位到点击的那张，避免上一次浏览的序号残留
   useEffect(() => {
@@ -80,6 +83,11 @@ export function ImageLightbox({ item, gallery, open, onClose }: ImageLightboxPro
       document.body.style.overflow = ''
     }
   }, [open, onClose, step])
+
+  // 切换素材或重新打开时清掉上一次的失败状态，避免占位残留到下一张
+  useEffect(() => {
+    setMediaFailed(false)
+  }, [current?.url, open])
 
   if (!open || !current) return null
 
@@ -159,13 +167,19 @@ export function ImageLightbox({ item, gallery, open, onClose }: ImageLightboxPro
             </Button>
           </>
         )}
-        {current.type === 'image' ? (
+        {mediaFailed ? (
+          <div className="flex flex-col items-center gap-2 text-white/70">
+            <ImageOff className="h-10 w-10" />
+            <span className="text-sm">素材不可用，可能已被删除</span>
+          </div>
+        ) : current.type === 'image' ? (
           <img
             key={current.url}
             src={current.url}
             alt={current.title ?? ''}
             className={cn('max-h-full max-w-full object-contain transition-transform duration-200')}
             style={{ transform: `scale(${zoom})` }}
+            onError={() => setMediaFailed(true)}
           />
         ) : current.type === 'video' ? (
           <video
@@ -174,9 +188,24 @@ export function ImageLightbox({ item, gallery, open, onClose }: ImageLightboxPro
             controls
             autoPlay
             className="max-h-full max-w-full"
+            onError={() => setMediaFailed(true)}
           />
         ) : (
-          <audio key={current.url} src={current.url} controls autoPlay className="w-full max-w-md" />
+          <div className="flex flex-col items-center gap-5">
+            <img
+              src={AUDIO_LOGO_URL}
+              alt={AUDIO_LOGO_ALT}
+              className="h-28 w-28 rounded-btn shadow-elevated"
+            />
+            <audio
+              key={current.url}
+              src={current.url}
+              controls
+              autoPlay
+              className="w-full max-w-md"
+              onError={() => setMediaFailed(true)}
+            />
+          </div>
         )}
       </div>
     </div>,

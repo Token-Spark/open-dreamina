@@ -49,15 +49,25 @@ export interface GenMessage {
 /** 将后端 Task 记录重建为对话消息（任务即消息，无数据冗余）。 */
 export function taskToMessage(task: Task): GenMessage {
   const params = (task.params ?? {}) as Record<string, unknown>
-  // 多图参考：优先读 params.input_asset_ids，回退到 input_asset_id 单图（兼容旧任务）
-  const rawIds = Array.isArray(params.input_asset_ids)
+  // 输入参考资产：优先用后端下发的完整列表（含多图）；旧任务/旧后端响应可能没有这两个字段，
+  // 故做兼容回退——params.input_asset_ids → input_asset_id 单图，URL 逐项由 id 派生。
+  const backendIds = Array.isArray(task.input_asset_ids)
+    ? (task.input_asset_ids as unknown[]).filter((id): id is string => typeof id === 'string')
+    : []
+  const backendUrls = Array.isArray(task.input_asset_urls) ? task.input_asset_urls : []
+  const paramIds = Array.isArray(params.input_asset_ids)
     ? (params.input_asset_ids as unknown[]).filter((id): id is string => typeof id === 'string')
     : []
-  const inputAssetIds = rawIds.length > 0
-    ? rawIds
-    : task.input_asset_id
-      ? [task.input_asset_id]
-      : []
+  const inputAssetIds = backendIds.length > 0
+    ? backendIds
+    : paramIds.length > 0
+      ? paramIds
+      : task.input_asset_id
+        ? [task.input_asset_id]
+        : []
+  const inputAssetUrls = backendUrls.length === inputAssetIds.length
+    ? backendUrls
+    : inputAssetIds.map(assetFileUrl)
   // 后端回写的内部键不进参数视图：它们只用于派生结果/参考地址，
   // 留在 params 会混进灯箱与「重新编辑」回填的生成参数里。
   const { result_asset_ids: _omitResult, input_asset_ids: _omitInput, ...userParams } = params
@@ -76,7 +86,7 @@ export function taskToMessage(task: Task): GenMessage {
     provider: task.provider,
     modelId: task.model_id,
     inputAssetIds,
-    inputAssetUrls: inputAssetIds.map(assetFileUrl),
+    inputAssetUrls,
     createdAt: task.created_at ? new Date(task.created_at).getTime() : Date.now(),
   }
 }

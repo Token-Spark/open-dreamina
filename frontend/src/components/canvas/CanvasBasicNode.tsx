@@ -9,13 +9,14 @@
 import { useMemo, useRef, useState, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Maximize2, Music, Pause, Play, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
+import { Clapperboard, Eye, Film, Image as ImageIcon, Loader2, Maximize2, Pause, Play, StickyNote, Type as TypeIcon, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAssets, useAssetTags } from '@/hooks/useAssets'
 import { useCreationAssets, useCreationAssetTags } from '@/hooks/useCreationAssets'
 import { useUIStore } from '@/stores/uiStore'
 import { assetFileUrl, assetThumbnailUrl, uploadAsset, type Asset, type AssetType } from '@/api/assets'
+import { assetPreviewUrl } from '@/lib/assetPreview'
 import { CATEGORY_OPTIONS, type CreationAsset, type CreationAssetCategory } from '@/api/creationAssets'
 import { getSystemSettings } from '@/api/system'
 import { Dialog } from '@/components/ui/Dialog'
@@ -140,7 +141,7 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
     updateNodeData(id, {
       asset_id: asset.id,
       asset_type: asset.type,
-      asset_thumb: assetThumbnailUrl(asset.id),
+      asset_thumb: assetPreviewUrl(asset),
     })
     setPickerOpen(false)
   }
@@ -175,7 +176,7 @@ export function CanvasBasicNode({ id, data, selected }: NodeProps) {
       updateNodeData(id, {
         asset_id: asset.id,
         asset_type: asset.type,
-        asset_thumb: assetThumbnailUrl(asset.id),
+        asset_thumb: assetPreviewUrl(asset),
       })
       toast('导演台截图已设为素材', 'success')
     } catch (err) {
@@ -675,18 +676,13 @@ function UploadsGrid({
           className="group relative aspect-square overflow-hidden rounded-btn border border-border bg-bg-tertiary transition-all hover:ring-1 hover:ring-accent"
           onClick={() => onSelect(asset)}
         >
-          {asset.type === 'audio' ? (
-            <div className="flex h-full w-full items-center justify-center bg-bg-tertiary">
-              <Music className="h-8 w-8 text-fg-muted" />
-            </div>
-          ) : (
-            <img
-              src={assetThumbnailUrl(asset.id)}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover transition-transform group-hover:scale-[1.05]"
-            />
-          )}
+          <img
+            src={assetPreviewUrl(asset)}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform group-hover:scale-[1.05]"
+            onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
+          />
           {asset.type === 'video' && (
             <span className="absolute bottom-1 right-1 rounded-btn bg-black/60 px-1 text-[10px] text-white">
               视频

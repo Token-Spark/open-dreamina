@@ -14,7 +14,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Loader2, Music, Plus, Video, X } from 'lucide-react'
+import { Check, Loader2, Plus, Video, X } from 'lucide-react'
+import { AUDIO_LOGO_ALT, AUDIO_LOGO_URL } from '@/lib/assetPreview'
 
 /** 参考素材类型：图片 / 视频 / 音频（视频模式支持多模态参考，见火山方舟视频生成 API）。 */
 export type ReferenceKind = 'image' | 'video' | 'audio'
@@ -107,10 +108,7 @@ function HoverPreview({
         {kind === 'video' ? (
           <video src={previewUrl} muted playsInline className="h-full w-full object-cover" />
         ) : kind === 'audio' ? (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-bg-tertiary">
-            <Music className="h-8 w-8 text-fg-muted" />
-            <span className="text-[10px] text-fg-muted">音频素材</span>
-          </div>
+          <img src={AUDIO_LOGO_URL} alt={AUDIO_LOGO_ALT} className="h-full w-full object-cover" />
         ) : (
           <img src={previewUrl} alt={label ?? KIND_LABEL[kind]} className="h-full w-full object-cover" />
         )}
@@ -182,9 +180,7 @@ export function ReferenceSlot({
           </span>
         </>
       ) : kind === 'audio' ? (
-        <div className="flex h-full w-full items-center justify-center bg-bg-tertiary">
-          <Music className="h-6 w-6 text-fg-muted" />
-        </div>
+        <img src={AUDIO_LOGO_URL} alt={AUDIO_LOGO_ALT} className="h-full w-full object-cover" />
       ) : (
         <img src={previewUrl} alt={KIND_LABEL[kind]} className="h-full w-full object-cover" />
       )}

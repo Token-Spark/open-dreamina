@@ -20,7 +20,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Maximize2, Music, Video, Wand2, X } from 'lucide-react'
+import { Maximize2, Video, Wand2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PromptMentionOverlay } from '@/components/PromptMentionOverlay'
 import { ReferenceAssetTray } from '@/components/ReferenceAssetTray'
@@ -29,6 +29,7 @@ import { usePromptMention } from '@/hooks/usePromptMention'
 import { cn } from '@/lib/utils'
 import type { ContentMode } from '@/lib/generation'
 import { KIND_LABELS, refAssetGroupLabel, type ReferenceAsset } from '@/lib/promptMention'
+import { AUDIO_LOGO_ALT, AUDIO_LOGO_URL } from '@/lib/assetPreview'
 
 export interface PromptFullscreenEditorProps {
   /** 是否打开（打开时挂载到 document.body）。 */
@@ -42,15 +43,27 @@ export interface PromptFullscreenEditorProps {
   onRefAssetsChange?: (assets: ReferenceAsset[]) => void
   mode?: ContentMode
   providerSlug?: string
+  /** 当前模型 ID；@ 引用素材库时按模型能力校验参考素材数量上限。 */
+  modelId?: string
   params?: Record<string, number | string>
   /** 是否启用 @ 引用素材（纯文本场景如画布备注节点传 false）。默认启用。 */
   enableMention?: boolean
+  /**
+   * 是否展示 @ 候选浮层（含素材库查询）。默认启用。
+   * 审片等「只改文本、资产清单固定」的场景传 false：保留引用高亮与素材陈列，
+   * 但不允许插入新的素材引用，避免与只读的资产清单产生歧义。
+   */
+  mentionCandidates?: boolean
   /** 提交生成（底部按钮 / ⌘+Enter 触发）。 */
   onGenerate?: () => void
   submitting?: boolean
   atConcurrencyLimit?: boolean
   /** 顶部标题；缺省为「沉浸式提示词编辑」。 */
   title?: string
+  /** 提交按钮文案；缺省为「生成」，审片保存场景可传「保存」。 */
+  submitLabel?: string
+  /** 自定义输入占位文案；不传时按 mode / enableMention 生成。 */
+  placeholder?: string
 }
 
 export function PromptFullscreenEditor({
@@ -62,12 +75,16 @@ export function PromptFullscreenEditor({
   onRefAssetsChange,
   mode = 'image',
   providerSlug = '',
+  modelId = '',
   params = {},
   enableMention = true,
+  mentionCandidates = true,
   onGenerate,
   submitting = false,
   atConcurrencyLimit = false,
   title = '沉浸式提示词编辑',
+  submitLabel = '生成',
+  placeholder: customPlaceholder,
 }: PromptFullscreenEditorProps) {
   const {
     textareaRef,
@@ -86,8 +103,10 @@ export function PromptFullscreenEditor({
     onRefAssetsChange: (assets) => onRefAssetsChange?.(assets),
     mode,
     providerSlug,
+    modelId,
     params,
-    enabled: enableMention,
+    // 关闭候选浮层时连素材库查询与插入逻辑一并停用，但 overlay 高亮仍由 enableMention 控制
+    enabled: enableMention && mentionCandidates,
   })
 
   // textarea 滚动偏移，同步到 mention overlay 保持对齐
@@ -114,11 +133,13 @@ export function PromptFullscreenEditor({
 
   if (!open) return null
 
-  const placeholder = enableMention
-    ? mode === 'video'
-      ? '描述你想生成的视频… 输入 @ 可引用已上传的参考素材或素材库素材'
-      : '描述你想生成的图片… 输入 @ 可引用已上传的参考素材或素材库素材'
-    : '在此输入内容…'
+  const placeholder = customPlaceholder ?? (
+    enableMention
+      ? mode === 'video'
+        ? '描述你想生成的视频… 输入 @ 可引用已上传的参考素材或素材库素材'
+        : '描述你想生成的图片… 输入 @ 可引用已上传的参考素材或素材库素材'
+      : '在此输入内容…'
+  )
 
   return createPortal(
     <div className="fixed inset-0 z-[70] flex animate-fade-in flex-col bg-bg-primary text-fg-primary">
@@ -132,7 +153,7 @@ export function PromptFullscreenEditor({
           </span>
           {onGenerate && (
             <span className="hidden shrink-0 text-xs text-fg-muted sm:inline">
-              ⌘/Ctrl + Enter 提交生成
+              ⌘/Ctrl + Enter {submitLabel}
             </span>
           )}
         </div>
@@ -172,7 +193,7 @@ export function PromptFullscreenEditor({
         }}
       >
         {/* @ 引用悬浮选择器 */}
-        {enableMention && mention.open && (
+        {enableMention && mentionCandidates && mention.open && (
           <div
             ref={mentionRef}
             className="absolute left-5 top-2 z-50 w-80 animate-slide-up rounded-card border border-border bg-bg-secondary p-1.5 shadow-elevated"
@@ -207,26 +228,18 @@ export function PromptFullscreenEditor({
                             src={item.thumbUrl}
                             alt=""
                             className="h-full w-full object-cover"
+                            onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
                           />
                         ) : item.kind === 'video' ? (
                           <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
                             <Video className="h-3.5 w-3.5" />
                           </span>
-                        ) : item.thumbUrl ? (
-                          <>
-                            <img
-                              src={item.thumbUrl}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                            <span className="absolute bottom-0 right-0 flex h-3 w-3 items-center justify-center rounded-tl bg-accent text-bg-primary">
-                              <Music className="h-2 w-2" />
-                            </span>
-                          </>
                         ) : (
-                          <span className="flex h-full w-full items-center justify-center bg-bg-tertiary">
-                            <Music className="h-3.5 w-3.5" />
-                          </span>
+                          <img
+                            src={AUDIO_LOGO_URL}
+                            alt={AUDIO_LOGO_ALT}
+                            className="h-full w-full object-cover"
+                          />
                         )}
                       </span>
                       <span className="truncate">{item.label}</span>
@@ -285,9 +298,11 @@ export function PromptFullscreenEditor({
           </div>
           <div className="flex items-center justify-between gap-2 pt-4">
             <span className="text-xs text-fg-muted">
-              {enableMention
+              {enableMention && mentionCandidates
                 ? '支持 @ 引用素材 · 拖拽/粘贴上传参考素材在输入条内操作'
-                : 'Esc 退出全屏编辑'}
+                : enableMention
+                  ? '已引用的参考素材见顶部 · Esc 退出全屏编辑'
+                  : 'Esc 退出全屏编辑'}
             </span>
             {onGenerate && (
               <Button
@@ -300,7 +315,7 @@ export function PromptFullscreenEditor({
                 className="transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Wand2 className="h-4 w-4" />
-                {submitting ? '提交中…' : atConcurrencyLimit ? '并发已满' : '生成'}
+                {submitting ? '提交中…' : atConcurrencyLimit ? '并发已满' : submitLabel}
               </Button>
             )}
           </div>

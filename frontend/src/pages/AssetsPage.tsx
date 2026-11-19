@@ -182,7 +182,7 @@ export function AssetsPage() {
           openAsset
             ? {
                 url: assetFileUrl(openAsset.id),
-                type: openAsset.type === 'video' ? 'video' : 'image',
+                type: openAsset.type,
                 title: `${openAsset.type} · ${formatFileSize(openAsset.file_size)}`,
                 meta: {
                   创建时间: formatDateTime(openAsset.created_at),

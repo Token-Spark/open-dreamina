@@ -22,7 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Music, Video, X } from 'lucide-react'
+import { ImageOff, Music, Video, X } from 'lucide-react'
 import {
   KIND_LABELS,
   groupRefAssets,
@@ -31,6 +31,7 @@ import {
   type ReferenceAsset,
 } from '@/lib/promptMention'
 import type { ReferenceKind } from '@/components/ReferenceSlot'
+import { AUDIO_LOGO_ALT, AUDIO_LOGO_URL, isAudioKind, refAssetThumbUrl } from '@/lib/assetPreview'
 import { cn } from '@/lib/utils'
 
 export interface ReferenceAssetTrayProps {
@@ -60,7 +61,7 @@ function auditHint(asset: ReferenceAsset): { color: string; text: string } | nul
 }
 
 /** 悬浮放大层：小图不足以辨认内容时提供 168px 预览与完整名称。 */
-function TrayHoverCard({ hover }: { hover: HoverState }) {
+function TrayHoverCard({ hover, failed }: { hover: HoverState; failed: boolean }) {
   const { asset, rect } = hover
   const kind = (asset.kind ?? 'image') as ReferenceKind
   const placeBelow = rect.top < 210
@@ -75,16 +76,29 @@ function TrayHoverCard({ hover }: { hover: HoverState }) {
         transform: `translate(-50%, ${placeBelow ? '0' : '-100%'})`,
       }}
     >
-      <div className="h-36 w-36 overflow-hidden rounded-sm border border-border bg-bg-tertiary">
-        {kind === 'video' ? (
+      <div className="relative h-36 w-36 overflow-hidden rounded-sm border border-border bg-bg-tertiary">
+        {failed ? (
+          <span className="flex h-full w-full flex-col items-center justify-center gap-1.5">
+            <ImageOff className="h-7 w-7 text-fg-muted" />
+            <span className="text-[10px] text-fg-muted">素材不可用</span>
+          </span>
+        ) : kind === 'video' ? (
           <video src={asset.previewUrl} muted playsInline className="h-full w-full object-cover" />
         ) : kind === 'audio' ? (
-          <span className="flex h-full w-full flex-col items-center justify-center gap-1.5">
-            <Music className="h-8 w-8 text-fg-muted" />
-            <span className="text-[10px] text-fg-muted">音频素材</span>
-          </span>
+          <img
+            src={AUDIO_LOGO_URL}
+            alt={AUDIO_LOGO_ALT}
+            className="h-full w-full object-cover"
+          />
         ) : (
-          <img src={asset.previewUrl} alt="" className="h-full w-full object-cover" />
+          <img
+            src={asset.previewUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.style.visibility = 'hidden'
+            }}
+          />
         )}
       </div>
       <span className="block max-w-36 truncate text-center text-xs text-fg-primary">
@@ -109,7 +123,13 @@ export function ReferenceAssetTray({
 }: ReferenceAssetTrayProps) {
   const groups = useMemo(() => groupRefAssets(assets), [assets])
   const [hover, setHover] = useState<HoverState | null>(null)
+  // 素材可能已从素材库删除：记录缩略图加载失败的 id，用中性占位替代破图
+  const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set())
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function markFailed(assetId: string) {
+    setFailedIds((prev) => (prev.has(assetId) ? prev : new Set(prev).add(assetId)))
+  }
 
   useEffect(
     () => () => {
@@ -158,6 +178,7 @@ export function ReferenceAssetTray({
           <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
             {group.items.map((asset) => {
               const kind = (asset.kind ?? 'image') as ReferenceKind
+              const isAudio = isAudioKind(kind)
               const audit = auditHint(asset)
               const name = asset.name ?? KIND_LABELS[kind]
               return (
@@ -178,20 +199,34 @@ export function ReferenceAssetTray({
                         asset.auditStatus === 'failed' && 'border-red-400/70',
                       )}
                     >
-                      {kind === 'audio' && !asset.thumbUrl ? (
-                        <span className="flex h-full w-full items-center justify-center">
-                          <Music className="h-4 w-4 text-fg-muted" />
-                        </span>
-                      ) : (
+                      {/* 底层占位：图片/视频加载失败或素材已删除时透出；音频只留纯底色，
+                          避免出现「素材不可用」这种误导性的显示效果 */}
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        {isAudio ? (
+                          <span className="h-full w-full bg-bg-tertiary" />
+                        ) : (
+                          <ImageOff className="h-3.5 w-3.5 text-fg-muted" />
+                        )}
+                      </span>
+                      {/* 音频封面是本地静态资源，不会加载失败；详情补查期间若曾短暂
+                          按图片渲染过，也不要把失败态残留到音频封面上 */}
+                      {(failedIds.has(asset.assetId) && !isAudio) ? null : (
                         <>
                           {kind === 'video' && !asset.thumbUrl ? (
-                            <video src={asset.previewUrl} muted playsInline className="h-full w-full object-cover" />
+                            <video
+                              src={asset.previewUrl}
+                              muted
+                              playsInline
+                              className="relative h-full w-full object-cover"
+                              onError={() => markFailed(asset.assetId)}
+                            />
                           ) : (
                             <img
-                              src={asset.thumbUrl ?? asset.previewUrl}
-                              alt=""
+                              src={refAssetThumbUrl(asset)}
+                              alt={isAudio ? AUDIO_LOGO_ALT : ''}
                               loading="lazy"
-                              className="h-full w-full object-cover"
+                              className="relative h-full w-full object-cover"
+                              onError={() => markFailed(asset.assetId)}
                             />
                           )}
                           {kind !== 'image' && (
@@ -239,7 +274,12 @@ export function ReferenceAssetTray({
           </div>
         </div>
       ))}
-      {hover && <TrayHoverCard hover={hover} />}
+      {hover && (
+        <TrayHoverCard
+          hover={hover}
+          failed={failedIds.has(hover.asset.assetId) && !isAudioKind(hover.asset.kind)}
+        />
+      )}
     </div>
   )
 }

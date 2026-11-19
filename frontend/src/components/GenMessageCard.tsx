@@ -13,8 +13,12 @@
 // limitations under the License.
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Pencil, ImagePlus } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Pencil, ImagePlus, ImageOff } from 'lucide-react'
+import { assetFileUrl, assetThumbnailUrl } from '@/api/assets'
+import { ImageLightbox, type LightboxGallery } from '@/components/ImageLightbox'
+import { buildReferenceGallery } from '@/lib/referenceAssets'
 import { useTaskSSE } from '@/hooks/useTaskSSE'
+import { useAssetPreviewUrls } from '@/hooks/useAssetPreviewUrls'
 import { useConversationStore, type GenMessage } from '@/stores/conversationStore'
 import { Button } from '@/components/ui/Button'
 import { Progress } from '@/components/ui/Progress'
@@ -34,6 +38,8 @@ function GenMessageCardInner({ topicId, message, onRetry, onOpenLightbox, onEdit
   const updateMessage = useConversationStore((s) => s.updateMessage)
   const running = message.status === 'running'
   const pending = message.status === 'pending'
+  // 输入参考素材大图预览：组件内部自维护灯箱，避免改动 CreatePage 的结果灯箱。
+  const [refGallery, setRefGallery] = useState<LightboxGallery | null>(null)
 
   const { status, progress, error, data } = useTaskSSE(pending || running ? message.id : null)
 
@@ -69,6 +75,17 @@ function GenMessageCardInner({ topicId, message, onRetry, onOpenLightbox, onEdit
     })
   }, [status, progress, error, data.resultUrl, data.thumbnailUrl, data.resultUrls, topicId, message.id, message.progress, message.resultUrls, updateMessage])
 
+  // 输入参考素材：CLI/MCP 提交的多图参考在消息卡中可见、可点开大图预览。
+  const refIds = message.inputAssetIds ?? []
+  const refUrls = refIds.map((id, i) => message.inputAssetUrls?.[i] ?? assetFileUrl(id))
+  // 音频没有缩略图，/thumbnail 会返回音频原始字节；按类型取预览图，音频落到专用封面。
+  const refPreviewUrls = useAssetPreviewUrls(refIds)
+  async function openRefGallery(index: number) {
+    // 点击时才按 asset_id 查素材类型，避免列表渲染时为每张卡片批量请求详情
+    const gallery = await buildReferenceGallery(refIds, refUrls, index)
+    if (gallery) setRefGallery(gallery)
+  }
+
   return (
     <div id={`msg-${message.id}`} className="animate-slide-up scroll-mt-4">
       <div className="mb-3 flex items-start gap-3">
@@ -80,6 +97,36 @@ function GenMessageCardInner({ topicId, message, onRetry, onOpenLightbox, onEdit
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-fg-primary">{message.prompt}</p>
           </div>
 
+          {refIds.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-fg-muted">输入参考素材 {refIds.length}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {refIds.map((id, i) => (
+                  <button
+                    key={`${id}-${i}`}
+                    type="button"
+                    title={`参考素材 ${i + 1}`}
+                    onClick={() => void openRefGallery(i)}
+                    className="relative h-12 w-12 shrink-0 overflow-hidden rounded-btn border border-border bg-bg-tertiary transition-opacity hover:opacity-80"
+                  >
+                    {/* 素材可能被删除，缩略图加载失败时透出中性占位块 */}
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <ImageOff className="h-4 w-4 text-fg-muted" />
+                    </span>
+                    <img
+                      key={refPreviewUrls[id]}
+                      src={refPreviewUrls[id] ?? assetThumbnailUrl(id)}
+                      alt={`参考素材 ${i + 1}`}
+                      loading="lazy"
+                      className="relative h-full w-full object-cover"
+                      onError={(e) => { e.currentTarget.style.display = 'none' }}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <ResultCard
             message={liveMessage}
             onRetry={() => onRetry(message)}
@@ -88,6 +135,11 @@ function GenMessageCardInner({ topicId, message, onRetry, onOpenLightbox, onEdit
           />
         </div>
       </div>
+      <ImageLightbox
+        gallery={refGallery}
+        open={refGallery != null}
+        onClose={() => setRefGallery(null)}
+      />
     </div>
   )
 }

@@ -34,6 +34,9 @@ export interface Task {
   params: Record<string, unknown>
   input_asset_id: string | null
   input_asset_url: string | null
+  /** 输入参考资产完整列表（含多图）及其访问地址，由后端 TaskResponse 直接下发。 */
+  input_asset_ids: string[]
+  input_asset_urls: string[]
   result_path: string | null
   thumbnail_path: string | null
   result_url: string | null
@@ -45,6 +48,10 @@ export interface Task {
   api_cost: number | null
   /** 该任务消耗的 token 数（可能为 null，表示 Provider 未返回） */
   tokens_used: number | null
+  /** 统一计费口径：unit + quantity 才能换算金额；source 标明上游实报或按参数推算。 */
+  billing_unit: string | null
+  billing_quantity: number | null
+  billing_source: string | null
   retry_count: number
   conversation_id: string | null
   created_at: string
