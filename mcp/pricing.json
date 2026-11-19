@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "currency": "CNY",
+  "as_of": "2026-11-13",
+  "disclaimer": "本表把任务用量换算为人民币估算值，不是账单。官方价会调整、第三方中转渠道价不等于官方价、即梦积分折人民币取决于所购套餐。用于正式核算前请按实际合同价覆盖 rules。",
+  "fx": {
+    "USD_CNY": {
+      "rate": 6.7152,
+      "as_of": "2026-11-13",
+      "source": "中国人民银行授权中国外汇交易中心公布的人民币汇率中间价 https://www.pbc.gov.cn/zhengcehuobisi/125207/125217/125925/2026111309013168942/index.html",
+      "note": "快照值，不是实时汇率。汇率变动时改 rate 并同步更新 as_of。"
+    }
+  },
+  "rules": [
+    {
+      "provider": "seedance-2-5",
+      "unit": "token",
+      "unit_price": 0.00007,
+      "price_currency": "CNY",
+      "as_of": "2026-11-13",
+      "source": "火山方舟模型价格 https://www.volcengine.com/docs/82379/1544106",
+      "accuracy": "official_list_price",
+      "note": "在线推理 70 元/百万 token（480p/720p、输入不含视频的基准档）。1080p 为 77 元/百万，含输入视频 42 元/百万；用量取上游 usage.completion_tokens。"
+    },
+    {
+      "provider": "seedance-2-0",
+      "unit": "token",
+      "unit_price": 0.000046,
+      "price_currency": "CNY",
+      "as_of": "2026-11-13",
+      "source": "火山方舟模型价格 https://www.volcengine.com/docs/82379/1544106",
+      "accuracy": "official_list_price",
+      "note": "在线推理 46 元/百万 token（480p/720p、输入不含视频）。1080p 为 51 元/百万，含输入视频 28 元/百万。"
+    },
+    {
+      "provider": "mock",
+      "unit": "*",
+      "unit_price": 0,
+      "price_currency": "CNY",
+      "as_of": "2026-11-13",
+      "source": "本地 mock provider，不产生外部费用",
+      "accuracy": "no_charge",
+      "note": "mock 的 tokens_used 是估算占位值，不代表真实消耗。"
+    }
+  ],
+  "unpriced": [
+    {
+      "provider": "sparkhub-seedance",
+      "unit": "*",
+      "reason": "Spark Hub 是第三方中转渠道，其扣费规则不由模型官方定价决定，仓库无法推断渠道单价。",
+      "hint": "按账单补一条 {\"provider\": \"sparkhub-seedance\", \"unit\": \"video_second\", \"unit_price\": <元/秒>} 即可开始计价；如需按条计价可改 unit 为 video。"
+    },
+    {
+      "provider": "sparkhub-seedream",
+      "unit": "*",
+      "reason": "Spark Hub 中转生图的渠道单价未配置。",
+      "hint": "补 {\"provider\": \"sparkhub-seedream\", \"unit\": \"image\", \"unit_price\": <元/张>}。"
+    },
+    {
+      "provider": "dreamina-seedance",
+      "unit": "credit",
+      "reason": "即梦 CLI 回报的是积分（credits），积分折人民币取决于账号套餐与购买渠道，没有公开固定汇率。",
+      "hint": "算出你套餐的每积分成本后补 {\"provider\": \"dreamina-seedance\", \"unit\": \"credit\", \"unit_price\": <元/积分>}。"
+    },
+    {
+      "provider": "dreamina-seedream",
+      "unit": "credit",
+      "reason": "即梦 CLI 生成图片的积分折人民币取决于账号套餐。",
+      "hint": "补 {\"provider\": \"dreamina-seedream\", \"unit\": \"credit\", \"unit_price\": <元/积分>}。"
+    },
+    {
+      "provider": "dreamina-cli",
+      "unit": "credit",
+      "reason": "即梦 CLI 遗留 slug，积分折人民币取决于账号套餐。",
+      "hint": "补 {\"provider\": \"dreamina-cli\", \"unit\": \"credit\", \"unit_price\": <元/积分>}。"
+    },
+    {
+      "provider": "openai",
+      "unit": "*",
+      "reason": "GPT Image 官方按画质/尺寸分档或按 image output tokens 计价，而接口返回的 usage.total_tokens 混合了输入与输出 token，无法可靠对齐；统一网关接入时渠道价也与官方价不同。",
+      "official_reference": {
+        "value": 0.053,
+        "currency": "USD",
+        "unit": "image",
+        "as_of": "2026-11-13",
+        "source": "https://developers.openai.com/api/docs/guides/image-generation",
+        "note": "GPT Image 2 medium 1024x1024 每张约 $0.053；low $0.006、high $0.211。仅供量级参考，不参与计算。"
+      }
+    },
+    {
+      "provider": "openai-gpt-image-2-5-flare",
+      "unit": "*",
+      "reason": "经 OpenRouter 接入，渠道价不等同于 OpenAI 官方价，且 token 口径无法对齐按张计价。"
+    },
+    {
+      "provider": "gemini-3-pro-image",
+      "unit": "*",
+      "reason": "经 OpenRouter 接入的 Gemini 3 Pro Image，渠道价未配置；官方 Gemini 2.5 Flash Image 的 $0.039/图不适用于本模型。",
+      "official_reference": {
+        "value": 0.039,
+        "currency": "USD",
+        "unit": "image",
+        "as_of": "2026-11-13",
+        "source": "https://aistudio.google.com/docs/pricing",
+        "note": "该价对应 Gemini 2.5 Flash Image（1290 tokens × $30/百万），不是本项目 Gemini 3 Pro Image 的价格，仅供量级参考。"
+      }
+    },
+    {
+      "provider": "dashscope",
+      "unit": "*",
+      "reason": "通义万相官方按张（文生图）或按秒/分辨率（视频）计价，当前接口回报的 input/output tokens 不是同一个计费口径。",
+      "official_reference": {
+        "value": 0.24,
+        "currency": "CNY",
+        "unit": "video_second",
+        "as_of": "2026-11-13",
+        "source": "https://help.aliyun.com/zh/model-studio/wanx2-1-t2v-turbo",
+        "note": "wanx2.1-t2v-turbo 480P/720P 0.24 元/秒。本项目 dashscope provider 仅支持文生图，故不参与计算。"
+      }
+    },
+    {
+      "provider": "seedream",
+      "unit": "*",
+      "reason": "火山方舟 Seedream 按张计价，当前未配置对应单价。"
+    },
+    {
+      "provider": "kling",
+      "unit": "*",
+      "reason": "可灵渠道单价未配置。"
+    },
+    {
+      "provider": "stability",
+      "unit": "*",
+      "reason": "Stability AI 单价未配置。"
+    }
+  ]
+}

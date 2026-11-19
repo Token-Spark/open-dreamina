@@ -56,6 +56,11 @@ class Task(Base):
     api_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 该任务消耗的 token 数（由 Provider 元数据回填；mock 也会模拟一个值便于联调展示）
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 统一计费口径：只有 unit + quantity 才能把用量换算成金额；source 标明上游实报还是按参数推算。
+    # 与 tokens_used 的区别：token 与即梦积分（credit）、按张（image）、按秒（video_second）不再混装。
+    billing_unit: Mapped[str | None] = mapped_column(String, nullable=True)
+    billing_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    billing_source: Mapped[str | None] = mapped_column(String, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     conversation_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
@@ -412,6 +417,8 @@ class ShotReviewItem(Base):
     dialogue: Mapped[str | None] = mapped_column(Text, nullable=True)
     render_status: Mapped[str | None] = mapped_column(String, nullable=True)
     model: Mapped[str | None] = mapped_column(String, nullable=True)
+    # 原生成任务引用的参考素材 asset_id 列表（JSON 数组），供审片提示词编辑器展示
+    input_asset_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     reviewed_at: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False, default=_now_iso)

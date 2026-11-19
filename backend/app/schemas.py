@@ -68,6 +68,9 @@ class TaskResponse(BaseModel):
     input_asset_id: Optional[str] = None
     # 输入参考图的访问地址（由 input_asset_id 派生，便于前端复用回填预览）
     input_asset_url: Optional[str] = None
+    # 输入参考资产完整列表（含多图）及其访问地址，供前端直接展示/预览，无需从 params 里挖
+    input_asset_ids: list[str] = Field(default_factory=list)
+    input_asset_urls: list[str] = Field(default_factory=list)
     result_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
     result_url: Optional[str] = None
@@ -79,6 +82,10 @@ class TaskResponse(BaseModel):
     api_cost: Optional[float] = None
     # 该任务消耗的 token 数（由 Provider 元数据回填，可能为 None）
     tokens_used: Optional[int] = None
+    # 统一计费口径：unit / quantity / source，供 CLI 与 MCP 换算人民币估算值
+    billing_unit: Optional[str] = None
+    billing_quantity: Optional[float] = None
+    billing_source: Optional[str] = None
     retry_count: int = 0
     conversation_id: Optional[str] = None
     created_at: Optional[str] = None
@@ -437,7 +444,12 @@ class HealthResponse(BaseModel):
 class SystemSettings(BaseModel):
     """系统设置：扁平结构，与前端 SystemSettings 接口对齐。
     持久化于 settings 表；GET 缺省值由路由层从 config 合并。"""
-    max_concurrent_tasks: int = Field(default=2, ge=1, le=8)
+    # 前端「提交门禁」阈值：界面允许同时在途（running + pending）的任务数。
+    # 它不控制真正同时打上游的数量——那是 .env 的 CELERY_CONCURRENCY，超过 8 会触发
+    # 上游 {"code":405,"error":"User task queue is full"}。两者是不同概念：
+    # 这里的值只决定能连续提交多少个、多少在排队，超出 worker 进程数的部分停在
+    # pending，不会去打上游，因此可以放到 16 而不引起 405。
+    max_concurrent_tasks: int = Field(default=2, ge=1, le=16)
     default_provider: str = ""
     # 3D 导演台 iframe 地址；由 .env / 环境变量提供默认值，可在 settings 表覆盖。
     director_desk_url: str = ""

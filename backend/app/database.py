@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from contextlib import contextmanager
@@ -66,7 +67,9 @@ def _build_engine(database_url: str) -> Engine:
         @event.listens_for(engine, "connect")
         def _set_sqlite_pragma(dbapi_conn, _record):  # noqa: ANN001
             cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
+            # Docker Desktop macOS 挂载上 WAL 的 -shm 会损坏，可用 SQLITE_JOURNAL_MODE=DELETE 规避
+            journal_mode = os.environ.get("SQLITE_JOURNAL_MODE", "WAL")
+            cursor.execute(f"PRAGMA journal_mode={journal_mode}")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA foreign_keys=ON")
             # 并发写入时让后到的写事务等待 5 秒而非立即报 "database is locked"，
@@ -152,6 +155,10 @@ def _run_lightweight_migrations() -> None:
     _ensure_column("tasks", "conversation_id", "TEXT")
     # 任务消耗 token 数（需求：任务中心展示模型与 token 信息）
     _ensure_column("tasks", "tokens_used", "INTEGER")
+    # 统一计费口径（用量 → 人民币估算的前提）
+    _ensure_column("tasks", "billing_unit", "TEXT")
+    _ensure_column("tasks", "billing_quantity", "REAL")
+    _ensure_column("tasks", "billing_source", "TEXT")
     # 画布关联对话：画布生成任务统一归属同一对话
     _ensure_column("canvases", "conversation_id", "TEXT")
     # Seedance 参考素材审核字段（Spark Hub seedance_asset_audit）
@@ -175,6 +182,8 @@ def _run_lightweight_migrations() -> None:
     # 镜头审片：审阅中心返工生成产物的资产引用与来源标记（scan|regen）
     _ensure_column("shot_review_items", "asset_id", "TEXT")
     _ensure_column("shot_review_items", "origin", "TEXT NOT NULL DEFAULT 'scan'")
+    # 镜头审片：原生成任务引用的参考素材 asset_id 列表，供提示词编辑器展示缩略图
+    _ensure_column("shot_review_items", "input_asset_ids_json", "TEXT NOT NULL DEFAULT '[]'")
 
 
 def init_db() -> None:

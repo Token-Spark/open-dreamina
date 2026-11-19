@@ -64,6 +64,16 @@ def _to_response(task: Task, asset_ids: list[str] | None = None) -> TaskResponse
     input_asset_url = (
         f"/api/v1/assets/{task.input_asset_id}/file" if task.input_asset_id else None
     )
+    # 输入参考资产完整列表：优先取 params.input_asset_ids（必须是 list，逐项过滤非空 str），
+    # 否则回退 task.input_asset_id 单值，都没有则空列表。列表/详情接口共用本函数，故两处自动生效。
+    raw_input_ids = params.get("input_asset_ids")
+    if isinstance(raw_input_ids, list):
+        input_asset_ids = [a for a in raw_input_ids if isinstance(a, str) and a]
+    else:
+        input_asset_ids = []
+    if not input_asset_ids and task.input_asset_id:
+        input_asset_ids = [task.input_asset_id]
+    input_asset_urls = [f"/api/v1/assets/{aid}/file" for aid in input_asset_ids]
     return TaskResponse(
         id=task.id,
         type=task.type,
@@ -75,6 +85,8 @@ def _to_response(task: Task, asset_ids: list[str] | None = None) -> TaskResponse
         params=params,
         input_asset_id=task.input_asset_id,
         input_asset_url=input_asset_url,
+        input_asset_ids=input_asset_ids,
+        input_asset_urls=input_asset_urls,
         result_path=task.result_path,
         thumbnail_path=task.thumbnail_path,
         result_url=result_url,
@@ -84,6 +96,9 @@ def _to_response(task: Task, asset_ids: list[str] | None = None) -> TaskResponse
         error_msg=task.error_msg,
         api_cost=task.api_cost,
         tokens_used=task.tokens_used,
+        billing_unit=task.billing_unit,
+        billing_quantity=task.billing_quantity,
+        billing_source=task.billing_source,
         retry_count=task.retry_count,
         conversation_id=task.conversation_id,
         created_at=task.created_at,

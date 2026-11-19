@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import pricing as pricing_module
 from .client import ApiClient
 
 # 任务终态：到达后不再变化，轮询可停止。
@@ -38,8 +39,36 @@ def absolute_url(client: ApiClient, url: str | None) -> str | None:
     return f"{origin}{url}"
 
 
+def _usage_of(task: dict[str, Any]) -> dict[str, Any]:
+    """归一化用量口径：优先后端统一字段，兼容未升级后端只返回 tokens_used 的情况。"""
+    unit = task.get("billing_unit")
+    quantity = task.get("billing_quantity")
+    source = task.get("billing_source")
+    if not unit and task.get("tokens_used") is not None:
+        # 存量任务 / 老后端：唯一可用的是裸 token 数，明确标成 legacy 而不是上游实报。
+        try:
+            legacy_qty = float(task["tokens_used"])
+        except (TypeError, ValueError):
+            legacy_qty = None
+        if legacy_qty is not None and legacy_qty >= 0:
+            unit, quantity, source = "token", legacy_qty, "legacy"
+    note = None
+    if source == "derived":
+        note = "quantity 按请求参数推算，不是上游实扣量"
+    elif source == "legacy":
+        note = "老任务仅有 tokens_used，单位按 token 处理"
+    return {
+        "unit": unit,
+        "quantity": quantity,
+        "source": source or "unavailable",
+        "tokens_used": task.get("tokens_used"),
+        "provider_reported_cny": task.get("api_cost"),
+        "note": note,
+    }
+
+
 def task_brief(task: dict[str, Any], client: ApiClient, extra: dict[str, Any] | None = None) -> dict[str, Any]:
-    """任务响应精简视图（保留后端字段名，附加可直接下载的绝对地址）。"""
+    """任务响应精简视图（保留后端字段名，附加可直接下载的绝对地址与用量/费用估算）。"""
     result_urls = task.get("result_urls") or []
     brief: dict[str, Any] = {
         "task_id": task.get("id"),
@@ -58,6 +87,30 @@ def task_brief(task: dict[str, Any], client: ApiClient, extra: dict[str, Any] | 
         "created_at": task.get("created_at"),
         "completed_at": task.get("completed_at"),
     }
+    # 任务报告的补充信息：用量口径 + 人民币估算。只新增字段，不改动既有输出契约。
+    usage = _usage_of(task)
+    brief["usage"] = usage
+    cost = pricing_module.estimate_cost(
+        provider=task.get("provider"),
+        model_id=task.get("model_id"),
+        unit=usage["unit"],
+        quantity=usage["quantity"],
+        quantity_basis=usage["source"],
+    )
+    # Provider 若直接回报金额，优先于本地价目表估算。
+    reported = usage["provider_reported_cny"]
+    if isinstance(reported, (int, float)) and reported >= 0:
+        cost = dict(cost)
+        cost.update(
+            {
+                "estimated_cny": round(float(reported), 4),
+                "unit_price_cny": None,
+                "accuracy": "provider_reported_amount",
+                "source": "Provider 直接回报的金额",
+                "reason": None,
+            }
+        )
+    brief["cost"] = cost
     if extra:
         brief.update(extra)
     return brief

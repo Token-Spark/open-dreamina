@@ -157,9 +157,11 @@ def _ratio_from_size(width: int, height: int) -> str:
     return f"{best[0]}:{best[1]}"
 
 
-# 各图片模型支持的 --resolution 档位（键为应用内 model_id；服务端仍会按最新规格
-# 重新校验，此处只在请求档位不被模型支持时回退，避免明显非法的入参）。
-# 3.x 支持 1k/2k；4.x / 5.0 支持 2k/4k；5.0lite 支持 2k/3k/4k。
+# 内置已知图片模型支持的 --resolution 档位（仅作「已知模型」的防呆，不是白名单）。
+# 官方文档明确「模型/比例/分辨率等参数可能变化，以当前 CLI 返回结果为准」，且画布 CLI
+# 持续新增图片模型（含超清档位），因此：
+# - 用户注册的新模型不在本表 → 信任其请求的合法档位，交给 CLI 服务端按最新规格校验；
+# - 用户可在 Provider config.image_resolution_support 中声明/覆盖某模型的档位集合。
 _IMAGE_RESOLUTION_SUPPORT: dict[str, set[str]] = {
     "jimeng3.0": {"1k", "2k"},
     "jimeng3.1": {"1k", "2k"},
@@ -168,8 +170,40 @@ _IMAGE_RESOLUTION_SUPPORT: dict[str, set[str]] = {
     "seedream5.0pro": {"2k", "4k"},
     "seedream5.0lite": {"2k", "3k", "4k"},
 }
-# 所有图片模型都支持的通用默认档位（请求档位不被模型支持时回退到它）
+# CLI 接受的完整分辨率档位枚举：新模型的默认可用集合
+_ALL_IMAGE_RESOLUTIONS: frozenset[str] = frozenset({"1k", "2k", "3k", "4k"})
+# 请求档位不被模型支持时的回退档位
 _DEFAULT_IMAGE_RESOLUTION = "2k"
+
+
+def _normalize_tiers(value: Any) -> set[str]:
+    """把用户声明的分辨率档位（字符串/列表/集合）归一化为小写集合。"""
+    if isinstance(value, str):
+        items = [part for part in re.split(r"[,\s]+", value.strip()) if part]
+    elif isinstance(value, (list, tuple, set)):
+        items = [str(x) for x in value]
+    else:
+        return set()
+    return {str(x).lower().strip() for x in items if str(x).strip()}
+
+
+def _resolution_support_for(model_id: str, config: dict[str, Any] | None = None) -> set[str]:
+    """解析某模型可用的分辨率档位，优先级：用户声明 > 内置表 > 全量档位。
+
+    - config.image_resolution_support（兼容驼峰 imageResolutionSupport）：
+      ``{"模型id": ["1k", "4k"]}`` —— 用户自行注册新模型时可精确声明其档位；
+    - 内置表：仅覆盖内置已知模型，避免明显非法的入参；
+    - 新模型（两处都没有）：返回全量合法档位，信任用户请求 + CLI 服务端校验。
+    """
+    cfg = config or {}
+    custom = cfg.get("image_resolution_support") or cfg.get("imageResolutionSupport")
+    if isinstance(custom, dict):
+        declared = _normalize_tiers(custom.get(model_id))
+        if declared:
+            return declared
+    if model_id in _IMAGE_RESOLUTION_SUPPORT:
+        return set(_IMAGE_RESOLUTION_SUPPORT[model_id])
+    return set(_ALL_IMAGE_RESOLUTIONS)
 
 
 def _image_resolution_type(
@@ -177,16 +211,18 @@ def _image_resolution_type(
     width: int,
     height: int,
     resolution: str | None = None,
+    config: dict[str, Any] | None = None,
 ) -> str:
-    """推导 CLI --resolution，只返回该模型支持的档位。
+    """推导 CLI --resolution。
 
     - 优先按前端档位（1K/2K/3K/4K）映射；
     - 无档位时按最长边近似（<=1536 归 1k，其余归 2k）；
-    - 请求档位不在模型支持集合时，回退到通用默认档位 2k。
+    - 请求档位不在「模型可用集合」时回退到通用默认档位 2k。
+      新模型的可用集合为全量合法档位，故任意合法请求都会透传，由 CLI 服务端校验。
     """
-    supported = _IMAGE_RESOLUTION_SUPPORT.get(model_id, {"1k", "2k"})
+    supported = _resolution_support_for(model_id, config)
     if resolution:
-        tier = str(resolution).lower()
+        tier = str(resolution).strip().lower()
         if tier in supported:
             return tier
         return _DEFAULT_IMAGE_RESOLUTION
@@ -609,7 +645,14 @@ class DreaminaCliBaseProvider(BaseProvider):
 
     @classmethod
     def _extract_submit_id(cls, data: dict[str, Any]) -> str | None:
-        """从 node create 响应中提取 submitId（兼容 items / node.resources 两种结构）。"""
+        """从 node create 响应中提取 submitId。
+
+        dreamina-canvas 1.0.2 起把提交结果放在 data.submission.submitId；
+        旧版是 items[] / partialData.items[] / node.resources[]。两种都兼容。
+        """
+        submission = data.get("submission") if isinstance(data.get("submission"), dict) else {}
+        if submission.get("submitId"):
+            return str(submission["submitId"])
         for item in cls._iter_items(data):
             if item.get("submitId"):
                 return str(item["submitId"])
@@ -790,7 +833,9 @@ class DreaminaCliBaseProvider(BaseProvider):
         metadata: dict[str, Any] = {"task_id": submit_id, "project_id": project_id}
         if node_id:
             metadata["node_id"] = node_id
-        model_id = self._model_label()
+        # 优先记录本次请求实际使用的 model_id（用户可为单次生成指定任意已注册模型，
+        # 不必是 Provider 默认配置），无请求值时才回退到子类默认标签。
+        model_id = kwargs.get("model_id") or self._model_label()
         if model_id:
             metadata["model"] = model_id
         first = resources[0] if resources else {}
@@ -803,7 +848,12 @@ class DreaminaCliBaseProvider(BaseProvider):
             metadata["duration"] = int(duration)
         credits = self._extract_credits(submit_data)
         if credits is not None:
-            metadata["tokens_used"] = credits
+            # 即梦积分不是 token：显式声明计费单位，避免被当成 token 乘错单价。
+            metadata["billing"] = {
+                "unit": "credit",
+                "quantity": credits,
+                "source": "provider_reported",
+            }
         if self._canvas and self._canvas[1]:
             metadata["canvas_url"] = self._canvas[1]
 
@@ -992,7 +1042,7 @@ class DreaminaSeedreamProvider(DreaminaCliBaseProvider):
             args += ["--ratio", _ratio_from_size(width, height)]
             args += [
                 "--resolution",
-                _image_resolution_type(model_id, width, height, kwargs.get("resolution")),
+                _image_resolution_type(model_id, width, height, kwargs.get("resolution"), self.config),
             ]
         args += ["--run", "--credit-ceiling", str(self._credit_ceiling())]
         return args
